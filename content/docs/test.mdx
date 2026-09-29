@@ -1,0 +1,42 @@
+---
+title: Components
+description: Smoke test for fonts, code blocks, diagrams and steps.
+---
+
+## Mixed Bangla + English
+
+ডেটাবেস ইনডেক্স (index) হলো একটি data structure যা query কে দ্রুত করে। যেমন `B-tree` index।
+
+## Code Block
+
+```sql title="create-index.sql"
+-- ইনডেক্স তৈরি করা
+CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT); -- [!code highlight]
+CREATE INDEX idx_users_email ON users (email); -- [!code ++]
+SELECT * FROM users WHERE email = 'a@b.com';
+```
+
+## Diagram
+
+```mermaid
+sequenceDiagram
+  Client->>API: GET /users/1
+  API->>Redis: GET user:1
+  Redis-->>API: miss
+  API->>Postgres: SELECT * FROM users WHERE id = 1
+  API->>Redis: SET user:1
+  API-->>Client: 200 OK
+```
+
+## Steps
+
+<Steps>
+<Step>
+### ইনস্টল করুন
+`pnpm add ioredis`
+</Step>
+<Step>
+### Connect
+Create a client and call `redis.get()`.
+</Step>
+</Steps>
