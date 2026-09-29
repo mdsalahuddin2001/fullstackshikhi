@@ -72,7 +72,9 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - Note: search still returns results from every topic.
 
 ## Phase 4: Content template + guide ⏳
-- Sample PostgreSQL lesson (mixed Bangla/English) using every component, as the copy-paste template.
+- ✅ (2026-09-29) **PostgreSQL series** — mostly-Bangla prose, English technical terms, SQL in English. `content/docs/postgresql/`: `index` (overview + ER diagram), `introduction` (setup Tabs: Docker/macOS/Windows, `psql`), `tables-and-types` (IDENTITY, types table, constraints, ER), `crud` (INSERT/SELECT/UPDATE/DELETE, JOIN, Playground, safe-UPDATE diff), `indexes` (B-tree diagram, EXPLAIN ANALYZE before/after, multi-column, costs), `transactions` (BEGIN/COMMIT/ROLLBACK, ACID, `FOR UPDATE` sequence diagram, isolation levels). Order set in `meta.json`.
+  - Data integrity: SQL/behavior per PostgreSQL docs; EXPLAIN outputs and timings labelled **উদাহরণ (illustrative)**; sample book prices/stock labelled as made up. `orders` simplified (direct `book_id`) and noted in the lesson. No YouTube embeds (no real IDs yet).
+  - QA: all 6 pages 200, every Mermaid block renders, no literal `[!code` markers, zero console errors (light + dark); screenshots reviewed (overview, tabs, types table dark, EXPLAIN, sequence diagram dark, mobile CRUD, present mode).
 - Authoring guide stays as an unlinked topic (decided in 3b); `CONTENT_GUIDE.md` covers the repo side.
 - `CONTENT_GUIDE.md`: adding a series/lesson, frontmatter, meta.json, components (Reveal, Steps reveal, Playground, YouTube, Mermaid, code annotations), present-mode keys.
 - Final QA, commit.

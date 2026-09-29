@@ -1,0 +1,130 @@
+---
+title: PostgreSQL পরিচিতি ও setup
+description: PostgreSQL কী, কেন জনপ্রিয়, আর নিজের computer-এ কীভাবে চালু করবেন।
+---
+
+## PostgreSQL কী?
+
+PostgreSQL (সংক্ষেপে **Postgres**) হলো একটি open-source **relational database**। Relational database-এ data থাকে **table**-এ — ঠিক spreadsheet-এর মতো row আর column আকারে — এবং table-গুলোর মধ্যে সম্পর্ক (relation) তৈরি করা যায়।
+
+Postgres-এর যাত্রা শুরু হয় University of California, Berkeley-র POSTGRES project থেকে, আর তিন দশকেরও বেশি সময় ধরে এটি সক্রিয়ভাবে develop হচ্ছে।
+
+## কেন PostgreSQL?
+
+<Reveal each>
+
+- **নির্ভরযোগ্য** — ACID transaction পুরোপুরি support করে, তাই data হারানো বা ভুল হওয়ার ঝুঁকি কম।
+- **Standard SQL** — SQL standard খুব কাছ থেকে মেনে চলে, তাই যা শিখবেন তা অন্য database-এও কাজে লাগবে।
+- **অনেক ধরনের data** — সাধারণ text, number ছাড়াও `JSONB`, array, date/time, এমনকি geographic data রাখা যায়।
+- **Extension** — `pgvector` এর মতো extension দিয়ে AI embedding search পর্যন্ত করা যায়।
+- **সম্পূর্ণ free** — commercial কাজেও কোনো license fee নেই।
+
+</Reveal>
+
+<Callout type="info" title="Database, server আর client">
+**PostgreSQL server** হলো যে program টা background-এ চলে আর data রাখে। **Client** (যেমন `psql`, বা আপনার Node.js app) সেই server-এর সাথে connect করে SQL পাঠায়। একটি server-এর ভিতরে একাধিক **database** থাকতে পারে।
+</Callout>
+
+```mermaid
+flowchart LR
+  A[psql] --> S[(PostgreSQL server)]
+  B[Node.js app] --> S
+  C[GUI tool] --> S
+  S --> D1[(bookstore)]
+  S --> D2[(অন্য database)]
+```
+
+## PostgreSQL চালু করা
+
+নিচের যেকোনো একটি পদ্ধতি বেছে নিন। **Docker সবচেয়ে সহজ**, কারণ সব operating system-এ একই command কাজ করে।
+
+<Tabs items={['Docker', 'macOS', 'Windows']}>
+<Tab value="Docker">
+
+```bash title="Terminal"
+docker run --name pg-learn \
+  -e POSTGRES_PASSWORD=secret \
+  -p 5432:5432 \
+  -d postgres:17
+```
+
+- `--name pg-learn` — container-এর নাম
+- `-e POSTGRES_PASSWORD=secret` — default `postgres` user-এর password
+- `-p 5432:5432` — Postgres-এর default port আপনার computer-এ খুলে দেয়
+
+</Tab>
+<Tab value="macOS">
+
+```bash title="Terminal"
+brew install postgresql@17
+brew services start postgresql@17
+```
+
+Homebrew না থাকলে [Postgres.app](https://postgresapp.com) ব্যবহার করতে পারেন — download করে open করলেই server চালু হয়ে যায়।
+
+</Tab>
+<Tab value="Windows">
+
+[postgresql.org/download/windows](https://www.postgresql.org/download/windows/) থেকে installer download করুন। Install করার সময় যে password দেবেন সেটা মনে রাখুন — এটাই `postgres` user-এর password।
+
+</Tab>
+</Tabs>
+
+## `psql` দিয়ে connect করা
+
+`psql` হলো PostgreSQL-এর নিজস্ব command-line client।
+
+<Steps reveal>
+<Step>
+### Connect করুন
+
+```bash title="Terminal"
+# Docker ব্যবহার করলে
+docker exec -it pg-learn psql -U postgres
+
+# সরাসরি install করলে
+psql -U postgres
+```
+</Step>
+<Step>
+### আমাদের database তৈরি করুন
+
+```sql
+CREATE DATABASE bookstore;
+```
+</Step>
+<Step>
+### নতুন database-এ ঢুকুন
+
+```sql
+\c bookstore
+```
+
+Prompt বদলে `bookstore=#` দেখালে বুঝবেন আপনি সঠিক জায়গায় আছেন।
+</Step>
+<Step>
+### পরীক্ষা করুন
+
+```sql
+SELECT version();
+```
+
+এটা আপনার PostgreSQL-এর version দেখাবে।
+</Step>
+</Steps>
+
+## দরকারি `psql` command
+
+`\` দিয়ে শুরু হওয়া command গুলো SQL নয় — এগুলো `psql`-এর নিজস্ব shortcut।
+
+| Command | কাজ |
+| --- | --- |
+| `\l` | সব database-এর তালিকা |
+| `\c name` | অন্য database-এ যাওয়া |
+| `\dt` | বর্তমান database-এর সব table |
+| `\d table` | একটি table-এর structure |
+| `\q` | `psql` থেকে বের হওয়া |
+
+<Callout type="warn" title="Semicolon ভুলবেন না">
+SQL statement শেষে `;` না দিলে `psql` ধরে নেয় আপনি এখনো লিখছেন, আর prompt বদলে `bookstore-#` হয়ে যায়। তখন শুধু `;` লিখে Enter দিন।
+</Callout>

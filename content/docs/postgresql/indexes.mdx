@@ -1,0 +1,135 @@
+---
+title: Index
+description: Query কেন ধীর হয়, index কীভাবে কাজ করে, আর কখন index ব্যবহার করবেন না।
+---
+
+## সমস্যা: হাজার হাজার row
+
+ধরুন `books` table-এ ১০ লক্ষ বই আছে, আর আমরা একটি নির্দিষ্ট ISBN খুঁজছি:
+
+```sql
+SELECT * FROM books WHERE isbn = '978-0132350884';
+```
+
+Index না থাকলে Postgres-কে **প্রতিটি row** একটা একটা করে পড়ে দেখতে হয় — একে বলে **Sequential Scan**। অনেকটা বইয়ের সূচিপত্র ছাড়া একটি নির্দিষ্ট লাইন খোঁজার মতো।
+
+## Index কী?
+
+Index হলো একটি আলাদা data structure যা একটি column-এর value গুলো সাজানো অবস্থায় রাখে, সাথে প্রতিটি value কোন row-তে আছে তার ঠিকানা। Postgres-এর default index হলো **B-tree**।
+
+```mermaid
+flowchart TD
+  R["Root: M"] --> L["A … L"]
+  R --> RR["M … Z"]
+  L --> L1["A … F"]
+  L --> L2["G … L"]
+  RR --> R1["M … S"]
+  RR --> R2["T … Z"]
+  L2 -.-> T[("Table row")]
+```
+
+<Reveal each>
+
+- প্রতিটি ধাপে Postgres শুধু একটি শাখা বেছে নেয়, বাকিগুলো বাদ দেয়।
+- তাই ১০ লক্ষ row থেকেও মাত্র কয়েকটি ধাপে সঠিক row পাওয়া যায়।
+- B-tree `=`, `<`, `>`, `BETWEEN`, `ORDER BY` — সবগুলোতেই কাজে লাগে।
+
+</Reveal>
+
+## EXPLAIN — Postgres কী ভাবছে দেখুন
+
+`EXPLAIN ANALYZE` query টা চালায় এবং Postgres কোন পদ্ধতিতে data খুঁজেছে তা দেখায়।
+
+<Callout type="info" title="নিচের output গুলো উদাহরণ মাত্র">
+সময় আর সংখ্যাগুলো আপনার machine আর data-র উপর নির্ভর করবে। দেখার বিষয় হলো **scan-এর ধরন** বদলাচ্ছে কিনা।
+</Callout>
+
+### Index-এর আগে
+
+```sql
+EXPLAIN ANALYZE
+SELECT * FROM books WHERE isbn = '978-0132350884';
+```
+
+```txt title="Output (উদাহরণ)"
+Seq Scan on books  (cost=0.00..21846.00 rows=1 width=64) (actual time=41.207..85.114 rows=1 loops=1)
+  Filter: (isbn = '978-0132350884'::text)
+  Rows Removed by Filter: 999999
+Planning Time: 0.102 ms
+Execution Time: 85.312 ms
+```
+
+`Rows Removed by Filter: 999999` — মাত্র একটি row পেতে প্রায় ১০ লক্ষ row পড়তে হয়েছে।
+
+### Index তৈরি
+
+```sql
+CREATE INDEX idx_books_isbn ON books (isbn);
+```
+
+<Callout type="idea" title="UNIQUE নিজেই index বানায়">
+আগের lesson-এ `isbn TEXT UNIQUE` দিয়েছিলাম — `UNIQUE` আর `PRIMARY KEY` constraint Postgres নিজে থেকেই একটি index তৈরি করে। এখানে বোঝানোর জন্য আলাদা করে দেখানো হলো।
+</Callout>
+
+### Index-এর পরে
+
+```txt title="Output (উদাহরণ)"
+Index Scan using idx_books_isbn on books  (cost=0.42..8.44 rows=1 width=64) (actual time=0.025..0.026 rows=1 loops=1)
+  Index Cond: (isbn = '978-0132350884'::text)
+Planning Time: 0.118 ms
+Execution Time: 0.041 ms
+```
+
+`Seq Scan` বদলে `Index Scan` হয়েছে — Postgres এখন সরাসরি সঠিক row-তে যাচ্ছে।
+
+## একাধিক column-এর index
+
+```sql
+CREATE INDEX idx_books_author_published
+  ON books (author_id, published_on);
+```
+
+এই index কাজে লাগবে:
+
+```sql
+WHERE author_id = 3                               -- ✅
+WHERE author_id = 3 AND published_on > '2000-01-01' -- ✅
+WHERE published_on > '2000-01-01'                 -- ⚠️ সাধারণত কাজে লাগে না
+```
+
+<Callout type="warn" title="Column-এর ক্রম গুরুত্বপূর্ণ">
+Multi-column B-tree index সবচেয়ে ভালো কাজ করে যখন query-তে **বাম দিকের column** (এখানে `author_id`) থাকে। ফোনবুক যেমন আগে পদবি, তারপর নাম অনুযায়ী সাজানো — শুধু নাম দিয়ে খুঁজলে সুবিধা হয় না।
+</Callout>
+
+## Index-এর খরচ
+
+Index সবসময় ভালো নয়।
+
+<Steps reveal>
+<Step>
+### Write ধীর হয়
+প্রতিটি `INSERT`, `UPDATE`, `DELETE`-এ table-এর সাথে সব index-ও update করতে হয়।
+</Step>
+<Step>
+### জায়গা লাগে
+প্রতিটি index disk-এ আলাদা জায়গা নেয়।
+</Step>
+<Step>
+### ছোট table-এ অপ্রয়োজনীয়
+কয়েকশো row-এর table-এ Postgres প্রায়ই index বাদ দিয়ে sequential scan-ই বেছে নেয়, কারণ সেটাই দ্রুত।
+</Step>
+</Steps>
+
+## কখন index বানাবেন
+
+| পরিস্থিতি | Index? |
+| --- | --- |
+| `WHERE`-এ প্রায়ই ব্যবহৃত column | ✅ |
+| `JOIN`-এ ব্যবহৃত foreign key | ✅ Postgres নিজে থেকে বানায় না |
+| প্রায়ই `ORDER BY` করা column | ✅ |
+| খুব কম ভিন্ন value (যেমন `true`/`false`) | ⚠️ সাধারণত লাভ কম |
+| খুব ঘন ঘন write হয় এমন table | ⚠️ ভেবেচিন্তে |
+
+<Callout type="success" title="নিয়ম">
+আন্দাজে index বানাবেন না। ধীর query খুঁজুন, `EXPLAIN ANALYZE` চালান, তারপর দরকার হলে index যোগ করে আবার মেপে দেখুন।
+</Callout>

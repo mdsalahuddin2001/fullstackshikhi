@@ -1,0 +1,130 @@
+---
+title: CRUD query
+description: INSERT, SELECT, UPDATE আর DELETE — data নিয়ে কাজের চারটি মৌলিক operation।
+---
+
+**CRUD** মানে **C**reate, **R**ead, **U**pdate, **D**elete। প্রায় সব application-এর বেশিরভাগ database কাজ এই চারটির মধ্যেই পড়ে।
+
+| কাজ | SQL |
+| --- | --- |
+| Create | `INSERT` |
+| Read | `SELECT` |
+| Update | `UPDATE` |
+| Delete | `DELETE` |
+
+## INSERT — data যোগ করা
+
+```sql title="insert.sql"
+INSERT INTO authors (name, country)
+VALUES
+  ('বিভূতিভূষণ বন্দ্যোপাধ্যায়', 'India'),
+  ('হুমায়ূন আহমেদ', 'Bangladesh'),
+  ('Robert C. Martin', 'USA')
+RETURNING id, name; -- [!code highlight]
+```
+
+`RETURNING` Postgres-এর একটি দারুণ feature — নতুন row-গুলোর `id` সাথে সাথেই ফেরত দেয়, আলাদা query লাগে না।
+
+```sql
+INSERT INTO books (author_id, title, price, stock, published_on)
+VALUES
+  (1, 'পথের পাঁচালী', 350.00, 12, '1929-01-01'),
+  (2, 'ময়ূরাক্ষী', 280.00, 0, '1990-01-01'),
+  (3, 'Clean Code', 1200.00, 5, '2008-08-01');
+```
+
+দাম আর stock-এর সংখ্যাগুলো উদাহরণের জন্য বানানো।
+
+## SELECT — data খোঁজা
+
+<Playground lang="sql">
+```sql
+SELECT title, price
+FROM books
+WHERE price < 1000
+ORDER BY price DESC
+LIMIT 10;
+```
+</Playground>
+
+SQL যে ক্রমে লেখা হয়, Postgres সেই ক্রমে চালায় না। বোঝার সুবিধার জন্য execution-এর ক্রমটা এরকম:
+
+<Steps reveal>
+<Step>
+### `FROM` — কোন table থেকে
+</Step>
+<Step>
+### `WHERE` — কোন row গুলো রাখব
+</Step>
+<Step>
+### `SELECT` — কোন column গুলো দেখাব
+</Step>
+<Step>
+### `ORDER BY` — কীভাবে সাজাব
+</Step>
+<Step>
+### `LIMIT` — কতগুলো ফেরত দেব
+</Step>
+</Steps>
+
+### কাজের কিছু filter
+
+```sql
+-- নির্দিষ্ট range
+SELECT * FROM books WHERE price BETWEEN 200 AND 500;
+
+-- কয়েকটি value-র যেকোনো একটি
+SELECT * FROM authors WHERE country IN ('Bangladesh', 'India');
+
+-- লেখার অংশ দিয়ে খোঁজা (ILIKE = case-insensitive)
+SELECT * FROM books WHERE title ILIKE '%code%';
+
+-- যাদের value নেই
+SELECT * FROM books WHERE published_on IS NULL;
+```
+
+<Callout type="warn" title="NULL = NULL সত্য নয়">
+`NULL` মানে "অজানা", তাই `WHERE published_on = NULL` কোনো row ফেরত দেয় না। সবসময় `IS NULL` বা `IS NOT NULL` লিখুন।
+</Callout>
+
+### দুই table একসাথে — JOIN
+
+```sql
+SELECT b.title, a.name AS author
+FROM books b
+JOIN authors a ON a.id = b.author_id
+ORDER BY a.name;
+```
+
+## UPDATE — data পরিবর্তন
+
+```sql
+UPDATE books
+SET price = price * 0.9 -- সব বইয়ে ১০% ছাড়
+WHERE stock > 10;       -- [!code highlight]
+```
+
+<Callout type="error" title="WHERE ছাড়া UPDATE">
+`WHERE` না দিলে table-এর **প্রতিটি row** পরিবর্তন হয়ে যাবে। Production-এ চালানোর আগে একই `WHERE` দিয়ে একটি `SELECT` চালিয়ে দেখে নিন কোন row গুলো প্রভাবিত হবে।
+</Callout>
+
+নিরাপদ অভ্যাস:
+
+```sql
+SELECT id, title, price FROM books WHERE stock > 10; -- [!code --]
+UPDATE books SET price = price * 0.9 WHERE stock > 10; -- [!code ++]
+```
+
+প্রথমে `SELECT` দিয়ে দেখুন, তারপর একই `WHERE` রেখে `UPDATE` চালান।
+
+## DELETE — data মুছে ফেলা
+
+```sql
+DELETE FROM books
+WHERE stock = 0 AND published_on < '1995-01-01'
+RETURNING title;
+```
+
+<Callout type="info" title="Foreign key আপনাকে রক্ষা করবে">
+কোনো লেখকের বই থাকলে `DELETE FROM authors WHERE id = 1` error দেবে — কারণ `books.author_id` সেই লেখককে reference করছে। আগের lesson-এর constraint এখানে কাজে লাগছে।
+</Callout>
