@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronRight, House } from 'lucide-react';
 import { source } from '@/lib/source';
 import { DocsLayout } from 'fumadocs-ui/layouts/docs';
 import { baseOptions } from '@/lib/layout.shared';
@@ -15,10 +15,13 @@ export default function Layout({ children }: LayoutProps<'/docs'>) {
         banner: (
           <Link
             href="/#topics"
-            className="inline-flex items-center gap-1.5 text-sm text-fd-muted-foreground transition-colors hover:text-fd-foreground"
+            className="group flex items-center gap-2.5 rounded-lg border bg-fd-card p-1.5 pe-2.5 text-sm font-medium text-fd-foreground transition-colors hover:border-fd-primary/40 hover:bg-fd-primary/5"
           >
-            <ArrowLeft className="size-3.5" />
+            <span className="flex size-7 items-center justify-center rounded-md bg-fd-primary/12 text-fd-primary transition-colors group-hover:bg-fd-primary group-hover:text-fd-primary-foreground">
+              <House className="size-4" />
+            </span>
             All topics
+            <ChevronRight className="ms-auto size-4 text-fd-muted-foreground transition-transform group-hover:translate-x-0.5" />
           </Link>
         ),
       }}
