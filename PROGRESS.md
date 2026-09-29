@@ -7,7 +7,7 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 | Decision | Choice | Why |
 |---|---|---|
 | Framework | Next.js + Fumadocs (over Astro/Starlight) | Owner knows Next.js; full React for future interactivity |
-| Fonts | Inter → Noto Sans Bengali (fallback per glyph), JetBrains Mono for code | Noto Bengali is variable and x-height-matched to Inter for mixed sentences |
+| Fonts | Inter → Noto Sans Bengali (fallback per glyph), JetBrains Mono for code. Noto Bengali **self-hosted** (`src/fonts/`, OFL) via `next/font/local` with `size-adjust: 108%` + Bengali `unicode-range` | Content is mostly Bangla; at equal font-size Bangla reads smaller than Latin. Owner picked option 1 from a side-by-side of Noto+108% / Hind Siliguri / Noto+Anek headings (2026-09-29) |
 | Prose line-height | 1.75 | Bangla vowel signs clip at tighter leading |
 | Search | Orama (built-in) | Bangla tokenization is weak; revisit if needed |
 | TypeScript | 6.0.x (not 7) | typescript-eslint supports `<6.1.0` only |
