@@ -1,7 +1,6 @@
 'use client';
 
 import { use, useId, useSyncExternalStore } from 'react';
-import { useTheme } from 'fumadocs-ui/provider/base';
 
 export function Mermaid({ chart }: { chart: string }) {
   // Mermaid renders in the browser only; skip it during SSR.
@@ -17,6 +16,16 @@ export function Mermaid({ chart }: { chart: string }) {
 
 const noopSubscribe = () => () => {};
 
+// Follow the class on <html>, not next-themes state: React learns about a theme change before
+// the `.dark` class is swapped, so CSS tokens read at that moment would still be the old theme.
+function subscribeHtmlClass(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  return () => observer.disconnect();
+}
+
+const getHtmlTheme = () => (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+
 const cache = new Map<string, Promise<unknown>>();
 
 function cachePromise<T>(key: string, setPromise: () => Promise<T>): Promise<T> {
@@ -30,23 +39,22 @@ function cachePromise<T>(key: string, setPromise: () => Promise<T>): Promise<T> 
 
 function MermaidContent({ chart }: { chart: string }) {
   const id = useId();
-  const { resolvedTheme } = useTheme();
+  const theme = useSyncExternalStore(subscribeHtmlClass, getHtmlTheme, () => 'light');
   const { default: mermaid } = use(cachePromise('mermaid', () => import('mermaid')));
 
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: 'loose',
-    fontFamily: 'inherit',
-    themeCSS: 'margin: 1.5rem auto 0;',
-    theme: 'base',
-    darkMode: resolvedTheme === 'dark',
-    themeVariables: themeFromCss(),
-  });
-
   const { svg, bindFunctions } = use(
-    cachePromise(`${chart}-${resolvedTheme}`, () =>
-      mermaid.render(id.replaceAll(':', ''), chart.replaceAll('\\n', '\n')),
-    ),
+    cachePromise(`${chart}-${theme}`, () => {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        fontFamily: 'inherit',
+        themeCSS: 'margin: 1.5rem auto 0;',
+        theme: 'base',
+        darkMode: theme === 'dark',
+        themeVariables: themeFromCss(),
+      });
+      return mermaid.render(id.replaceAll(':', ''), chart.replaceAll('\\n', '\n'));
+    }),
   );
 
   return (
