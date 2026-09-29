@@ -78,3 +78,9 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - Authoring guide stays as an unlinked topic (decided in 3b); `CONTENT_GUIDE.md` covers the repo side.
 - `CONTENT_GUIDE.md`: adding a series/lesson, frontmatter, meta.json, components (Reveal, Steps reveal, Playground, YouTube, Mermaid, code annotations), present-mode keys.
 - Final QA, commit.
+
+## Version log — repeated fixes
+### `src/components/mermaid.tsx` + ER styles in `global.css`
+- v1 (Phase 1): theme `default`/`dark` by color scheme.
+- v2 (Phase 3): theme `base`, variables read from CSS tokens (oklch → hex via canvas).
+- v3 (2026-09-29): ER tables — dark mode odd rows were light gray under white text (Mermaid derives `rowOdd` = mainBkg lightened 75%). Now `rowOdd` = card, `rowEven` = card/muted mix; `global.css` sets neutral ER grid lines + muted header row (`!important`, since Mermaid's rules are id-scoped). Note: Mermaid's `themeCSS` drops nested rules, so ER CSS lives in `global.css`.
