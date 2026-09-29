@@ -69,6 +69,12 @@ function toHex(cssColor: string): string {
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
+function mix(a: string, b: string): string {
+  const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [ca, cb] = [channels(a), channels(b)];
+  return `#${ca.map((v, i) => Math.round((v + cb[i]) / 2).toString(16).padStart(2, '0')).join('')}`;
+}
+
 function themeFromCss() {
   const style = getComputedStyle(document.documentElement);
   const token = (name: string) => toHex(style.getPropertyValue(name).trim());
@@ -104,5 +110,8 @@ function themeFromCss() {
     noteBkgColor: token('--accent'),
     noteBorderColor: border,
     noteTextColor: foreground,
+    // ER diagram attribute rows (defaults lighten mainBkg, which is unreadable in dark mode).
+    rowOdd: card,
+    rowEven: mix(card, token('--muted')),
   };
 }

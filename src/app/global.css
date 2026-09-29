@@ -218,3 +218,12 @@ html[data-present] .fd-steps[data-reveal-each] > [data-reveal-state='shown'] {
     @apply font-sans;
   }
 }
+/* Mermaid ER tables styled like the site's tables: neutral grid, muted header row.
+   !important beats Mermaid's id-scoped `.node path` rules. */
+svg[aria-roledescription='er'] :is(.outer-path, .row-rect-odd, .row-rect-even, .divider) path {
+  stroke: var(--color-fd-border) !important;
+}
+
+svg[aria-roledescription='er'] .outer-path path:first-child {
+  fill: var(--color-fd-muted) !important;
+}
