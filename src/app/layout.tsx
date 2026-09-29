@@ -10,21 +10,25 @@ export const metadata: Metadata = {
   title: { template: `%s | ${appName}`, default: appName },
 };
 
-// Latin glyphs come from Inter; Bangla glyphs fall through to Noto Sans Bengali.
+// Latin glyphs come from Inter; Bangla glyphs fall through to Hind Siliguri.
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
 });
 
-// Self-hosted (Google Fonts' Bengali subset, OFL) so we can set size-adjust: at equal font-size,
-// Bangla reads smaller than Latin. 108% matches it to Inter; measured side by side on 2026-09-29.
-const notoBengali = localFont({
-  src: '../fonts/NotoSansBengali-Variable.woff2',
-  weight: '100 900',
+// Hind Siliguri, self-hosted (Google Fonts' Bengali subset, OFL) so we can set size-adjust: at
+// equal font-size Bangla reads smaller than Latin; 105% matches it to Inter (measured 2026-09-29).
+const bengali = localFont({
+  src: [
+    { path: '../fonts/HindSiliguri-400.woff2', weight: '400' },
+    { path: '../fonts/HindSiliguri-500.woff2', weight: '500' },
+    { path: '../fonts/HindSiliguri-600.woff2', weight: '600' },
+    { path: '../fonts/HindSiliguri-700.woff2', weight: '700' },
+  ],
   variable: '--font-bengali',
   display: 'swap',
   declarations: [
-    { prop: 'size-adjust', value: '108%' },
+    { prop: 'size-adjust', value: '105%' },
     {
       prop: 'unicode-range',
       value:
@@ -42,7 +46,7 @@ export default function Layout({ children }: LayoutProps<'/'>) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${notoBengali.variable} ${jetbrainsMono.variable}`}
+      className={`${inter.variable} ${bengali.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <body className="flex flex-col min-h-screen">

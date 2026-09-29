@@ -7,7 +7,7 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 | Decision | Choice | Why |
 |---|---|---|
 | Framework | Next.js + Fumadocs (over Astro/Starlight) | Owner knows Next.js; full React for future interactivity |
-| Fonts | Inter → Noto Sans Bengali (fallback per glyph), JetBrains Mono for code. Noto Bengali **self-hosted** (`src/fonts/`, OFL) via `next/font/local` with `size-adjust: 108%` + Bengali `unicode-range` | Content is mostly Bangla; at equal font-size Bangla reads smaller than Latin. Owner picked option 1 from a side-by-side of Noto+108% / Hind Siliguri / Noto+Anek headings (2026-09-29) |
+| Fonts | Inter (English) → **Hind Siliguri** (Bangla, per-glyph fallback) → JetBrains Mono (code). Hind self-hosted in `src/fonts/` (Bengali subset, weights 400/500/600/700, OFL) via `next/font/local` with `size-adjust: 105%` + Bengali `unicode-range` | Content is mostly Bangla; at equal font-size Bangla reads smaller than Latin. Owner first picked Noto Sans Bengali +108% from a side-by-side, then switched to Hind Siliguri (2026-09-29). Font-inspector extensions report the first family (Inter); DevTools → Computed → Rendered Fonts shows the real per-glyph font |
 | Prose line-height | 1.75 | Bangla vowel signs clip at tighter leading |
 | Search | Orama (built-in) | Bangla tokenization is weak; revisit if needed |
 | TypeScript | 6.0.x (not 7) | typescript-eslint supports `<6.1.0` only |
@@ -86,3 +86,8 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - v3 (2026-09-29): ER tables — dark mode odd rows were light gray under white text (Mermaid derives `rowOdd` = mainBkg lightened 75%). Now `rowOdd` = card, `rowEven` = card/muted mix; `global.css` sets neutral ER grid lines + muted header row (`!important`, since Mermaid's rules are id-scoped). Note: Mermaid's `themeCSS` drops nested rules, so ER CSS lives in `global.css`.
 - v4 (2026-09-29): **theme toggle on an open page rendered diagrams with the previous theme's colors** (fresh loads were fine). Cause: next-themes updates React state before swapping the `.dark` class, so tokens were read stale and then cached. Now the theme key comes from the `<html>` class via `MutationObserver` + `useSyncExternalStore`, and `mermaid.initialize` runs inside the cached render. Verified dark→light and light→dark on ER and sequence diagrams.
 - v5 (2026-09-29): ER tables now match Markdown tables — no drop shadow (all diagrams are flat: `.mermaid-diagram svg * { filter: none }`), rounded corners (`--radius`) + single 1px border. Mermaid can't round its paths, so `roundErTables()` in `mermaid.tsx` clips each entity with `clip-path: inset(0 round r)` and appends a rounded `.er-border` rect. Attribute-less entities (plain `rect.label-container`) get CSS `rx/ry`, muted fill, neutral border. Mermaid's id-scoped rules require `!important` on these overrides.
+
+### Bangla font
+- v1 (Phase 1): Noto Sans Bengali via `next/font/google`.
+- v2 (2026-09-29): Noto self-hosted with `size-adjust: 108%` (owner picked option 1 of 3).
+- v3 (2026-09-29): switched to **Hind Siliguri** at owner's request, `size-adjust: 105%` (calibrated so Bangla matches the same visual size as v2). Noto file removed.
