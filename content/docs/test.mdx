@@ -40,3 +40,38 @@ sequenceDiagram
 Create a client and call `redis.get()`.
 </Step>
 </Steps>
+
+## Reveal
+
+<Reveal each>
+
+- প্রথম পয়েন্ট — first point
+- Second point
+- তৃতীয় পয়েন্ট
+
+</Reveal>
+
+<Reveal>
+```ts title="cache.ts"
+const user = await redis.get(`user:${id}`);
+```
+</Reveal>
+
+<Steps reveal>
+<Step>
+### Query
+Look up the cache.
+</Step>
+<Step>
+### Fallback
+Hit PostgreSQL on miss.
+</Step>
+</Steps>
+
+## Playground
+
+<Playground lang="sql">
+```sql
+SELECT now();
+```
+</Playground>

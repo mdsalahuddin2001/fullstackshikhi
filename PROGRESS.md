@@ -23,10 +23,29 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - Smoke-test page: `content/docs/test.mdx` (replaced in Phase 3).
 - QA: `pnpm lint`, `pnpm types:check`, `pnpm build` pass. Rendered HTML verified via curl (fonts, highlight/diff classes, Bangla text, steps, mermaid source). **Visual check in a browser not done** (Chrome extension unavailable).
 
-## Phase 2: Teaching features ⏳
-- Present mode: `P` toggles (hide sidebar + TOC, base font ~20–22px), `←/→` prev/next page, `Esc` exits.
-- `<Steps reveal>`: reveal one item per keypress in present mode.
-- `<Playground>` placeholder component.
+## Phase 2: Teaching features ✅ (2026-09-29)
+**Present mode** (`src/components/present/`)
+- `P` toggles, `Esc` exits, "Present" button in each page's action row. Ignored while typing in inputs or with modifier keys.
+- State = `<html data-present>` (survives client navigation) + `sessionStorage` (survives reload). `store.ts` is the only writer.
+- CSS (`global.css`): root font 125% (≈20px, all rem-based UI scales), sidebar/TOC/subnav hidden, grid columns zeroed via `--fd-*` vars on `#nd-docs-layout`. Anything with `data-present-hide` is hidden.
+- `→`/`PageDown`: reveal next item, then go to next page. `←`/`PageUp`: hide last item, then go to previous page **with all items revealed** (slide-style back).
+- Prev/next from `findNeighbour(source.getPageTree(), page.url)` in `docs/[[...slug]]/page.tsx`; `PresentController` mounts per page.
+- Entering present mode always restarts the page at step 0. Revealed item scrolls to screen center.
+- Floating pill (bottom-right, 40% opacity): `n/total`, key hints, exit button.
+
+**Reveal** (`src/components/present/reveal.tsx`) — no effect outside present mode
+- `<Reveal>` block = one step. `<Reveal each>` = each child is a step; a Markdown list reveals per `<li>`.
+- `<Steps reveal>` = one step per `<Step>`; connector line grows with revealed steps.
+
+**Playground** (`src/components/playground.tsx`): `<Playground lang="sql">` wraps a code block with a header + disabled Run button. Swap the implementation later; MDX stays the same.
+
+**Other:** added `src/app/icon.svg` (favicon was 404).
+
+**QA:** lint, typecheck, build pass. Headless Chrome (Playwright, scratchpad only, not a project dependency) — 14/14 checks: Mermaid SVG renders, Bangla font stack, enter/exit, 20px font, sidebar hidden, reveal forward/back, cross-page nav both directions, reload restore, reveal-all on back, restart at 0 on re-enter, zero console errors. Screenshots reviewed in light, dark and present mode.
+
+**Known limits**
+- On hard reload, present mode is restored after hydration (brief flash of the normal layout). Client navigation has no flash.
+- Reveal hides content via opacity, so hidden steps still take up space (keeps layout stable while recording).
 
 ## Phase 3: Templates + QA ⏳
 - Sample PostgreSQL page (mixed Bangla/English) replacing `test.mdx`.

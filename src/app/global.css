@@ -20,3 +20,49 @@ html > body[data-scroll-locked] {
 .prose {
   line-height: 1.75;
 }
+
+/* ---------- Present mode (toggle with P, see components/present) ---------- */
+html[data-present] {
+  font-size: 125%; /* ~20px base; everything is rem-based so it all scales */
+}
+
+html[data-present] #nd-docs-layout {
+  --fd-sidebar-col: 0px !important;
+  --fd-sidebar-width: 0px !important;
+  --fd-toc-width: 0px !important;
+}
+
+html[data-present] :is(#nd-sidebar, #nd-toc, #nd-subnav, [data-present-hide]) {
+  display: none !important;
+}
+
+[data-reveal-state] {
+  transition:
+    opacity 250ms ease,
+    transform 250ms ease;
+}
+
+[data-reveal-state='hidden'] {
+  opacity: 0;
+  transform: translateY(0.5rem);
+  pointer-events: none;
+}
+
+/* <Steps reveal>: the connector line grows with revealed steps instead of spanning hidden ones.
+   Offsets mirror Fumadocs' fd-steps padding (ps-6, sm:ps-7) plus its 1px border. */
+html[data-present] .fd-steps[data-reveal-each] {
+  border-color: transparent;
+}
+
+html[data-present] .fd-steps[data-reveal-each] > [data-reveal-state='shown'] {
+  border-inline-start: 1px solid var(--color-fd-border);
+  margin-inline-start: calc(-1.5rem - 1px);
+  padding-inline-start: 1.5rem;
+}
+
+@media (width >= 40rem) {
+  html[data-present] .fd-steps[data-reveal-each] > [data-reveal-state='shown'] {
+    margin-inline-start: calc(-1.75rem - 1px);
+    padding-inline-start: 1.75rem;
+  }
+}
