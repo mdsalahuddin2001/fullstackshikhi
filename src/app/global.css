@@ -227,3 +227,28 @@ svg[aria-roledescription='er'] :is(.outer-path, .row-rect-odd, .row-rect-even, .
 svg[aria-roledescription='er'] .outer-path path:first-child {
   fill: var(--color-fd-muted) !important;
 }
+
+/* The square outer stroke is replaced by a rounded .er-border (see components/mermaid.tsx). */
+svg[aria-roledescription='er'] .outer-path path:not(:first-child) {
+  stroke: none !important;
+}
+
+svg[aria-roledescription='er'] .er-border {
+  fill: none !important;
+  stroke: var(--color-fd-border) !important;
+  stroke-width: 1px !important;
+  pointer-events: none;
+}
+
+/* ER entities without attributes are a plain rect: style them like a table header. */
+svg[aria-roledescription='er'] rect.label-container {
+  fill: var(--color-fd-muted) !important;
+  stroke: var(--color-fd-border) !important;
+  rx: var(--radius);
+  ry: var(--radius);
+}
+
+/* Flat diagrams, like the rest of the site: no Mermaid drop shadows. */
+.mermaid-diagram svg * {
+  filter: none !important;
+}

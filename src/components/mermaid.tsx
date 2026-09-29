@@ -59,12 +59,46 @@ function MermaidContent({ chart }: { chart: string }) {
 
   return (
     <div
+      className="mermaid-diagram"
       ref={(container) => {
-        if (container) bindFunctions?.(container);
+        if (!container) return;
+        bindFunctions?.(container);
+        roundErTables(container);
       }}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Make ER entities look like the site's Markdown tables: rounded corners and a single 1px
+ * border. Mermaid draws square boxes, so clip each entity and draw a rounded border on top.
+ */
+function roundErTables(container: HTMLElement) {
+  const radius = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--radius')) * 16 || 10;
+
+  container
+    .querySelectorAll<SVGGElement>('svg[aria-roledescription="er"] g.node:not([data-rounded])')
+    .forEach((node) => {
+      const outer = node.querySelector<SVGGElement>('.outer-path');
+      if (!outer) return;
+      const box = outer.getBBox();
+
+      node.dataset.rounded = '';
+      node.style.clipPath = `inset(0 round ${radius}px)`;
+
+      const border = document.createElementNS(SVG_NS, 'rect');
+      // Inset by half the stroke so the whole line survives the clip.
+      border.setAttribute('x', String(box.x + 0.5));
+      border.setAttribute('y', String(box.y + 0.5));
+      border.setAttribute('width', String(box.width - 1));
+      border.setAttribute('height', String(box.height - 1));
+      border.setAttribute('rx', String(radius - 0.5));
+      border.setAttribute('class', 'er-border');
+      node.appendChild(border);
+    });
 }
 
 // Mermaid only parses hex/rgb, while the site theme is oklch; paint each token to a pixel to convert.
