@@ -11,6 +11,9 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 | Prose line-height | 1.75 | Bangla vowel signs clip at tighter leading |
 | Search | Orama (built-in) | Bangla tokenization is weak; revisit if needed |
 | TypeScript | 6.0.x (not 7) | typescript-eslint supports `<6.1.0` only |
+| UI kit | shadcn/ui (Base UI primitives, `nova` preset) + Fumadocs `shadcn.css` preset | One token set themes both; Base UI matches `@fumadocs/base-ui` |
+| Brand | Indigo primary (`oklch(0.511 0.262 276.966)` light / `oklch(0.673 0.182 276.935)` dark), neutral grays | Defaults chosen by owner ("go with defaults") |
+| Sidebar | Ordered folders with separators (not root tabs) | 4 series fit on one screen; "Start here" stays visible |
 | MDX config | Collections via `fumadocs-mdx/macro` in `src/lib/source.ts`; global plugins in `source.config.ts` | Scaffold default |
 
 ## Phase 1: Scaffold ✅ (2026-09-29)
@@ -47,7 +50,20 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - On hard reload, present mode is restored after hydration (brief flash of the normal layout). Client navigation has no flash.
 - Reveal hides content via opacity, so hidden steps still take up space (keeps layout stable while recording).
 
-## Phase 3: Templates + QA ⏳
-- Sample PostgreSQL page (mixed Bangla/English) replacing `test.mdx`.
-- `CONTENT_GUIDE.md`.
-- build/lint/typecheck, commit.
+## Phase 3: Design ✅ (2026-09-29)
+- **shadcn/ui** initialised (`components.json`, style `base-nova`, utils alias → existing `@/lib/cn`; the `cn` package already merges Tailwind classes). Added `button`, `card`, `badge`, `separator` in `src/components/ui`. Removed the Geist font and the self-referencing `--font-sans` that init injected.
+- **Theme:** `global.css` imports `fumadocs-ui/css/shadcn.css`, so every Fumadocs color reads shadcn vars (`--primary`, `--border`…). **To retheme, edit only the `:root` / `.dark` blocks** (or paste a tweakcn theme there). Explicit `@custom-variant dark` for `.dark` class.
+- **Mermaid** uses theme `base` with variables read from the CSS tokens at render time (oklch → hex via canvas, since Mermaid can't parse oklch).
+- **Home page** (`src/app/(home)/page.tsx`): hero with gradient glow, CTA buttons, topic cards from `src/lib/topics.ts`, feature strip.
+- **Nav:** logo mark (theme-colored SVG) + "Docs" link (top nav only).
+- **Content structure:** `content/docs/{postgresql,redis,nextjs,ai}/` with `meta.json` (title, icon) and a stub `index.mdx`; `guide/components.mdx` (was `test.mdx`); root `meta.json` orders sidebar with "Series" / "Resources" separators. `index.mdx` is now "Start here".
+- **Typography:** tighter heading tracking; `h2` gets a top rule + spacing as a section break.
+- **`<YouTube id="…" />`** component (youtube-nocookie, lazy, 16:9, hidden in present mode).
+- **Present mode:** content column centered at max 52rem.
+- **QA:** lint, typecheck, build pass; 14/14 Playwright behavior checks (URLs updated for the moved page); zero console errors; screenshots reviewed — home (light/dark/mobile), docs (light/dark/mobile), topic page, present mode.
+
+## Phase 4: Content template + guide ⏳
+- Sample PostgreSQL lesson (mixed Bangla/English) using every component, as the copy-paste template.
+- Decide whether `guide/components.mdx` stays public or is replaced by `CONTENT_GUIDE.md`.
+- `CONTENT_GUIDE.md`: adding a series/lesson, frontmatter, meta.json, components (Reveal, Steps reveal, Playground, YouTube, Mermaid, code annotations), present-mode keys.
+- Final QA, commit.

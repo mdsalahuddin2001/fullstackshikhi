@@ -7,6 +7,7 @@ import type { ComponentProps } from 'react';
 import { Mermaid } from './mermaid';
 import { Playground } from './playground';
 import { Reveal, Steps } from './present/reveal';
+import { YouTube } from './youtube';
 
 export function getMDXComponents(components?: MDXComponents) {
   return {
@@ -19,6 +20,7 @@ export function getMDXComponents(components?: MDXComponents) {
     Steps,
     Tab,
     Tabs,
+    YouTube,
     ...components,
   } satisfies MDXComponents;
 }
