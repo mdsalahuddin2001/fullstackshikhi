@@ -27,7 +27,6 @@ export function baseOptions(): BaseLayoutProps {
         </>
       ),
     },
-    links: [{ text: 'Docs', url: '/docs', active: 'nested-url', on: 'nav' }],
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
   };
 }

@@ -1,1 +1,1 @@
-{ "title": "Redis", "description": "Caching, data structures and queues", "icon": "Zap" }
+{ "title": "Redis", "description": "Caching, data structures and queues", "icon": "Zap", "root": true }

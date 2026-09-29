@@ -42,8 +42,8 @@ export default function HomePage() {
             PostgreSQL, Redis, Next.js আর AI — video‑র সাথে মিলিয়ে লেখা, পরিষ্কার ব্যাখ্যা আর কাজের code সহ।
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
-            <Link href="/docs" className={buttonVariants({ size: 'lg', className: 'px-4' })}>
-              Start here <ArrowRight data-icon="inline-end" />
+            <Link href="/docs/postgresql" className={buttonVariants({ size: 'lg', className: 'px-4' })}>
+              Start with PostgreSQL <ArrowRight data-icon="inline-end" />
             </Link>
             <Link
               href="#topics"

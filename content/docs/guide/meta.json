@@ -1,1 +1,1 @@
-{ "title": "Authoring guide", "description": "Components for writing lessons", "icon": "PenLine" }
+{ "title": "Authoring guide", "description": "Components for writing lessons", "icon": "PenLine", "root": true, "pages": ["components", "present-mode"] }

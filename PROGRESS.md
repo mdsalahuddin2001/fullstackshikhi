@@ -13,7 +13,7 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 | TypeScript | 6.0.x (not 7) | typescript-eslint supports `<6.1.0` only |
 | UI kit | shadcn/ui (Base UI primitives, `nova` preset) + Fumadocs `shadcn.css` preset | One token set themes both; Base UI matches `@fumadocs/base-ui` |
 | Brand | Indigo primary (`oklch(0.511 0.262 276.966)` light / `oklch(0.673 0.182 276.935)` dark), neutral grays | Defaults chosen by owner ("go with defaults") |
-| Sidebar | Ordered folders with separators (not root tabs) | 4 series fit on one screen; "Start here" stays visible |
+| Sidebar | Each topic is a root folder (`root: true`), tab switcher off (`tabs={false}`); sidebar shows only the current topic + "← All topics" | Owner: topics are chosen only on the home page |
 | MDX config | Collections via `fumadocs-mdx/macro` in `src/lib/source.ts`; global plugins in `source.config.ts` | Scaffold default |
 
 ## Phase 1: Scaffold ✅ (2026-09-29)
@@ -62,8 +62,17 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - **Present mode:** content column centered at max 52rem.
 - **QA:** lint, typecheck, build pass; 14/14 Playwright behavior checks (URLs updated for the moved page); zero console errors; screenshots reviewed — home (light/dark/mobile), docs (light/dark/mobile), topic page, present mode.
 
+### Phase 3b: Topic-scoped docs ✅ (2026-09-29)
+- Topic folders (`postgresql`, `redis`, `nextjs`, `ai`, `guide`) are root folders; `src/app/docs/layout.tsx` sets `tabs={false}` and a sidebar banner linking to `/#topics`.
+- Removed `content/docs/index.mdx` ("Start here") and root `meta.json`; `/docs` → `/` redirect (`next.config.mjs`, non-permanent).
+- Removed the header "Docs" link; home CTA is now "Start with PostgreSQL" → `/docs/postgresql`.
+- Authoring guide is a root folder that isn't linked from the home page (URL only): `guide/components`, new `guide/present-mode` (key reference).
+- Prev/next (page footer + present-mode arrows) stay inside the topic — `findNeighbour` defaults to `separateRoot: true`.
+- QA: lint/typecheck/build pass; 20/20 Playwright checks (added: first/last-page boundaries within a topic, back-navigation reveal-all via real navigation, `/docs` redirect, sidebar scoped, no switcher, footer doesn't cross topics); zero console errors.
+- Note: search still returns results from every topic.
+
 ## Phase 4: Content template + guide ⏳
 - Sample PostgreSQL lesson (mixed Bangla/English) using every component, as the copy-paste template.
-- Decide whether `guide/components.mdx` stays public or is replaced by `CONTENT_GUIDE.md`.
+- Authoring guide stays as an unlinked topic (decided in 3b); `CONTENT_GUIDE.md` covers the repo side.
 - `CONTENT_GUIDE.md`: adding a series/lesson, frontmatter, meta.json, components (Reveal, Steps reveal, Playground, YouTube, Mermaid, code annotations), present-mode keys.
 - Final QA, commit.

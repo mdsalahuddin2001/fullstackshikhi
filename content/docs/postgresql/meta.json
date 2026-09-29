@@ -1,1 +1,1 @@
-{ "title": "PostgreSQL", "description": "Relational data, SQL and performance", "icon": "Database" }
+{ "title": "PostgreSQL", "description": "Relational data, SQL and performance", "icon": "Database", "root": true }
