@@ -205,6 +205,57 @@ html[data-present] .fd-steps[data-reveal-each] > [data-reveal-state='shown'] {
   --sidebar-ring: #5583be;
 }
 
+/* Active sidebar item as a pressed "key", like the home page topic buttons (lib/key-button.ts).
+   Matched by Fumadocs' sidebar link class so it covers both the desktop sidebar and the mobile drawer. */
+a[data-active='true'][class*='bg-fd-primary/10'] {
+  background-color: var(--color-fd-primary);
+  color: var(--color-fd-primary-foreground);
+  font-weight: 600;
+  margin-block-end: 3px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    0 3px 0 color-mix(in oklab, var(--color-fd-primary) 55%, black);
+}
+
+a[data-active='true'][class*='bg-fd-primary/10']:hover {
+  color: var(--color-fd-primary-foreground);
+  filter: brightness(1.08);
+}
+
+/* Nested items draw a 1px active marker; the filled key replaces it. */
+a[data-active='true'][class*='bg-fd-primary/10']::before {
+  display: none;
+}
+
+/* Lesson header actions (components/lesson-chrome.tsx) as small secondary "keys".
+   Normalizes Fumadocs' Copy Markdown / Open buttons and our Present toggle to one look. */
+[data-lesson-actions] > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--color-fd-border);
+  border-radius: var(--radius);
+  background-color: var(--color-fd-background);
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-fd-foreground);
+  box-shadow: 0 2px 0 var(--color-fd-border);
+  transition:
+    translate 100ms,
+    box-shadow 100ms,
+    background-color 150ms;
+}
+
+[data-lesson-actions] > button:hover {
+  background-color: var(--color-fd-accent);
+}
+
+[data-lesson-actions] > button:active {
+  translate: 0 2px;
+  box-shadow: none;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -91,3 +91,10 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - v1 (Phase 1): Noto Sans Bengali via `next/font/google`.
 - v2 (2026-09-29): Noto self-hosted with `size-adjust: 108%` (owner picked option 1 of 3).
 - v3 (2026-09-29): switched to **Hind Siliguri** at owner's request, `size-adjust: 105%` (calibrated so Bangla matches the same visual size as v2). Noto file removed.
+
+## 2026-09-30: Visual refresh + single-topic scope
+- Dark palette ported from the conneczen design system (personal-operator/apps/web); site brand `#2b5c9c`.
+- Home page redesigned: topic cards with official logo (Simple Icons v16.33.0, CC0), brand wash, watermark, pointer spotlight, staggered entrance, "key" buttons (`lib/key-button.ts`).
+- Per-topic brand: `brand` object in `lib/topics.ts` is the single source; docs pages emit it on `:root` (`TopicBrand` in `docs/[[...slug]]/page.tsx`). Active sidebar item styled as a key (`global.css`).
+- Docs chrome (`components/lesson-chrome.tsx`): lesson header card with eyebrow (Lesson NN / NN), overview hero with CTA, custom prev/next cards (Fumadocs footer disabled), key-style page actions.
+- **Scope cut:** Redis, Next.js and AI removed (content folders, topics, logos). PostgreSQL only until that series is done; next topics to be planned then.
