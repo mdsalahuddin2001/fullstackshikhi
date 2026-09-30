@@ -3,5 +3,5 @@
   "description": "Relational data, SQL and performance",
   "icon": "Database",
   "root": true,
-  "pages": ["index", "introduction", "tables-and-types", "crud", "indexes", "transactions"]
+  "pages": ["index", "fundamentals", "introduction", "tables-and-types", "crud", "indexes", "transactions"]
 }

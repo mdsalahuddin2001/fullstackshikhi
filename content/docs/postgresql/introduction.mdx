@@ -5,7 +5,7 @@ description: PostgreSQL কী, কেন জনপ্রিয়, আর ন�
 
 ## PostgreSQL কী?
 
-PostgreSQL (সংক্ষেপে **Postgres**) হলো একটি open-source **relational database**। Relational database-এ data থাকে **table**-এ — ঠিক spreadsheet-এর মতো row আর column আকারে — এবং table-গুলোর মধ্যে সম্পর্ক (relation) তৈরি করা যায়।
+PostgreSQL (সংক্ষেপে **Postgres**) হলো একটি open-source **relational DBMS** — [আগের lesson](/docs/postgresql/fundamentals)-এ দেখা table, row, column আর key-ভিত্তিক database পরিচালনার software।
 
 Postgres-এর যাত্রা শুরু হয় University of California, Berkeley-র POSTGRES project থেকে, আর তিন দশকেরও বেশি সময় ধরে এটি সক্রিয়ভাবে develop হচ্ছে।
 
@@ -21,8 +21,8 @@ Postgres-এর যাত্রা শুরু হয় University of Californ
 
 </Reveal>
 
-<Callout type="info" title="Database, server আর client">
-**PostgreSQL server** হলো যে program টা background-এ চলে আর data রাখে। **Client** (যেমন `psql`, বা আপনার Node.js app) সেই server-এর সাথে connect করে SQL পাঠায়। একটি server-এর ভিতরে একাধিক **database** থাকতে পারে।
+<Callout type="info" title="Server আর client">
+**PostgreSQL server** background-এ চলে আর data রাখে। **Client** (যেমন `psql`, বা আপনার Node.js app) server-এ connect করে SQL পাঠায়।
 </Callout>
 
 ```mermaid
