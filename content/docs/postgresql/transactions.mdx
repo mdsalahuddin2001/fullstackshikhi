@@ -5,14 +5,16 @@ description: একাধিক কাজকে একটি ইউনিট হ
 
 ## সমস্যা: অর্ধেক হয়ে থাকা কাজ
 
-একজন customer একটি বই কিনছেন। Database-এ দুটি কাজ করতে হবে (উদাহরণ সহজ রাখতে এখানে `orders` table-এ সরাসরি `book_id` রাখা হয়েছে):
+একজন customer একটি জামদানি শাড়ি (product `id = 2`) কিনছেন। Database-এ তিনটি কাজ করতে হবে:
 
 ```sql
-INSERT INTO orders (customer_id, book_id, quantity) VALUES (7, 3, 1);
-UPDATE books SET stock_count = stock_count - 1 WHERE id = 3;
+INSERT INTO orders (customer_id) VALUES (7) RETURNING id;  -- ধরি নতুন id = 101
+INSERT INTO order_items (order_id, product_id, quantity, unit_price)
+VALUES (101, 2, 1, 4500.00);
+UPDATE products SET stock = stock - 1 WHERE id = 2;
 ```
 
-প্রথম statement সফল হলো, কিন্তু দ্বিতীয়টি চলার আগেই server বন্ধ হয়ে গেল। এখন order আছে কিন্তু stock কমেনি — data **অসামঞ্জস্যপূর্ণ**।
+প্রথম দুটি statement সফল হলো, কিন্তু তৃতীয়টি চলার আগেই server বন্ধ হয়ে গেল। এখন order আছে কিন্তু stock কমেনি — data **অসামঞ্জস্যপূর্ণ**।
 
 ## সমাধান: Transaction
 
@@ -21,8 +23,10 @@ Transaction একাধিক statement-কে একটি ইউনিটে 
 ```sql title="order.sql"
 BEGIN; -- [!code highlight]
 
-INSERT INTO orders (customer_id, book_id, quantity) VALUES (7, 3, 1);
-UPDATE books SET stock_count = stock_count - 1 WHERE id = 3;
+INSERT INTO orders (customer_id) VALUES (7) RETURNING id;  -- id = 101
+INSERT INTO order_items (order_id, product_id, quantity, unit_price)
+VALUES (101, 2, 1, 4500.00);
+UPDATE products SET stock = stock - 1 WHERE id = 2;
 
 COMMIT; -- [!code highlight]
 ```
@@ -46,7 +50,7 @@ Transaction শুরু। এরপরের পরিবর্তনগুল
 
 ```sql
 BEGIN;
-UPDATE books SET price = -50 WHERE id = 3;
+UPDATE products SET price = -50 WHERE id = 2;
 -- ERROR: CHECK constraint ভাঙা হয়েছে
 ROLLBACK; -- কোনো পরিবর্তন হয়নি
 ```
@@ -66,7 +70,7 @@ ROLLBACK; -- কোনো পরিবর্তন হয়নি
 
 ## একসাথে দুই customer
 
-শেষ কপিটি একই সময়ে দুজন কিনতে চাইছেন। সাবধান না থাকলে দুজনই "stock আছে" দেখবেন।
+শেষ শাড়িটি একই সময়ে দুজন কিনতে চাইছেন। সাবধান না থাকলে দুজনই "stock আছে" দেখবেন।
 
 ```mermaid
 sequenceDiagram
@@ -88,10 +92,12 @@ sequenceDiagram
 ```sql title="safe-purchase.sql"
 BEGIN;
 
-SELECT stock_count FROM books WHERE id = 3 FOR UPDATE; -- [!code highlight]
--- stock_count > 0 হলে:
-UPDATE books SET stock_count = stock_count - 1 WHERE id = 3;
-INSERT INTO orders (customer_id, book_id, quantity) VALUES (7, 3, 1);
+SELECT stock FROM products WHERE id = 2 FOR UPDATE; -- [!code highlight]
+-- stock > 0 হলে:
+UPDATE products SET stock = stock - 1 WHERE id = 2;
+INSERT INTO orders (customer_id) VALUES (7) RETURNING id;  -- id = 102
+INSERT INTO order_items (order_id, product_id, quantity, unit_price)
+VALUES (102, 2, 1, 4500.00);
 
 COMMIT;
 ```
@@ -102,9 +108,9 @@ COMMIT;
 অনেক ক্ষেত্রে একটি statement-ই যথেষ্ট:
 
 ```sql
-UPDATE books SET stock_count = stock_count - 1
-WHERE id = 3 AND stock_count > 0
-RETURNING stock_count;
+UPDATE products SET stock = stock - 1
+WHERE id = 2 AND stock > 0
+RETURNING stock;
 ```
 
 কোনো row ফেরত না এলে বুঝবেন stock শেষ।

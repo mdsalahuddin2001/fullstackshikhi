@@ -3,5 +3,19 @@
   "description": "Relational data, SQL and performance",
   "icon": "Database",
   "root": true,
-  "pages": ["index", "fundamentals", "introduction", "tables-and-types", "crud", "indexes", "transactions"]
+  "pages": [
+    "index",
+    "---Foundations---",
+    "data-and-database",
+    "dbms",
+    "relational-databases",
+    "sql",
+    "what-is-postgresql",
+    "---Hands-on---",
+    "introduction",
+    "tables-and-types",
+    "crud",
+    "indexes",
+    "transactions"
+  ]
 }

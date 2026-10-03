@@ -75,8 +75,17 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - ✅ (2026-09-29) **PostgreSQL series** — mostly-Bangla prose, English technical terms, SQL in English. `content/docs/postgresql/`: `index` (overview + ER diagram), `introduction` (setup Tabs: Docker/macOS/Windows, `psql`), `tables-and-types` (IDENTITY, types table, constraints, ER), `crud` (INSERT/SELECT/UPDATE/DELETE, JOIN, Playground, safe-UPDATE diff), `indexes` (B-tree diagram, EXPLAIN ANALYZE before/after, multi-column, costs), `transactions` (BEGIN/COMMIT/ROLLBACK, ACID, `FOR UPDATE` sequence diagram, isolation levels). Order set in `meta.json`.
   - Data integrity: SQL/behavior per PostgreSQL docs; EXPLAIN outputs and timings labelled **উদাহরণ (illustrative)**; sample book prices/stock labelled as made up. `orders` simplified (direct `book_id`) and noted in the lesson. No YouTube embeds (no real IDs yet).
   - QA: all 6 pages 200, every Mermaid block renders, no literal `[!code` markers, zero console errors (light + dark); screenshots reviewed (overview, tabs, types table dark, EXPLAIN, sequence diagram dark, mobile CRUD, present mode).
-- ✅ (2026-09-30) **`fundamentals` lesson** (Lesson 01, before `introduction`): data vs information, data types (structured/semi/unstructured), database with everyday examples, Excel/খাতা problems (redundancy, inconsistency, concurrency, security, integrity, recovery, querying) → DBMS solutions table, popular DBMS, database vs DBMS vs server, relational vs NoSQL + when-to-use, relational vocabulary (table/row/column/schema/PK/FK) with bookstore tables + ER, SQL + DDL/DML/DCL/TCL. Sample names/phones/prices labelled as made up. `introduction` trimmed to avoid overlap (links back); overview cards renumbered 1–6.
-  - QA: lint/typecheck/build pass; page 200 light+dark, 3/3 Mermaid render, eyebrow "Lesson 01 / 06", zero console errors, no mobile horizontal scroll, present mode toggles; screenshots reviewed.
+- ✅ (2026-10-03) **Foundations part (owner's 19-topic outline)** — sidebar now has `---Foundations---` / `---Hands-on---` separators in `meta.json`; 10 lessons + overview.
+  - `index` → "PostgreSQL for Developers": Welcome, What You'll Learn (Part 1/Part 2 cards), `shop` ER.
+  - 01 `data-and-database` (was `fundamentals`; owner's draft prose kept): Data, data types, Data → Information → Decision (মাসুদ + shop example), Database, Why apps need databases (RAM vs persistence, Excel problems).
+  - 02 `dbms`: owner's DBMS/CRUD walkthrough moved to the shop domain, DBMS-solves-Excel table, popular DBMS, Database vs DBMS (+server).
+  - 03 `relational-databases`: types (same product in 3 models, Tabs), Relational vs Non-Relational, relational DB (Codd 1970, 1:1/1:N/M:N), tables/rows/columns/cell/schema/PK/FK.
+  - 04 `sql`: SQL (SEQUEL/ANSI 1986/ISO 1987), declarative, JOIN preview, DDL/DML/DCL/TCL, SQL vs NoSQL (same query + same order in both models).
+  - 05 `what-is-postgresql`: history, PostgreSQL vs SQL, Why PostgreSQL, PG vs MySQL vs MongoDB, where PG fits (architecture + order flow). Sources cited inline: postgresql.org/about (SQL:2023 170/177 as of v18), docs history page, PostgreSQL licence, MySQL Community (GPL), MongoDB SSPL. "Best for" row labelled as common opinion, not benchmark.
+  - `introduction` → "Installation ও setup" only; database renamed `bookstore` → `shop`.
+- **Writing style (owner, 2026-10-03):** Banglish — Bangla prose, English tech terms mostly in Bangla script (ডাটাবেস, টেবিল, কুয়েরি), English in parentheses on first use, code/identifiers English. Example domain: **online shop** (`shop`: categories, products, customers, orders, order_items, reviews) so advanced lessons can extend it.
+- ✅ (2026-10-03) **Hands-on lessons migrated to `shop`**: `tables-and-types` (categories/products with `sku`, `CHECK (stock >= 0)`; new customers/orders/order_items section with composite PK + `unit_price` snapshot; ALTER examples changed), `crud`, `indexes` (`sku` lookup, `(category_id, price)` composite), `transactions` (real orders + order_items flow; "simplified orders" note removed). Domain-only edits — prose style of these 4 not converted to Banglish.
+  - QA: lint/typecheck/build pass; 11 pages × light/dark: 200, all Mermaid render, zero console errors, no raw `[!code`; no mobile h-scroll; sidebar separators; cross-lesson anchor resolves; `/docs/postgresql/fundamentals` now 404 (no redirect added). Screenshots reviewed.
 - Authoring guide stays as an unlinked topic (decided in 3b); `CONTENT_GUIDE.md` covers the repo side.
 - `CONTENT_GUIDE.md`: adding a series/lesson, frontmatter, meta.json, components (Reveal, Steps reveal, Playground, YouTube, Mermaid, code annotations), present-mode keys.
 - Final QA, commit.
@@ -100,3 +109,8 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - Per-topic brand: `brand` object in `lib/topics.ts` is the single source; docs pages emit it on `:root` (`TopicBrand` in `docs/[[...slug]]/page.tsx`). Active sidebar item styled as a key (`global.css`).
 - Docs chrome (`components/lesson-chrome.tsx`): lesson header card with eyebrow (Lesson NN / NN), overview hero with CTA, custom prev/next cards (Fumadocs footer disabled), key-style page actions.
 - **Scope cut:** Redis, Next.js and AI removed (content folders, topics, logos). PostgreSQL only until that series is done; next topics to be planned then.
+
+### PostgreSQL lesson 01 (`fundamentals.mdx` → `data-and-database.mdx`)
+- v1 (2026-09-30): single fundamentals lesson, bookstore domain.
+- v2 (2026-09-30): owner rewrote prose (মাসুদ example, online bookshop DBMS walkthrough).
+- v3 (2026-10-03): split into 5 foundation lessons per owner outline; domain → online shop. Owner's v2 draft backed up in session scratchpad only.
