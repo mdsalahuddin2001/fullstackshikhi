@@ -5,10 +5,10 @@ description: Query কেন ধীর হয়, index কীভাবে ক�
 
 ## সমস্যা: হাজার হাজার row
 
-ধরুন `books` table-এ ১০ লক্ষ বই আছে, আর আমরা একটি নির্দিষ্ট ISBN খুঁজছি:
+ধরুন আমাদের শপ অনেক বড় হয়ে গেছে — `products` table-এ ১০ লক্ষ প্রোডাক্ট, আর আমরা একটি নির্দিষ্ট SKU খুঁজছি:
 
 ```sql
-SELECT * FROM books WHERE isbn = '978-0132350884';
+SELECT * FROM products WHERE sku = 'EL-MOU-001';
 ```
 
 Index না থাকলে Postgres-কে **প্রতিটি row** একটা একটা করে পড়ে দেখতে হয় — একে বলে **Sequential Scan**। অনেকটা বইয়ের সূচিপত্র ছাড়া একটি নির্দিষ্ট লাইন খোঁজার মতো।
@@ -48,12 +48,12 @@ flowchart TD
 
 ```sql
 EXPLAIN ANALYZE
-SELECT * FROM books WHERE isbn = '978-0132350884';
+SELECT * FROM products WHERE sku = 'EL-MOU-001';
 ```
 
 ```txt title="Output (উদাহরণ)"
-Seq Scan on books  (cost=0.00..21846.00 rows=1 width=64) (actual time=41.207..85.114 rows=1 loops=1)
-  Filter: (isbn = '978-0132350884'::text)
+Seq Scan on products  (cost=0.00..21846.00 rows=1 width=64) (actual time=41.207..85.114 rows=1 loops=1)
+  Filter: (sku = 'EL-MOU-001'::text)
   Rows Removed by Filter: 999999
 Planning Time: 0.102 ms
 Execution Time: 85.312 ms
@@ -64,18 +64,18 @@ Execution Time: 85.312 ms
 ### Index তৈরি
 
 ```sql
-CREATE INDEX idx_books_isbn ON books (isbn);
+CREATE INDEX idx_products_sku ON products (sku);
 ```
 
 <Callout type="idea" title="UNIQUE নিজেই index বানায়">
-আগের lesson-এ `isbn TEXT UNIQUE` দিয়েছিলাম — `UNIQUE` আর `PRIMARY KEY` constraint Postgres নিজে থেকেই একটি index তৈরি করে। এখানে বোঝানোর জন্য আলাদা করে দেখানো হলো।
+আগের lesson-এ `sku TEXT NOT NULL UNIQUE` দিয়েছিলাম — `UNIQUE` আর `PRIMARY KEY` constraint Postgres নিজে থেকেই একটি index তৈরি করে। এখানে বোঝানোর জন্য আলাদা করে দেখানো হলো।
 </Callout>
 
 ### Index-এর পরে
 
 ```txt title="Output (উদাহরণ)"
-Index Scan using idx_books_isbn on books  (cost=0.42..8.44 rows=1 width=64) (actual time=0.025..0.026 rows=1 loops=1)
-  Index Cond: (isbn = '978-0132350884'::text)
+Index Scan using idx_products_sku on products  (cost=0.42..8.44 rows=1 width=64) (actual time=0.025..0.026 rows=1 loops=1)
+  Index Cond: (sku = 'EL-MOU-001'::text)
 Planning Time: 0.118 ms
 Execution Time: 0.041 ms
 ```
@@ -85,20 +85,23 @@ Execution Time: 0.041 ms
 ## একাধিক column-এর index
 
 ```sql
-CREATE INDEX idx_books_author_published
-  ON books (author_id, published_on);
+শপে সবচেয়ে কমন কুয়েরি: "একটা ক্যাটাগরির প্রোডাক্ট, দাম অনুযায়ী"।
+
+```sql
+CREATE INDEX idx_products_category_price
+  ON products (category_id, price);
 ```
 
 এই index কাজে লাগবে:
 
 ```sql
-WHERE author_id = 3                               -- ✅
-WHERE author_id = 3 AND published_on > '2000-01-01' -- ✅
-WHERE published_on > '2000-01-01'                 -- ⚠️ সাধারণত কাজে লাগে না
+WHERE category_id = 1                    -- ✅
+WHERE category_id = 1 AND price < 1000   -- ✅
+WHERE price < 1000                       -- ⚠️ সাধারণত কাজে লাগে না
 ```
 
 <Callout type="warn" title="Column-এর ক্রম গুরুত্বপূর্ণ">
-Multi-column B-tree index সবচেয়ে ভালো কাজ করে যখন query-তে **বাম দিকের column** (এখানে `author_id`) থাকে। ফোনবুক যেমন আগে পদবি, তারপর নাম অনুযায়ী সাজানো — শুধু নাম দিয়ে খুঁজলে সুবিধা হয় না।
+Multi-column B-tree index সবচেয়ে ভালো কাজ করে যখন query-তে **বাম দিকের column** (এখানে `category_id`) থাকে। ফোনবুক যেমন আগে পদবি, তারপর নাম অনুযায়ী সাজানো — শুধু নাম দিয়ে খুঁজলে সুবিধা হয় না।
 </Callout>
 
 ## Index-এর খরচ

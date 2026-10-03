@@ -5,21 +5,23 @@ description: Table তৈরি, সঠিক data type বাছাই আর c
 
 ## Table কী?
 
-Table হলো data রাখার মূল জায়গা। প্রতিটি **column**-এর একটি নাম আর একটি **data type** থাকে, আর প্রতিটি **row** হলো একটি record — যেমন একটি বই।
+Table হলো data রাখার মূল জায়গা। প্রতিটি **column**-এর একটি নাম আর একটি **data type** থাকে, আর প্রতিটি **row** হলো একটি record — যেমন একটি প্রোডাক্ট।
 
-| id | title | price | published_on |
+| id | name | price | stock |
 | --- | --- | --- | --- |
-| 1 | পথের পাঁচালী | 350.00 | 1929-01-01 |
-| 2 | Clean Code | 1200.00 | 2008-08-01 |
+| 1 | Wireless Mouse | 850.00 | 40 |
+| 2 | জামদানি শাড়ি | 4500.00 | 6 |
 
 ## প্রথম table তৈরি
 
-```sql title="authors.sql"
-CREATE TABLE authors (
-  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, -- [!code highlight]
-  name       TEXT NOT NULL,
-  country    TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+প্রথমে প্রোডাক্টের ক্যাটাগরি — Electronics, Fashion, Books:
+
+```sql title="categories.sql"
+CREATE TABLE categories (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, -- [!code highlight]
+  name        TEXT NOT NULL UNIQUE,
+  description TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
@@ -56,47 +58,94 @@ CREATE TABLE authors (
 
 Constraint হলো database-এর নিজস্ব নিয়ম — application-এ bug থাকলেও ভুল data ঢুকতে দেয় না।
 
-```sql title="books.sql"
-CREATE TABLE books (
-  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  author_id    BIGINT NOT NULL REFERENCES authors (id), -- [!code highlight]
-  title        TEXT NOT NULL,
-  isbn         TEXT UNIQUE,                             -- [!code highlight]
-  price        NUMERIC(10, 2) NOT NULL CHECK (price >= 0), -- [!code highlight]
-  stock        INTEGER NOT NULL DEFAULT 0,
-  published_on DATE
+```sql title="products.sql"
+CREATE TABLE products (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  category_id BIGINT NOT NULL REFERENCES categories (id), -- [!code highlight]
+  name        TEXT NOT NULL,
+  sku         TEXT NOT NULL UNIQUE,                       -- [!code highlight]
+  description TEXT,
+  price       NUMERIC(10, 2) NOT NULL CHECK (price >= 0), -- [!code highlight]
+  stock       INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
 <Steps reveal>
 <Step>
 ### `REFERENCES` — foreign key
-`author_id`-তে শুধু সেই value দেওয়া যাবে যা `authors` table-এ আছে। অস্তিত্বহীন লেখকের বই যোগ করা অসম্ভব।
+`category_id`-তে শুধু সেই value দেওয়া যাবে যা `categories` table-এ আছে। অস্তিত্বহীন ক্যাটাগরিতে প্রোডাক্ট যোগ করা অসম্ভব।
 </Step>
 <Step>
 ### `UNIQUE`
-একই ISBN দুটি বইয়ের থাকতে পারবে না।
+**SKU** (Stock Keeping Unit) হলো প্রতিটা প্রোডাক্টের নিজস্ব কোড, যেমন `EL-MOU-001`। একই SKU দুটো প্রোডাক্টের থাকতে পারবে না।
 </Step>
 <Step>
 ### `CHECK`
-দাম কখনো negative হতে পারবে না। নিয়ম ভাঙলে Postgres পুরো statement reject করে।
+দাম বা স্টক কখনো negative হতে পারবে না। নিয়ম ভাঙলে Postgres পুরো statement reject করে।
 </Step>
 </Steps>
 
 ```mermaid
 erDiagram
-  authors ||--o{ books : writes
-  authors {
+  categories ||--o{ products : has
+  categories {
     bigint id PK
     text name
-    text country
+    text description
   }
-  books {
+  products {
     bigint id PK
-    bigint author_id FK
-    text title
+    bigint category_id FK
+    text name
+    text sku
     numeric price
+    int stock
   }
+```
+
+## কাস্টমার আর অর্ডারের টেবিল
+
+একটা অর্ডারে একাধিক প্রোডাক্ট থাকতে পারে, আর একটা প্রোডাক্ট অনেক অর্ডারে থাকতে পারে — এই many-to-many সম্পর্কের জন্য মাঝখানে `order_items` টেবিল লাগে ([Relational Database লেসন](/docs/postgresql/relational-databases) মনে করুন)।
+
+```sql title="orders.sql"
+CREATE TABLE customers (
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name       TEXT NOT NULL,
+  email      TEXT NOT NULL UNIQUE,
+  phone      TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE orders (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  customer_id BIGINT NOT NULL REFERENCES customers (id),
+  status      TEXT NOT NULL DEFAULT 'pending',
+  ordered_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE order_items (
+  order_id   BIGINT NOT NULL REFERENCES orders (id),
+  product_id BIGINT NOT NULL REFERENCES products (id),
+  quantity   INTEGER NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(10, 2) NOT NULL,       -- [!code highlight]
+  PRIMARY KEY (order_id, product_id)        -- [!code highlight]
+);
+```
+
+<Reveal each>
+
+- `unit_price` — অর্ডারের সময় দাম কত ছিল, সেটা আলাদা করে রাখা হয়। পরে প্রোডাক্টের দাম বদলালেও পুরোনো অর্ডারের হিসাব বদলাবে না।
+- `PRIMARY KEY (order_id, product_id)` — দুই column মিলে primary key (**composite key**)। একই অর্ডারে একই প্রোডাক্ট দুবার row হিসেবে আসবে না — বেশি লাগলে `quantity` বাড়বে।
+
+</Reveal>
+
+```mermaid
+erDiagram
+  categories ||--o{ products : has
+  customers ||--o{ orders : places
+  orders ||--|{ order_items : contains
+  products ||--o{ order_items : "appears in"
 ```
 
 ## Table পরিবর্তন করা
@@ -104,8 +153,8 @@ erDiagram
 Table তৈরির পরেও column যোগ বা পরিবর্তন করা যায়:
 
 ```sql
-ALTER TABLE books ADD COLUMN language TEXT NOT NULL DEFAULT 'bn';
-ALTER TABLE books RENAME COLUMN stock TO stock_count;
+ALTER TABLE products ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE categories RENAME COLUMN description TO summary;
 ```
 
-`psql`-এ `\d books` চালিয়ে দেখুন পরিবর্তন হয়েছে কিনা।
+`psql`-এ `\d products` চালিয়ে দেখুন পরিবর্তন হয়েছে কিনা।

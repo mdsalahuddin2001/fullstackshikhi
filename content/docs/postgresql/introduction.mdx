@@ -1,25 +1,9 @@
 ---
-title: PostgreSQL পরিচিতি ও setup
-description: PostgreSQL কী, কেন জনপ্রিয়, আর নিজের computer-এ কীভাবে চালু করবেন।
+title: Installation ও setup
+description: নিজের কম্পিউটারে PostgreSQL চালু করা আর psql দিয়ে connect করা।
 ---
 
-## PostgreSQL কী?
-
-PostgreSQL (সংক্ষেপে **Postgres**) হলো একটি open-source **relational DBMS** — [আগের lesson](/docs/postgresql/fundamentals)-এ দেখা table, row, column আর key-ভিত্তিক database পরিচালনার software।
-
-Postgres-এর যাত্রা শুরু হয় University of California, Berkeley-র POSTGRES project থেকে, আর তিন দশকেরও বেশি সময় ধরে এটি সক্রিয়ভাবে develop হচ্ছে।
-
-## কেন PostgreSQL?
-
-<Reveal each>
-
-- **নির্ভরযোগ্য** — ACID transaction পুরোপুরি support করে, তাই data হারানো বা ভুল হওয়ার ঝুঁকি কম।
-- **Standard SQL** — SQL standard খুব কাছ থেকে মেনে চলে, তাই যা শিখবেন তা অন্য database-এও কাজে লাগবে।
-- **অনেক ধরনের data** — সাধারণ text, number ছাড়াও `JSONB`, array, date/time, এমনকি geographic data রাখা যায়।
-- **Extension** — `pgvector` এর মতো extension দিয়ে AI embedding search পর্যন্ত করা যায়।
-- **সম্পূর্ণ free** — commercial কাজেও কোনো license fee নেই।
-
-</Reveal>
+[আগের লেসনে](/docs/postgresql/what-is-postgresql) দেখেছি PostgreSQL কী আর কেন। এবার নিজের কম্পিউটারে এটা চালু করে আমাদের `shop` ডাটাবেস বানাব।
 
 <Callout type="info" title="Server আর client">
 **PostgreSQL server** background-এ চলে আর data রাখে। **Client** (যেমন `psql`, বা আপনার Node.js app) server-এ connect করে SQL পাঠায়।
@@ -30,7 +14,7 @@ flowchart LR
   A[psql] --> S[(PostgreSQL server)]
   B[Node.js app] --> S
   C[GUI tool] --> S
-  S --> D1[(bookstore)]
+  S --> D1[(shop)]
   S --> D2[(অন্য database)]
 ```
 
@@ -90,17 +74,17 @@ psql -U postgres
 ### আমাদের database তৈরি করুন
 
 ```sql
-CREATE DATABASE bookstore;
+CREATE DATABASE shop;
 ```
 </Step>
 <Step>
 ### নতুন database-এ ঢুকুন
 
 ```sql
-\c bookstore
+\c shop
 ```
 
-Prompt বদলে `bookstore=#` দেখালে বুঝবেন আপনি সঠিক জায়গায় আছেন।
+Prompt বদলে `shop=#` দেখালে বুঝবেন আপনি সঠিক জায়গায় আছেন।
 </Step>
 <Step>
 ### পরীক্ষা করুন
@@ -126,5 +110,5 @@ SELECT version();
 | `\q` | `psql` থেকে বের হওয়া |
 
 <Callout type="warn" title="Semicolon ভুলবেন না">
-SQL statement শেষে `;` না দিলে `psql` ধরে নেয় আপনি এখনো লিখছেন, আর prompt বদলে `bookstore-#` হয়ে যায়। তখন শুধু `;` লিখে Enter দিন।
+SQL statement শেষে `;` না দিলে `psql` ধরে নেয় আপনি এখনো লিখছেন, আর prompt বদলে `shop-#` হয়ে যায়। তখন শুধু `;` লিখে Enter দিন।
 </Callout>

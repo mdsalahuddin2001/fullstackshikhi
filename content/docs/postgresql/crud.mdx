@@ -15,22 +15,23 @@ description: INSERT, SELECT, UPDATE আর DELETE — data নিয়ে ক�
 ## INSERT — data যোগ করা
 
 ```sql title="insert.sql"
-INSERT INTO authors (name, country)
+INSERT INTO categories (name)
 VALUES
-  ('বিভূতিভূষণ বন্দ্যোপাধ্যায়', 'India'),
-  ('হুমায়ূন আহমেদ', 'Bangladesh'),
-  ('Robert C. Martin', 'USA')
+  ('Electronics'),
+  ('Fashion'),
+  ('Books')
 RETURNING id, name; -- [!code highlight]
 ```
 
 `RETURNING` Postgres-এর একটি দারুণ feature — নতুন row-গুলোর `id` সাথে সাথেই ফেরত দেয়, আলাদা query লাগে না।
 
 ```sql
-INSERT INTO books (author_id, title, price, stock, published_on)
+INSERT INTO products (category_id, name, sku, price, stock, description)
 VALUES
-  (1, 'পথের পাঁচালী', 350.00, 12, '1929-01-01'),
-  (2, 'ময়ূরাক্ষী', 280.00, 0, '1990-01-01'),
-  (3, 'Clean Code', 1200.00, 5, '2008-08-01');
+  (1, 'Wireless Mouse', 'EL-MOU-001', 850.00, 40, '2.4GHz, 1600 DPI'),
+  (2, 'জামদানি শাড়ি', 'FA-SAR-001', 4500.00, 6, 'হাতে বোনা'),
+  (3, 'পথের পাঁচালী', 'BK-PTH-001', 450.00, 0, NULL),
+  (1, 'USB-C Charger', 'EL-CHG-001', 1200.00, 15, NULL);
 ```
 
 দাম আর stock-এর সংখ্যাগুলো উদাহরণের জন্য বানানো।
@@ -39,8 +40,8 @@ VALUES
 
 <Playground lang="sql">
 ```sql
-SELECT title, price
-FROM books
+SELECT name, price
+FROM products
 WHERE price < 1000
 ORDER BY price DESC
 LIMIT 10;
@@ -71,36 +72,36 @@ SQL যে ক্রমে লেখা হয়, Postgres সেই ক্র�
 
 ```sql
 -- নির্দিষ্ট range
-SELECT * FROM books WHERE price BETWEEN 200 AND 500;
+SELECT * FROM products WHERE price BETWEEN 500 AND 1500;
 
 -- কয়েকটি value-র যেকোনো একটি
-SELECT * FROM authors WHERE country IN ('Bangladesh', 'India');
+SELECT * FROM categories WHERE name IN ('Electronics', 'Books');
 
 -- লেখার অংশ দিয়ে খোঁজা (ILIKE = case-insensitive)
-SELECT * FROM books WHERE title ILIKE '%code%';
+SELECT * FROM products WHERE name ILIKE '%mouse%';
 
 -- যাদের value নেই
-SELECT * FROM books WHERE published_on IS NULL;
+SELECT * FROM products WHERE description IS NULL;
 ```
 
 <Callout type="warn" title="NULL = NULL সত্য নয়">
-`NULL` মানে "অজানা", তাই `WHERE published_on = NULL` কোনো row ফেরত দেয় না। সবসময় `IS NULL` বা `IS NOT NULL` লিখুন।
+`NULL` মানে "অজানা", তাই `WHERE description = NULL` কোনো row ফেরত দেয় না। সবসময় `IS NULL` বা `IS NOT NULL` লিখুন।
 </Callout>
 
 ### দুই table একসাথে — JOIN
 
 ```sql
-SELECT b.title, a.name AS author
-FROM books b
-JOIN authors a ON a.id = b.author_id
-ORDER BY a.name;
+SELECT p.name, c.name AS category
+FROM products p
+JOIN categories c ON c.id = p.category_id
+ORDER BY c.name;
 ```
 
 ## UPDATE — data পরিবর্তন
 
 ```sql
-UPDATE books
-SET price = price * 0.9 -- সব বইয়ে ১০% ছাড়
+UPDATE products
+SET price = price * 0.9 -- বেশি স্টকের প্রোডাক্টে ১০% ছাড়
 WHERE stock > 10;       -- [!code highlight]
 ```
 
@@ -111,8 +112,8 @@ WHERE stock > 10;       -- [!code highlight]
 নিরাপদ অভ্যাস:
 
 ```sql
-SELECT id, title, price FROM books WHERE stock > 10; -- [!code --]
-UPDATE books SET price = price * 0.9 WHERE stock > 10; -- [!code ++]
+SELECT id, name, price FROM products WHERE stock > 10; -- [!code --]
+UPDATE products SET price = price * 0.9 WHERE stock > 10; -- [!code ++]
 ```
 
 প্রথমে `SELECT` দিয়ে দেখুন, তারপর একই `WHERE` রেখে `UPDATE` চালান।
@@ -120,11 +121,11 @@ UPDATE books SET price = price * 0.9 WHERE stock > 10; -- [!code ++]
 ## DELETE — data মুছে ফেলা
 
 ```sql
-DELETE FROM books
-WHERE stock = 0 AND published_on < '1995-01-01'
-RETURNING title;
+DELETE FROM products
+WHERE stock = 0 AND description IS NULL
+RETURNING name;
 ```
 
 <Callout type="info" title="Foreign key আপনাকে রক্ষা করবে">
-কোনো লেখকের বই থাকলে `DELETE FROM authors WHERE id = 1` error দেবে — কারণ `books.author_id` সেই লেখককে reference করছে। আগের lesson-এর constraint এখানে কাজে লাগছে।
+কোনো ক্যাটাগরিতে প্রোডাক্ট থাকলে `DELETE FROM categories WHERE id = 1` error দেবে — কারণ `products.category_id` সেই ক্যাটাগরিকে reference করছে। আগের lesson-এর constraint এখানে কাজে লাগছে।
 </Callout>
