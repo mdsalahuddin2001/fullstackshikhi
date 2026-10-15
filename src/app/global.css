@@ -304,3 +304,71 @@ svg[aria-roledescription='er'] rect.label-container {
 .mermaid-diagram svg * {
   filter: none !important;
 }
+
+/* Interactive backend documentation; shared topic tokens work in both themes. */
+.ly-panel { margin: 2rem 0; border: 1px solid var(--border); border-radius: 1rem; overflow: hidden; background: var(--card); color: var(--foreground); font-size: .9rem; }
+.ly-panel-head { padding: 1.3rem 1.5rem; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--primary) 6%, var(--card)); }
+.ly-eyebrow { font: 500 .7rem var(--font-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--primary); }
+.ly-panel .ly-panel-head h2 { margin: .5rem 0 0; padding: 0; border: 0; font-size: 1.2rem; font-weight: 650; }
+.ly-panel-body { padding: 1.5rem; }
+.ly-panel p { line-height: 1.7; margin: .8rem 0; }
+.ly-panel h3 { font-size: 1.2rem; font-weight: 650; margin: 0 0 .6rem; }
+.ly-caption { font-size: .78rem; color: var(--muted-foreground); }
+.ly-panel button { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; border: 1px solid var(--border); border-radius: .5rem; padding: .5rem .75rem; background: var(--background); text-align: left; transition: background 150ms; }
+.ly-panel button:hover { background: var(--accent); }
+.ly-panel button:focus-visible, .ly-panel input:focus-visible, .ly-panel select:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.ly-panel button:disabled { opacity: .4; cursor: default; }
+.ly-panel button[aria-pressed=true], .ly-panel button[aria-current=step] { color: var(--primary); border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--card)); }
+.ly-system-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: .7rem; }
+.ly-panel .ly-system-node { flex-direction: column; padding: 1rem; }
+.ly-system-node span { font-size: .7rem; color: var(--muted-foreground); }
+.ly-detail { background: var(--background); border: 1px solid var(--border); border-radius: .7rem; padding: 1.2rem; margin-top: 1rem; min-width: 0; }
+.ly-panel code { font-family: var(--font-mono); font-size: .76rem; overflow-wrap: anywhere; }
+.ly-segment, .ly-controls, .ly-chips { display: flex; gap: .5rem; flex-wrap: wrap; }
+.ly-controls { justify-content: space-between; margin-top: 1rem; }
+.ly-flow { display: flex; flex-wrap: wrap; gap: .45rem; padding: 0; margin: 1rem 0; list-style: none; }
+.ly-flow button { font-size: .75rem; }
+.ly-flow button span { color: var(--muted-foreground); font-family: var(--font-mono); }
+.ly-search { display: flex; align-items: center; gap: .5rem; border: 1px solid var(--border); border-radius: .5rem; padding: .6rem; }
+.ly-search input { width: 100%; min-width: 0; background: transparent; border: 0; }
+.ly-entity-layout { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 1rem; margin-top: 1rem; }
+.ly-entity-layout .ly-detail { margin: 0; }
+.ly-model-list { display: flex; flex-direction: column; gap: .3rem; }
+.ly-model-list button { justify-content: flex-start; font-size: .75rem; }
+.ly-model-list button span { margin-left: auto; opacity: .55; }
+.ly-chips button { font-size: .7rem; padding: .3rem .5rem; }
+.ly-table-scroll { overflow: auto; max-height: 380px; margin-top: 1rem; }
+.ly-panel table { width: 100%; border-collapse: collapse; font-size: .75rem; }
+.ly-panel th, .ly-panel td { border-bottom: 1px solid var(--border); text-align: left; padding: .55rem; vertical-align: top; }
+.ly-panel th { color: var(--muted-foreground); font-weight: 500; }
+.ly-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.ly-form-grid > label:not(.ly-search) { display: flex; flex-direction: column; gap: .4rem; font-size: .8rem; }
+.ly-panel select { padding: .65rem; border: 1px solid var(--border); border-radius: .5rem; color: var(--foreground); background: var(--background); min-width: 0; width: 100%; }
+.ly-toggles { display: grid; gap: .75rem; margin: 1.3rem 0; }
+.ly-toggles label { display: flex; gap: .6rem; align-items: center; }
+.ly-panel input[type=checkbox], .ly-panel input[type=range] { accent-color: var(--primary); }
+.ly-verdict { display: flex; gap: .8rem; padding: 1rem; border-radius: .7rem; background: color-mix(in srgb, var(--primary) 9%, var(--background)); }
+.ly-verdict p { margin: .4rem 0 0; font-size: .8rem; }
+.ly-episode { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
+.ly-episode > div { flex: 1; display: flex; flex-direction: column; gap: .5rem; border: 1px solid var(--border); padding: 1rem; border-radius: .7rem; }
+.ly-episode > div[data-new=true] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--background)); }
+.ly-episode span, .ly-episode small { color: var(--muted-foreground); font-size: .75rem; }
+.ly-sliders { display: grid; gap: 1rem; }
+.ly-sliders label > span { display: flex; justify-content: space-between; gap: .5rem; font-size: .8rem; }
+.ly-sliders input { width: 100%; margin-top: .5rem; }
+.ly-timeline { display: flex; gap: 3px; min-height: 44px; margin-top: 1.5rem; border-radius: .5rem; overflow: hidden; }
+.ly-timeline span { display: grid; place-items: center; min-width: 35px; font-size: .65rem; background: var(--primary); color: var(--primary-foreground); }
+.ly-timeline .ly-paused { color: var(--muted-foreground); background: repeating-linear-gradient(135deg,var(--muted),var(--muted) 6px,var(--background) 6px,var(--background) 10px); }
+.ly-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: .75rem; margin-top: 1.2rem; }
+.ly-stats div { display: flex; flex-direction: column; gap: .2rem; }
+.ly-stats strong { font-size: 1.6rem; letter-spacing: -.04em; }
+.ly-stats small { font-size: .7rem; margin-left: .3rem; }
+.ly-stats span { color: var(--muted-foreground); font-size: .7rem; }
+.ly-route-list { max-height: 560px; overflow: auto; }
+.ly-route-list > div { border-bottom: 1px solid var(--border); }
+.ly-route-list > div > button { width: 100%; border: 0; border-radius: 0; justify-content: flex-start; padding: .8rem .3rem; }
+.ly-route-list > div > button > svg { margin-left: auto; flex-shrink: 0; }
+.ly-method { font: 600 .65rem var(--font-mono); min-width: 49px; color: var(--primary); }
+.ly-method[data-method=DELETE] { color: var(--destructive); }
+.ly-route-detail { padding: .6rem 1rem 1rem; background: var(--muted); font-size: .8rem; }
+@media (max-width: 600px) { .ly-panel-body { padding: 1rem; } .ly-entity-layout { grid-template-columns: 1fr; } .ly-model-list { flex-direction: row; flex-wrap: wrap; } .ly-system-grid { grid-template-columns: repeat(2,1fr); } .ly-form-grid { grid-template-columns: 1fr; } }

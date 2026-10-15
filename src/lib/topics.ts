@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from 'react';
 import { PostgresLogo } from '@/components/brand-logos';
+import { ListenyzenLogo } from '@/components/listenyzen/logo';
 
 // Topics shown on the home page; the brand also colors that topic's docs pages.
 // Hues from Simple Icons, nudged per mode where the logo color fails 4.5:1 as text.
@@ -21,6 +22,14 @@ export interface Topic {
 }
 
 export const topics: Topic[] = [
+  {
+    slug: 'listenyzen',
+    title: 'Listenyzen Backend',
+    description: 'Your English field guide to the codebase: architecture, schemas, access rules and the workflows behind the inbox.',
+    logo: ListenyzenLogo,
+    brand: { light: '#186b5b', lightForeground: '#ffffff', dark: '#63c7ae', darkForeground: '#151a22' },
+    tags: ['Architecture', 'MongoDB', 'Interactive'],
+  },
   {
     slug: 'postgresql',
     title: 'PostgreSQL',

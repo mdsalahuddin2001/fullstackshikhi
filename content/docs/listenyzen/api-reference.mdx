@@ -1,0 +1,67 @@
+---
+title: "API route reference"
+description: "A searchable catalog of all 111 mounted routes in the inspected backend."
+---
+
+<EndpointExplorer />
+
+## How to trace an endpoint
+
+<Steps>
+<Step>
+### Start at the mount
+`server/src/routes.ts` mounts `/api/v1`. `server/src/modules/index.ts` registers features. Each feature’s `index.ts` adds its prefix.
+</Step>
+<Step>
+### Read the middleware in order
+Open `api.ts` or the feature’s registration helper. Authentication, allowed roles, parameter parsing and body validation establish different parts of the contract.
+</Step>
+<Step>
+### Follow the access helper
+Tenant and brand checks often happen inside the handler. A route may be available to all four roles while a particular record remains invisible.
+</Step>
+<Step>
+### Follow the side effects
+Look for Mongo writes, external provider calls, SLA updates and realtime events. Sending successfully and recording successfully are separate operations.
+</Step>
+</Steps>
+
+<Callout type="warn" title="Do not infer security from a path">
+The generic file upload routes lack authentication in this snapshot. Webhooks use signatures; OAuth callbacks use signed state. Read the security chapter before copying an existing endpoint.
+</Callout>
+
+## Responses you will encounter
+
+<Tabs items={['Success', 'Cursor page', 'Failure']}>
+<Tab value="Success">
+```json
+{ "success": true, "message": "success", "data": {} }
+```
+</Tab>
+<Tab value="Cursor page">
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [],
+  "pagination": { "limit": 20, "hasNext": false }
+}
+```
+</Tab>
+<Tab value="Failure">
+```json
+{ "success": false, "status": "error", "message": "Brand not found" }
+```
+</Tab>
+</Tabs>
+
+Login failures, webhook responses, health endpoints, rate-limit responses and unmatched routes have exceptions to the normal envelope. A 404 can also mean a resource is outside the caller’s visibility.
+
+## Other entry points
+
+- `GET /health`: Mongo-based HTTP readiness with component details.
+- `GET /health/queue`: queue backlog, oldest waiting age and availability.
+- `/uploads`: public locally stored images.
+- `/socket.io`: authenticated realtime transport; clients join authorized brand rooms.
+
+The checked-in `listenyzen.postman_collection.json` is useful for request examples. Router code and Zod schemas remain the source of truth when examples diverge.

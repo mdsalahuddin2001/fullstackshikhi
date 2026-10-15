@@ -1,0 +1,82 @@
+---
+title: "Errors, logging & conventions"
+description: "Read response contracts, operational signals and coding patterns."
+---
+
+
+
+
+## Error and response conventions
+
+`server/src/libraries/error-handling/index.ts` carries a statusCode, status, message and comingFrom. Subclasses cover 400, 401, 403, 404, 409, 413 and 500. Express 5 async route errors reach the global handler; callback-style Passport handling explicitly forwards errors.
+
+Global translation in `server.ts`:
+
+| Condition                 | Response                                                   |
+| ------------------------- | ---------------------------------------------------------- |
+| Mongoose ValidationError  | 400 with validation messages.                              |
+| CastError                 | 400 identifying invalid field/value.                       |
+| Mongo duplicate key 11000 | 409 naming the duplicate field.                            |
+| Multer oversized upload   | 413.                                                       |
+| Other Multer error        | 400.                                                       |
+| AppError                  | Its serialized status/message.                             |
+| Unknown error             | Provided statusCode or 500, and error.message or fallback. |
+
+Typical envelopes:
+
+```json
+{ "success": true, "message": "success", "data": {} }
+```
+
+```json
+{ "success": false, "status": "error", "message": "Brand not found" }
+```
+
+Pagination adds a top-level `pagination` beside `data`; it does not wrap items inside `data.items` on the wire. Cursor pagination includes limit/hasNext/nextCursor; offset pagination also includes page, totalCount/totalPages where available, hasPrev and index bounds.
+
+Exceptions exist: login failure can return only `{ message }`; webhook handlers send plain status responses; unmatched routes return plain `Not Found`; rate-limit and health responses have their own shapes. Do not promise a universal envelope to clients.
+
+## Logs and observability
+
+- Winston defaults to debug outside production and info in production, with `LOG_LEVEL` override.
+- Service name is `SERVICE_NAME` or inferred from the entrypoint (`api-service`/`worker-service`).
+- Production console output is JSON; development output is readable/colorized. File output is JSON with hourly filename patterns, 20 MB rotation, compressed archives and 14-day retention.
+- `LOG_DIR` defaults to `logs`; `LOG_TO_FILE=false` disables file transport.
+- AsyncLocalStorage carries requestId/userId into downstream logs. `x-request-id` is accepted or generated and echoed back.
+- `logRequest` logs selected request metadata at debug and completion/status/duration at info. Body fields are opt-in; do not opt in passwords/tokens/message contents indiscriminately.
+- Global error handling chooses warn for known 4xx and error for 5xx. Because logging precedes some error translations, raw Mongoose/Multer errors without statusCode may be logged as 500 even when translated to a 4xx response.
+- Sensitive-key redaction recurses through metadata, but preserved messages and arbitrary string values are not automatically secret-scanned.
+- Heartbeats default to every 30 seconds and include DB/Redis state, uptime, RSS and heap; API heartbeat can include realtime. Queue health is read on demand rather than polled on every heartbeat.
+
+Health endpoints:
+
+| Endpoint            | Meaning                                                                                                                                            |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`       | Reports Mongo, Redis and realtime state. HTTP 200 depends on Mongo being connected; Redis/realtime failure can return 200 with `status: degraded`. |
+| `GET /health/queue` | Queue waiting/active/delayed/failed counts and oldest waiting age. 503 for waiting age >300 seconds, backlog >5,000, or unavailable stats.         |
+
+A failed-job count alone does not flip queue status. Healthy API status does not prove a worker exists. The worker has no HTTP health route; inspect its heartbeat/logs and actual queue progress.
+
+## Coding and typing conventions
+
+- Source uses `@/` imports mapped to `src/`. `tsc-alias` rewrites aliases in build output. Output entrypoints are `dist/src/app.js` and `dist/src/worker.js` because rootDir is the server directory.
+- Strict TypeScript settings include strict, noImplicitAny, noUnusedLocals, noUnusedParameters, alwaysStrict and consistent filename casing. Explicit `any` still exists in infrastructure; strict mode does not make every query/response fully typed.
+- Zod-inferred input types, `as const` enum arrays, explicit role lists, Mongoose interfaces and small named access helpers are common patterns.
+- Root Prettier configuration: single quotes, semicolons, two spaces, width 100, `arrowParens: avoid`, trailing commas `es5`.
+- Backend ESLint combines JS/TypeScript recommended rules with security and SonarJS. Client uses oxlint, not the backend linter.
+- Root Husky/lint-staged applies server ESLint fixes, client oxlint fixes and formatting. Conventional Commits are enforced; `pnpm commit` invokes Commitizen.
+- Shared utilities include filename sanitization, query building, response helpers, token/cookie handling and business-time calculation. Reuse the named module seams instead of reproducing access or SLA logic inside handlers.
+
+## Practical change checklist
+
+For a new feature or field:
+
+1. Identify the authoritative document and any derived copies (especially Session → Conversation).
+2. Define allowed inputs in the feature Zod schema and persistence shape in its Mongoose schema.
+3. Establish role, tenant, brand and mutation-policy checks before unscoped service calls.
+4. Keep credentials out of serialized documents, lean results and logs.
+5. Preserve indexes/order when adding filters or pagination; consider existing production data and backfills.
+6. Decide whether changes require realtime events and client cache updates.
+7. Preserve provider deduplication, partial-failure semantics and SLA recalculation where applicable.
+8. Update the checked-in request collection and relevant Markdown notes when the external contract changes.
+

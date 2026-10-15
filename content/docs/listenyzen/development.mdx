@@ -1,0 +1,263 @@
+---
+title: "Local development & operations"
+description: "Configure the API and worker, prepare data and avoid setup traps."
+---
+
+<Callout title="Two processes, one backend">Run the HTTP API and webhook worker together. A healthy API does not prove inbound events are being processed.</Callout>
+
+
+## Configuration precedence
+
+`server/src/configs/index.ts` resolves configuration relative to **process.cwd()**:
+
+1. Select environment from process.env.NODE_ENV, default development.
+2. Load `.env.<environment>`; only if it does not exist, try `.env`.
+3. Require `config/config.<environment>.json`.
+4. Shallow-merge shared JSON followed by environment JSON.
+5. For each recognized top-level config-schema key, prefer process.env over JSON.
+6. Validate through Zod and fail startup for invalid/missing values.
+
+Run backend commands inside `server/`, or use `pnpm --dir server ...`. Environment files alone do not eliminate the required JSON file. Nested `file`/`email` objects are not automatically parsed from JSON strings in environment variables; keep them in JSON. Unknown keys such as a legacy nested `jwt` object are ignored by this loader.
+
+## Environment/config inventory
+
+**Critical** means required by configuration or needed for core runtime behavior. **Feature** means optional to boot but required to use that integration. Existing private environment values were not included here.
+
+| Key / location                                                  | Class                     | Purpose / default / caveat                                                                                 |
+| --------------------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                                                      | Runtime                   | Set development locally or production for deployment. Determines file selection.                           |
+| `MONGODB_URI`                                                   | Critical                  | Nonempty MongoDB URI; use a dedicated local/development database.                                          |
+| `REDIS_HOST`                                                    | Critical                  | `localhost` for host processes, service name `redis` inside Compose.                                       |
+| `REDIS_PASSWORD`                                                | Critical                  | Nonempty and must match Redis requirepass.                                                                 |
+| `REDIS_PORT`                                                    | Critical/default          | Defaults 6379; numeric coercion, minimum 1000.                                                             |
+| `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`                   | Critical                  | Independent nonempty JWT signing secrets.                                                                  |
+| `ACCESS_TOKEN_EXPIRATION`, `REFRESH_TOKEN_EXPIRATION`           | Critical/default          | Required strings; shared JSON supplies `15m` and `7d`.                                                     |
+| `RATE`                                                          | Critical/default          | Requests/IP/15 minutes; shared JSON supplies 1000.                                                         |
+| `PORT`                                                          | Runtime/default           | Defaults 5000; numeric minimum 1000.                                                                       |
+| `BASE_URL`                                                      | Runtime/default           | Public API origin for local upload URLs; default `http://localhost:5000`. Missing from `.env.example`.     |
+| `ALLOWED_ORIGINS`                                               | Runtime/default           | Comma-separated browser origins; default `http://localhost:3000`.                                          |
+| `CLIENT_URL`                                                    | Feature/default           | OAuth completion redirect base; default `http://localhost:3000`. Set to your actual SPA origin.            |
+| `QUEUE_CONCURRENCY`                                             | Runtime/default           | Defaults 5; worker concurrency.                                                                            |
+| `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY`              | Critical schema / storage | Required even if current work does not use uploads.                                                        |
+| `AWS_S3_REGION`, `AWS_S3_BUCKET`                                | Critical schema / storage | Required nonempty strings. R2 commonly uses `auto` region per local integration comments.                  |
+| `AWS_S3_ENDPOINT`                                               | Optional storage          | Account/service API endpoint for non-AWS storage. Omit entirely for ordinary AWS. Blank is invalid.        |
+| `AWS_S3_PUBLIC_BASE_URL`                                        | Optional storage          | Public read origin; otherwise private presigned reads. URL must be valid. Not in `.env.example`.           |
+| JSON `file.allowedMimeTypes`                                    | Critical object/default   | Default image MIME allowlist if member omitted. Feature upload calls can override it.                      |
+| JSON `file.maxFileSize`                                         | Critical                  | Positive bytes; no default.                                                                                |
+| JSON `email.secure`                                             | Critical                  | Boolean SMTP TLS mode; must be an actual JSON boolean.                                                     |
+| JSON `email.from`, `email.fromName`                             | Critical                  | Sender address/name.                                                                                       |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`              | Feature                   | Read directly from process.env by Nodemailer; not validated by main schema and absent from `.env.example`. |
+| `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`                        | Feature                   | Shared Meta app wiring for Facebook and WhatsApp. Nonempty when present.                                   |
+| `FACEBOOK_GRAPH_VERSION`                                        | Feature/default           | `v25.0` default in code.                                                                                   |
+| `GRAPH_TIMEOUT_MS`                                              | Feature/default           | Defaults 10000; outbound Graph JSON timeout. Not in `.env.example`.                                        |
+| `FACEBOOK_WEBHOOK_VERIFY_TOKEN`                                 | Feature                   | GET webhook verification; no usable verification without it.                                               |
+| `FACEBOOK_RELAY_TOKEN`                                          | Optional development      | Enables separately authenticated v1 relay. Omit when unused.                                               |
+| `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`                      | Feature                   | Direct Instagram Login app credentials.                                                                    |
+| `INSTAGRAM_OAUTH_REDIRECT_URI`                                  | Feature                   | Exact callback URL including `/api/v1/brands/instagram/oauth/callback`.                                    |
+| `WHATSAPP_WEBHOOK_VERIFY_TOKEN`                                 | Feature                   | Separate WhatsApp webhook handshake token.                                                                 |
+| `WHATSAPP_ALLOW_MANUAL_CONNECT`                                 | Optional development      | Only literal string `true` enables manual token onboarding; default false.                                 |
+| `WHATSAPP_AUTO_REPLY_ON_MEDIA_FAILURE`                          | Optional behavior         | Only literal string `true` enables an automatic message to the customer; default false.                    |
+| `WHATSAPP_MEDIA_TIMEOUT_MS`                                     | Feature/default           | Defaults 30000; transfer timeout, separate from Graph JSON timeout. Not in `.env.example`.                 |
+| `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`                     | Seed only                 | Required by the privileged-user seed script, not main configuration.                                       |
+| `SUPER_ADMIN_NAME`                                              | Seed optional             | Defaults `Super Admin`.                                                                                    |
+| `SERVICE_NAME`, `LOG_LEVEL`, `LOG_DIR`, `LOG_TO_FILE`           | Operational               | Read directly by logger; set in process environment before startup.                                        |
+| `IMAGE_TAG`, `DOCKERHUB_USER`                                   | Deployment                | Compose/build interpolation, not domain runtime config. Usage varies by Compose file.                      |
+| Client `VITE_API_URL`, `VITE_FACEBOOK_APP_ID`, related `VITE_*` | Client build              | Public client configuration; never put server secrets in Vite variables.                                   |
+
+**Example-file traps:** copying `.env.example` verbatim leaves required S3 values empty and optional `.min(1).optional()` keys present as empty strings. Optional means absent, not empty. Remove unused optional lines rather than leaving `KEY=`. `config.example.json` contains only a minimal subset and lacks required `file`/`email` objects. Legacy nested email transport fields in JSON do not replace the actual `SMTP_*` environment reads.
+
+## Install and prepare
+
+Use Node 24 to match the Docker runtime and the pinned package manager. From the repository root:
+
+```bash
+cd /Users/mdsalahuddin/Developer/Analyzen/listenyzen-v2.0
+corepack enable
+pnpm install --frozen-lockfile
+pnpm --dir server install --frozen-lockfile
+pnpm --dir client install --frozen-lockfile
+```
+
+The root install sets up repository tooling; it does not install both applications. The server `pnpm-workspace.yaml` supplies dependency build permissions rather than defining a multi-package workspace.
+
+For a fresh checkout only, create missing config files without overwriting existing local configuration:
+
+```bash
+cd server
+cp -n .env.example .env.development
+cp -n config/config.example.json config/config.development.json
+```
+
+Edit the files afterward. A minimal **illustrative non-secret JSON structure**, supplying the nested objects missing from the example, is:
+
+```json
+{
+  "NODE_ENV": "development",
+  "PORT": 5000,
+  "BASE_URL": "http://localhost:5000",
+  "file": {
+    "allowedMimeTypes": ["image/jpeg", "image/png", "image/gif"],
+    "maxFileSize": 5242880
+  },
+  "email": {
+    "secure": false,
+    "from": "noreply@example.com",
+    "fromName": "Listenyzen Local"
+  }
+}
+```
+
+The five-megabyte value above is a local example, not a claim about the existing private environment configuration. Supply required Mongo/Redis/JWT/storage values separately. Generate local JWT secrets with `openssl rand -base64 32`. Use real development storage credentials for media work; schema-valid placeholders cannot make uploads function.
+
+## Start infrastructure and both backend processes
+
+The simplest arrangement is MongoDB/Redis as infrastructure with API and worker running on the host. The repository does not bundle a MongoDB service; obtain a development URI or run an isolated local MongoDB instance. Match its URI in `.env.development`.
+
+To start the repository's Redis service only, from `server/` after configuring its password:
+
+```bash
+docker compose -f docker-compose.dev.yml --env-file .env.development up -d redis
+```
+
+Use `REDIS_HOST=localhost` for host-run API/worker. Confirm Redis availability through your local infrastructure tools. The development Compose health command lacks password authentication even though requirepass is configured; do not treat that probe as proof of authenticated app access.
+
+Terminal 1:
+
+```bash
+cd /Users/mdsalahuddin/Developer/Analyzen/listenyzen-v2.0/server
+NODE_ENV=development pnpm dev
+```
+
+Terminal 2:
+
+```bash
+cd /Users/mdsalahuddin/Developer/Analyzen/listenyzen-v2.0/server
+NODE_ENV=development pnpm dev:worker
+```
+
+Terminal 3, when using the UI:
+
+```bash
+cd /Users/mdsalahuddin/Developer/Analyzen/listenyzen-v2.0/client
+pnpm dev
+```
+
+The Vite config proxies `/api` and `/socket.io` to `localhost:5000`. It strips Origin for proxied HTTP requests so the API sees a server-to-server request; cookie credentials stay same-origin to the browser. Use the actual Vite port shown at startup (normally 5173 unless overridden), and align CLIENT_URL/origin configuration for direct connections and OAuth redirects.
+
+Inspect startup/logs and service status:
+
+```bash
+curl -i http://localhost:5000/health
+curl -i http://localhost:5000/health/queue
+```
+
+These are operational status checks; no webhook or customer message needs to be sent merely to inspect them.
+
+**Compose limitation:** neither the inspected server development Compose file nor the inspected root/server production Compose definitions contains a worker service. Root `pnpm dev` starts the server Compose stack and client, but does not add a worker. Arrange a separate worker process/container using the same database, Redis and config. Do not run a second host API on port 5000 if the Compose API already occupies it.
+
+## First account and domain setup
+
+Use public company registration to obtain a company owner, or create a super admin for tenant administration:
+
+1. Configure `SUPER_ADMIN_EMAIL`, a strong `SUPER_ADMIN_PASSWORD`, and optionally `SUPER_ADMIN_NAME` in your local environment file.
+2. Run from `server/`:
+
+```bash
+pnpm seed:super-admin
+```
+
+The seed **updates an existing user with that email**, resets its password, sets role to super_admin and clears company/department links. It is not an insert-only script. Confirm that the configured database and email are the intended local/development target.
+
+Create a company/owner, departments and query managers, then create a brand and assign its departments/agents. Channel connection is a separate step. SLA/business-hour defaults work without saved Setting records; first save produces version 1.
+
+No general all-domain sample-data seeder or formal migration runner was found.
+
+## Backfills and indexes
+
+Run maintenance scripts from `server/` with the intended environment selected. The listed backfills have a dry-run default and require `--apply` to write:
+
+| Command                          | Purpose                                                      |
+| -------------------------------- | ------------------------------------------------------------ |
+| `pnpm backfill:tag-ids`          | Migrate legacy tag snapshots to vocabulary IDs.              |
+| `pnpm backfill:attachment-keys`  | Recover persistent storage keys from legacy attachment data. |
+| `pnpm backfill:session-sequence` | Add episode sequences to older sessions.                     |
+| `pnpm backfill:session-sla`      | Populate missing session SLA state.                          |
+| `pnpm backfill:comment-sla`      | Populate customer-root comment SLA state.                    |
+| `pnpm indexes:cursor-pagination` | Preview selected compound indexes needed by cursor lists.    |
+
+Examples of explicit write modes:
+
+```bash
+pnpm backfill:session-sequence --apply
+pnpm backfill:session-sla --apply
+pnpm backfill:comment-sla --apply
+pnpm indexes:cursor-pagination --apply
+```
+
+Session/comment SLA scripts also support `--all --apply` to recompute existing records. Read the relevant script before applying to shared data; there is no central migration ledger/rollback manager. Index creation should be reviewed separately from backfills, and the cursor script does not create every unique/business index.
+
+## Build, formatting and feature scaffolding
+
+```bash
+cd /Users/mdsalahuddin/Developer/Analyzen/listenyzen-v2.0/server
+pnpm type-check
+pnpm exec eslint src --ext .ts,.js
+pnpm exec prettier --check 'src/**/*.{ts,js,json}'
+pnpm build
+```
+
+`pnpm build` removes dist, compiles and rewrites aliases. Production process commands, with valid production JSON/environment configuration:
+
+```bash
+pnpm start
+pnpm start:worker
+```
+
+Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domain-generator.js`; inspect generated scaffolding before copying patterns into a feature. Register the new mount in `modules/index.ts` and apply the existing tenant/resource checks.
+
+## Deployment implications
+
+- Root production Compose pulls prebuilt images; root build configuration and server-specific Compose files serve different purposes. Read `DEPLOY.md` and `RELEASE.md`, then compare against the actual chosen file.
+- The production image copies dist/node_modules/package.json but expects runtime config through mounted `/app/config` and environment variables.
+- The API and worker both need MongoDB/Redis. Redis queue storage should retain AOF and `noeviction`; the production definitions use these settings.
+- API and worker perform graceful shutdown with a 30-second deadline. Supervisors must allow enough time for HTTP/socket closure and in-flight job completion.
+- Production Compose definitions shown here mount config/logs but do not mount a persistent uploads directory. Local logos/avatars can be lost with container replacement; provision persistent writable upload storage.
+- There is no automatic worker service in those definitions. A successful API deployment does not imply inbound social events are processed.
+- MongoDB connection pools scale with process count; increasing API/worker replicas or concurrency has database connection consequences.
+
+## Gotchas and likely bottlenecks
+
+| Symptom / change area                            | Where to investigate                                                                                                                                |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Startup says missing/invalid config              | Wrong cwd; missing environment JSON; missing nested file/email objects; blank optional env values overriding JSON.                                  |
+| Messages accepted by webhook but inbox silent    | Worker absent/stopped; queue backlog; wrong Redis instance; worker emitter not connected; client not joined to brand room.                          |
+| Connected channel receives nothing               | Webhook subscription diagnostics, app permissions/dashboard setup, signature secret, active brand/company; connection flags alone are insufficient. |
+| Agent sees thread but cannot reply               | onlyAssignedCanAct and current assignee; direct/department mismatch; inactive or disconnected channel.                                              |
+| Same endpoint behaves differently by user        | Route roles, tenant scope, brand assignment, access-token department/role staleness.                                                                |
+| R2 upload DNS or URL problems                    | API endpoint versus public read base; correct region; File.url legacy AWS-only virtual.                                                             |
+| Logo/avatar disappears after deploy              | Ephemeral local upload directory or incorrect BASE_URL.                                                                                             |
+| Long thread appears incomplete                   | `/conversations/:id/messages` returns the earliest 200 messages in ascending order; use grouped session thread reads appropriately.                 |
+| Large conversation response                      | Session thread pages cap session count, but fetch all messages/notes for selected sessions.                                                         |
+| SLA changes look surprising                      | Historical setting versions, business hours, root-author-only comments, last reply ending waits, hold/unresolved provisional behavior.              |
+| SLA field missing although message saved         | SLA synchronization logs errors without failing the main write; inspect logs and use the relevant backfill.                                         |
+| Duplicate event/counter anomalies                | Non-atomic read-before-write dedupe and session creation; whole-entry retries; concurrent jobs and provider echoes.                                 |
+| Incorrect preview after late events              | Conversation upsert sets last-message values from the arriving event without a general monotonic timestamp guard.                                   |
+| Slow lists/search                                | Missing production compound indexes; regex searches; filter selectivity; tenant scopes and cursor sort mismatch.                                    |
+| Increasing ingestion latency on long sessions    | SLA rereads and sorts the full session message history on updates; public-thread traversal also grows with thread size.                             |
+| Status stays sent in WhatsApp                    | Delivered/read receipts currently ignored; only failed statuses mutate stored delivery state.                                                       |
+| Old links/users remain after deletion            | Generic CRUD hard deletion lacks full relationship cascades.                                                                                        |
+| Build/deployment works but media/config does not | Config and local uploads are runtime resources outside the compiled code.                                                                           |
+| `obs:*` commands fail                            | Manifest references observability shell scripts, but those paths were not present in the inspected file inventory.                                  |
+
+## Suggested code-reading order
+
+1. `src/app.ts`, `src/server.ts`, `src/routes.ts`, `src/modules/index.ts` — process and HTTP wiring.
+2. `auth/roles.ts`, `auth/tenant.ts`, `auth/reply-access.ts`, `middlewares/auth/index.ts` — access boundaries.
+3. Brand, Conversation, Message and Session schemas — the operational data model.
+4. Conversation API/access/send-channel/service and Session service — a complete inbox workflow.
+5. Webhook ingress, queue wrapper and worker — durable inbound event processing.
+6. Settings definitions, Session SLA and Comment SLA — historical policy and timing rules.
+7. Client API/realtime/cache consumers — the other side of backend response/event contracts.
+
+Useful focused notes: `realtime-inbox-sockets.md`, `webhook-queue-bullmq.md`, `tag-system.md`, `whatsapp-integration.md`, `webhook-subscription-verification.md`, `logging-progress-context.md`. Treat progress/plan documents as context and verify their claims against current source before changing behavior.
+

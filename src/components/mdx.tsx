@@ -8,6 +8,7 @@ import { Mermaid } from './mermaid';
 import { Playground } from './playground';
 import { Reveal, Steps } from './present/reveal';
 import { YouTube } from './youtube';
+import { SystemWalkthrough, RequestFlow, EntityExplorer, AccessSimulator, SessionSimulator, SlaClock, EndpointExplorer } from './listenyzen/explorers';
 
 export function getMDXComponents(components?: MDXComponents) {
   return {
@@ -21,6 +22,7 @@ export function getMDXComponents(components?: MDXComponents) {
     Tab,
     Tabs,
     YouTube,
+    SystemWalkthrough, RequestFlow, EntityExplorer, AccessSimulator, SessionSimulator, SlaClock, EndpointExplorer,
     ...components,
   } satisfies MDXComponents;
 }

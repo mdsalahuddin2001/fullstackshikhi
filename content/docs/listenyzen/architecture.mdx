@@ -1,0 +1,153 @@
+---
+title: "Architecture & request lifecycle"
+description: "Follow a request from authentication to database and response."
+---
+
+<RequestFlow />
+
+
+## Architectural style
+
+This is a **feature-first modular monolith with route/service/schema layers**, plus a sibling worker using the same modules. It is not a strict Clean Architecture implementation. Route handlers contain authorization and some integration orchestration; services query Mongoose directly. There is no universal repository layer, dependency injection container, or separate controller class convention.
+
+Typical dependency path:
+
+```text
+modules/<feature>/index.ts        mount URL prefix
+    → modules/<feature>/api.ts    middleware, access checks, HTTP handlers
+    → validation.ts              parsed request contract
+    → service.ts                 domain operations + queries
+    → schema.ts                  Mongoose models
+    → libraries/                 shared infrastructure/integrations
+```
+
+Modules call other modules directly. For example, conversation ingestion calls session assignment and SLA synchronization; session changes update the conversation's summary fields. Changes to these boundaries must preserve both sides.
+
+## Directory map
+
+```text
+listenyzen-v2.0/
+├── server/
+│   ├── src/
+│   │   ├── app.ts                    API entrypoint
+│   │   ├── server.ts                 HTTP middleware, sockets, shutdown
+│   │   ├── worker.ts                 queue consumer entrypoint
+│   │   ├── routes.ts                 /api/v1, health routes, fallback 404
+│   │   ├── auth/                     login, JWT identity, tenant/assignment rules
+│   │   ├── configs/                  config loader and Zod schema
+│   │   ├── modules/                  business features
+│   │   ├── middlewares/              auth, validation, uploads, request context/logs
+│   │   ├── libraries/                DB, Redis, queue, Graph clients, storage, utilities
+│   │   └── types/express/            Express request/user augmentation
+│   ├── config/                      shared and environment JSON config
+│   ├── scripts/dev/                 seed, backfills, index creation, scaffolding
+│   ├── uploads/                     local image assets
+│   ├── docker/                      server-side nginx configuration
+│   ├── Dockerfile*                  Node images
+│   └── docker-compose.*.yml         server-specific container definitions
+├── client/                          SPA; API contracts and realtime consumers
+├── docs/                            feature notes and architecture references
+├── handbook/                        existing developer learning material
+├── listenyzen.postman_collection.json
+├── docker-compose*.yml              root deployment definitions
+├── docker-bake.hcl                  image build/publish configuration
+├── DEPLOY.md / RELEASE.md           deployment/release notes
+└── .husky/, .lintstagedrc.json, .prettierrc, .commitlintrc.json
+```
+
+No active cron directory/scheduler was found under `server/src`, despite references to one in older descriptive material.
+
+## Feature ownership
+
+| Feature         | Responsibility and important files                                                                                                       |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`          | Company registration/provisioning, login/refresh/logout; `tenant.ts`, `reply-access.ts`, `company-access.ts` define shared access rules. |
+| `company`       | Tenant CRUD, owner link, active status, `onlyAssignedCanAct` setting.                                                                    |
+| `user`          | Staff CRUD, self-profile, password changes, role hierarchy enforcement.                                                                  |
+| `department`    | Tenant department CRUD and membership validation helpers.                                                                                |
+| `query-manager` | Agent-oriented operations over the User model; department and avatar handling.                                                           |
+| `brand`         | Brand CRUD, visibility assignments, account credentials; `meta-channels.ts`, `whatsapp.ts`, `whatsapp-templates.ts`, `assignees.ts`.     |
+| `brand/tags`    | Hierarchical vocabulary, normalized uniqueness, rename/archive/restore, ID resolution.                                                   |
+| `conversation`  | Inbox listing, customer access, messages, sending, reactions; `access.ts`, `send-channel.ts`, `media.ts`, `whatsapp-templates.ts`.       |
+| `session`       | Episode selection, notes, assignments, wrap-up, conversation summary synchronization, SLA.                                               |
+| `customer`      | Channel identity lookup/upsert and editable contact details; accessed through conversation routes.                                       |
+| `comment`       | Public thread reconstruction, replies, moderation, tags, assignment, wrap-up and SLA.                                                    |
+| `fixed-reply`   | Brand-specific reusable reply title/body records.                                                                                        |
+| `settings`      | Versioned SLA/business-hours values, defaults, validation and history.                                                                   |
+| `overview`      | Aggregated current workload, engagement, trends and SLA statistics.                                                                      |
+| `webhook`       | Signed ingress and queued Facebook/Instagram/WhatsApp event processing.                                                                  |
+| `file`          | Generic S3 upload/metadata endpoints; has important access-control exceptions described below.                                           |
+
+## Standard HTTP lifecycle — complete read example
+
+Example request:
+
+```http
+GET /api/v1/conversations?brandId=507f1f77bcf86cd799439011&limit=20&mine=true
+Cookie: access_token=<JWT>
+```
+
+1. `server.ts` installs cookie parsing, HPP, Helmet, CORS and the global per-IP limiter. Request context then establishes `x-request-id`. JSON/urlencoded parsing and compression are configured; JSON raw bytes are retained for webhook signatures.
+2. `routes.ts` mounts `/api/v1`; `modules/index.ts` registers the conversation router at `/conversations`.
+3. `conversation/api.ts` runs `authenticate`. It verifies a Bearer token or the access-token cookie, checks active-company access, attaches the token principal to `req.user`, and enriches logging context.
+4. `authorize(...READ_ROLES)` permits the four defined roles. This alone does **not** establish access to the requested brand.
+5. `validateQuery(listConversationsSchema)` checks `brandId`, coerces `limit`, validates filters, rejects unknown cursor-list parameters, and writes parsed values back to `req.query`.
+6. The handler loads the brand through `getBrandById(brandId, getBrandScope(req.user))`. Owners/admins are company-scoped; query managers additionally need direct or department brand assignment. A missing/inaccessible brand returns 404.
+7. `mine=true` derives assignee IDs from the user's ID and department ID. Optional tag filters expand selected parent tags to descendant tag IDs.
+8. `listConversations` builds a query with mandatory `{ brandId }`, optional assignee/tag restrictions, allowlisted search/filter fields, and cursor ordering by `lastMessageAt DESC, _id DESC`.
+9. `QueryBuilder` applies a cursor boundary, fetches one extra result to establish `hasNext`, and returns plain documents via `.lean()`.
+10. `paginatedSuccessResponse` dispatches the result. `logRequest` records completion status/duration.
+
+Illustrative response shape:
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [],
+  "pagination": {
+    "limit": 20,
+    "hasNext": false
+  }
+}
+```
+
+When there is another page, `pagination.nextCursor` is supplied. Send it back unchanged with the same filters. Do not send `page` or `sort` on cursor endpoints.
+
+Sources: `server/src/modules/conversation/api.ts`, `server/src/modules/conversation/service.ts`, `server/src/libraries/query/QueryBuilder.ts`, `server/src/libraries/utils/sendResponse.ts`.
+
+## Write example — agent replies
+
+`POST /api/v1/conversations/:id/messages` accepts a strict `{ "text": "Hello" }` body; text is trimmed and limited to 2,000 characters.
+
+1. Authentication, route-role checks and parameter/body validation run.
+2. `ensureSendableConversation` calls `loadActionableConversation`: load conversation, establish brand visibility, enforce assigned-only policy, then verify the brand/company is operational.
+3. `resolveSendChannel` selects Messenger, Instagram Page login, Instagram direct login, or WhatsApp and resolves the server-side token.
+4. `deliverText` makes the actual provider request. If it fails, no successful outgoing message is recorded by this path.
+5. After provider acceptance, `recordOutgoingMessage` checks the provider `mid`, upserts the conversation preview, selects/creates a session, creates the Message, recalculates SLA and emits `message:new` to the brand room.
+6. HTTP 201 returns `{ success: true, message: 'Reply sent', data: <message> }`.
+
+This is **not an atomic transaction spanning Meta and MongoDB**. A provider send can succeed before persistence fails. Retrying a failed HTTP request can send twice; do not assume an outbound idempotency key exists. The incoming echo can also arrive concurrently with local persistence.
+
+## API navigation map
+
+All paths below have `/api/v1` prepended, except health and uploads. The complete literal route inventory is included at the end of this guide.
+
+| Prefix                            | Main operations                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `/auth`                           | Register company, login, logout, refresh.                                                                                      |
+| `/companies`                      | Super-admin tenant management; `/me` and `/me/settings` for the current tenant.                                                |
+| `/users`                          | Staff management; `/me`, `/me/change-password`.                                                                                |
+| `/departments`, `/query-managers` | Tenant staffing and routing configuration.                                                                                     |
+| `/brands`                         | CRUD, department/agent assignment, tags, channel connection, template administration.                                          |
+| `/brands/:brandId/fixed-replies`  | Reusable reply CRUD.                                                                                                           |
+| `/brands/:brandId/settings`       | Get/save `sla` and `business-hours`; per-type history.                                                                         |
+| `/brands/:brandId/overview`       | `stats`, `sla`, `engagement`, `inbound-trend`, `sla-compliance`.                                                               |
+| `/conversations`                  | Cursor inbox list, thread messages/session groups/stats, customer details, send/upload/react, media retrieval, template sends. |
+| `/sessions`                       | Session listing/detail, status/sentiment/wrap-up, assignees, assignment, tags and notes.                                       |
+| `/comments`                       | Root-thread list, post grouping, detail, replies, assignment, tags, wrap-up, hide/like/delete.                                 |
+| `/files`                          | Generic metadata listing and single/multiple uploads.                                                                          |
+| `/webhooks`                       | Facebook/Instagram ingress, separate trusted relay, WhatsApp ingress; GET verification and POST delivery.                      |
+
+The checked-in Postman collection is a useful request catalog, but mounted route code and Zod schemas take precedence when examples diverge. No collection was published or modified for this guide.
+

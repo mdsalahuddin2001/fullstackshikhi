@@ -1,0 +1,778 @@
+[
+  {
+    "name": "Company",
+    "source": "server/src/modules/company/schema.ts",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "CompanyStatus"
+      },
+      {
+        "name": "logo?",
+        "type": "string"
+      },
+      {
+        "name": "ownerId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "settings?",
+        "type": "ICompanySettings"
+      }
+    ],
+    "relations": [
+      "User",
+      "Brand",
+      "Department",
+      "Customer"
+    ]
+  },
+  {
+    "name": "User",
+    "source": "server/src/modules/user/schema.ts",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "email",
+        "type": "string"
+      },
+      {
+        "name": "role",
+        "type": "Role"
+      },
+      {
+        "name": "password",
+        "type": "string"
+      },
+      {
+        "name": "companyId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "departmentId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "avatar?",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      "Company",
+      "Department"
+    ]
+  },
+  {
+    "name": "Department",
+    "source": "server/src/modules/department/schema.ts",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "DepartmentStatus"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      }
+    ],
+    "relations": [
+      "Company",
+      "User",
+      "Brand"
+    ]
+  },
+  {
+    "name": "Brand",
+    "source": "server/src/modules/brand/schema.ts",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "email",
+        "type": "string"
+      },
+      {
+        "name": "logo",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "BrandStatus"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "departmentIds",
+        "type": "Types.ObjectId[]"
+      },
+      {
+        "name": "queryManagerIds",
+        "type": "Types.ObjectId[]"
+      }
+    ],
+    "relations": [
+      "Company",
+      "Department",
+      "User",
+      "BrandTag",
+      "Conversation",
+      "Comment",
+      "Setting",
+      "FixedReply"
+    ]
+  },
+  {
+    "name": "BrandTag",
+    "source": "server/src/modules/brand/tags/schema.ts",
+    "fields": [
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "nameLower",
+        "type": "string"
+      },
+      {
+        "name": "archived",
+        "type": "boolean"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "Session",
+      "Comment",
+      "Conversation"
+    ]
+  },
+  {
+    "name": "Customer",
+    "source": "server/src/modules/customer/schema.ts",
+    "fields": [
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "platform",
+        "type": "ChannelPlatform"
+      },
+      {
+        "name": "pageId",
+        "type": "string"
+      },
+      {
+        "name": "externalId",
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "avatarUrl?",
+        "type": "string"
+      },
+      {
+        "name": "mobile?",
+        "type": "string"
+      },
+      {
+        "name": "email?",
+        "type": "string"
+      },
+      {
+        "name": "address?",
+        "type": "string"
+      },
+      {
+        "name": "gender?",
+        "type": "CustomerGender"
+      }
+    ],
+    "relations": [
+      "Company",
+      "Conversation"
+    ]
+  },
+  {
+    "name": "Conversation",
+    "source": "server/src/modules/conversation/schema.ts",
+    "fields": [
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "platform",
+        "type": "ChannelPlatform"
+      },
+      {
+        "name": "pageId",
+        "type": "string"
+      },
+      {
+        "name": "participantId",
+        "type": "string"
+      },
+      {
+        "name": "participantName",
+        "type": "string"
+      },
+      {
+        "name": "participantAvatarUrl?",
+        "type": "string"
+      },
+      {
+        "name": "customerId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "lastMessageText",
+        "type": "string"
+      },
+      {
+        "name": "lastMessageAt",
+        "type": "Date"
+      },
+      {
+        "name": "lastMessageDirection",
+        "type": "MessageDirection"
+      },
+      {
+        "name": "unreadCount",
+        "type": "number"
+      },
+      {
+        "name": "status",
+        "type": "SessionStatus"
+      },
+      {
+        "name": "sentiment",
+        "type": "SessionSentiment"
+      },
+      {
+        "name": "assignee?",
+        "type": "ISessionAssignee"
+      },
+      {
+        "name": "tags",
+        "type": "Types.ObjectId[]"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "Company",
+      "Customer",
+      "Session",
+      "Message"
+    ]
+  },
+  {
+    "name": "Message",
+    "source": "server/src/modules/conversation/schema.ts",
+    "fields": [
+      {
+        "name": "system?",
+        "type": "boolean"
+      },
+      {
+        "name": "conversationId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "sessionId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "platform",
+        "type": "ChannelPlatform"
+      },
+      {
+        "name": "direction",
+        "type": "MessageDirection"
+      },
+      {
+        "name": "mid?",
+        "type": "string"
+      },
+      {
+        "name": "senderId",
+        "type": "string"
+      },
+      {
+        "name": "senderUserId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "senderName?",
+        "type": "string"
+      },
+      {
+        "name": "text",
+        "type": "string"
+      },
+      {
+        "name": "attachments",
+        "type": "IMessageAttachment[]"
+      },
+      {
+        "name": "reactions",
+        "type": "IMessageReaction[]"
+      },
+      {
+        "name": "template?",
+        "type": "IMessageTemplate"
+      },
+      {
+        "name": "deliveryStatus?",
+        "type": "MessageDeliveryStatus"
+      },
+      {
+        "name": "failure?",
+        "type": "IMessageFailure"
+      },
+      {
+        "name": "sentAt",
+        "type": "Date"
+      }
+    ],
+    "relations": [
+      "Conversation",
+      "Session",
+      "Brand",
+      "User"
+    ]
+  },
+  {
+    "name": "Session",
+    "source": "server/src/modules/session/schema.ts",
+    "fields": [
+      {
+        "name": "conversationId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "platform",
+        "type": "ChannelPlatform"
+      },
+      {
+        "name": "status",
+        "type": "SessionStatus"
+      },
+      {
+        "name": "sentiment",
+        "type": "SessionSentiment"
+      },
+      {
+        "name": "startedAt",
+        "type": "Date"
+      },
+      {
+        "name": "lastActivityAt",
+        "type": "Date"
+      },
+      {
+        "name": "sequence",
+        "type": "number"
+      },
+      {
+        "name": "resolvedAt?",
+        "type": "Date"
+      },
+      {
+        "name": "statusChangedBy?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "statusChangedAt?",
+        "type": "Date"
+      },
+      {
+        "name": "assignee?",
+        "type": "ISessionAssignee"
+      },
+      {
+        "name": "tags",
+        "type": "Types.ObjectId[]"
+      },
+      {
+        "name": "messageCount",
+        "type": "number"
+      },
+      {
+        "name": "noteCount",
+        "type": "number"
+      },
+      {
+        "name": "sessionType?",
+        "type": "SessionType"
+      },
+      {
+        "name": "resolutionSummary?",
+        "type": "string"
+      },
+      {
+        "name": "firstCustomerMessageAt?",
+        "type": "Date"
+      },
+      {
+        "name": "firstResponseAt?",
+        "type": "Date"
+      },
+      {
+        "name": "sla?",
+        "type": "ISessionSlaState"
+      }
+    ],
+    "relations": [
+      "Conversation",
+      "Brand",
+      "Company",
+      "User",
+      "Department",
+      "BrandTag",
+      "SessionNote",
+      "Message"
+    ]
+  },
+  {
+    "name": "SessionNote",
+    "source": "server/src/modules/session/schema.ts",
+    "fields": [
+      {
+        "name": "sessionId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "conversationId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "authorId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "authorName",
+        "type": "string"
+      },
+      {
+        "name": "text",
+        "type": "string"
+      }
+    ],
+    "relations": [
+      "Session",
+      "Conversation",
+      "Company",
+      "User"
+    ]
+  },
+  {
+    "name": "Comment",
+    "source": "server/src/modules/comment/schema.ts",
+    "fields": [
+      {
+        "name": "pageId",
+        "type": "string"
+      },
+      {
+        "name": "platformPostId",
+        "type": "string"
+      },
+      {
+        "name": "permalinkUrl?",
+        "type": "string"
+      },
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "platform",
+        "type": "CommentPlatform"
+      },
+      {
+        "name": "direction",
+        "type": "CommentDirection"
+      },
+      {
+        "name": "commentId?",
+        "type": "string"
+      },
+      {
+        "name": "parentCommentId?",
+        "type": "string"
+      },
+      {
+        "name": "authorId",
+        "type": "string"
+      },
+      {
+        "name": "authorName",
+        "type": "string"
+      },
+      {
+        "name": "authorAvatarUrl?",
+        "type": "string"
+      },
+      {
+        "name": "senderUserId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "text",
+        "type": "string"
+      },
+      {
+        "name": "attachmentUrl?",
+        "type": "string"
+      },
+      {
+        "name": "attachmentType?",
+        "type": "'image' | 'video'"
+      },
+      {
+        "name": "status",
+        "type": "CommentStatus"
+      },
+      {
+        "name": "sentiment?",
+        "type": "CommentSentiment"
+      },
+      {
+        "name": "resolutionSummary?",
+        "type": "string"
+      },
+      {
+        "name": "topicTags",
+        "type": "string[]"
+      },
+      {
+        "name": "tags",
+        "type": "Types.ObjectId[]"
+      },
+      {
+        "name": "assignee?",
+        "type": "ICommentAssignee"
+      },
+      {
+        "name": "reactions",
+        "type": "number"
+      },
+      {
+        "name": "isHidden",
+        "type": "boolean"
+      },
+      {
+        "name": "likedByPage",
+        "type": "boolean"
+      },
+      {
+        "name": "commentedAt",
+        "type": "Date"
+      },
+      {
+        "name": "lastActivityAt",
+        "type": "Date"
+      },
+      {
+        "name": "slaStartAt?",
+        "type": "Date"
+      },
+      {
+        "name": "firstResponseAt?",
+        "type": "Date"
+      },
+      {
+        "name": "resolvedAt?",
+        "type": "Date"
+      },
+      {
+        "name": "sla?",
+        "type": "ISlaState"
+      },
+      {
+        "name": "slaRevision?",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "Company",
+      "Comment",
+      "User",
+      "Department",
+      "BrandTag"
+    ]
+  },
+  {
+    "name": "FixedReply",
+    "source": "server/src/modules/fixed-reply/schema.ts",
+    "fields": [
+      {
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "name": "body",
+        "type": "string"
+      },
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "Company"
+    ]
+  },
+  {
+    "name": "File",
+    "source": "server/src/modules/file/schema.ts",
+    "fields": [
+      {
+        "name": "_id?",
+        "type": "string"
+      },
+      {
+        "name": "filename",
+        "type": "string"
+      },
+      {
+        "name": "mimeType",
+        "type": "string"
+      },
+      {
+        "name": "size",
+        "type": "number"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      },
+      {
+        "name": "uploadedBy?",
+        "type": "string"
+      },
+      {
+        "name": "metadata?",
+        "type": "Record<string, string | number | boolean>"
+      },
+      {
+        "name": "createdAt?",
+        "type": "Date"
+      },
+      {
+        "name": "updatedAt?",
+        "type": "Date"
+      },
+      {
+        "name": "isTemporary?",
+        "type": "boolean"
+      }
+    ],
+    "relations": [
+      "User"
+    ]
+  },
+  {
+    "name": "Setting",
+    "source": "server/src/modules/settings/schema.ts",
+    "fields": [
+      {
+        "name": "scope",
+        "type": "SettingScope"
+      },
+      {
+        "name": "scopeId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "type",
+        "type": "SettingType"
+      },
+      {
+        "name": "version",
+        "type": "number"
+      },
+      {
+        "name": "value",
+        "type": "unknown"
+      },
+      {
+        "name": "changedBy",
+        "type": "{ id: Types.ObjectId"
+      },
+      {
+        "name": "createdAt",
+        "type": "Date"
+      },
+      {
+        "name": "updatedAt",
+        "type": "Date"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "Company",
+      "User"
+    ]
+  }
+]

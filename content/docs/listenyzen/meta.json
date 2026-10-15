@@ -1,0 +1,20 @@
+{
+  "title": "Listenyzen Backend",
+  "description": "Architecture and developer onboarding \u2022 English",
+  "icon": "MessagesSquare",
+  "root": true,
+  "pages": [
+    "index",
+    "---Understand the system---",
+    "system",
+    "architecture",
+    "data-model",
+    "security",
+    "---Follow the work---",
+    "workflows",
+    "conventions",
+    "---Build with confidence---",
+    "development",
+    "api-reference"
+  ]
+}

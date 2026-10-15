@@ -72,7 +72,7 @@ export function LessonHeader({ topicSlug, url, title, description, actions }: Le
                 className={keyButton}
                 style={{ '--key': 'var(--color-fd-primary)', '--key-fg': 'var(--color-fd-primary-foreground)' } as CSSProperties}
               >
-                প্রথম lesson শুরু করুন <ArrowRight className="size-4" />
+                {topicSlug === 'listenyzen' ? 'Start the guide' : 'প্রথম lesson শুরু করুন'} <ArrowRight className="size-4" />
               </Link>
               <span className="font-mono text-sm text-fd-muted-foreground">{lessons.length} lessons</span>
             </>
@@ -124,7 +124,7 @@ function NavCard({ item, direction }: { item: PageTree.Item; direction: 'previou
       />
       <span className="inline-flex items-center gap-1.5 font-mono text-xs tracking-wide text-fd-muted-foreground uppercase">
         {!isNext && <Arrow className={cn('size-3.5 transition-transform duration-500 group-hover:-translate-x-1', ease)} />}
-        {isNext ? 'পরের lesson' : 'আগের lesson'}
+        {item.url.startsWith('/docs/listenyzen') ? (isNext ? 'Next chapter' : 'Previous chapter') : (isNext ? 'পরের lesson' : 'আগের lesson')}
         {isNext && <Arrow className={cn('size-3.5 transition-transform duration-500 group-hover:translate-x-1', ease)} />}
       </span>
       <span className="font-semibold text-fd-foreground">{item.name}</span>

@@ -1,0 +1,51 @@
+---
+title: "Inside Listenyzen"
+description: "From your first day to your first confident change. An English, code-grounded guide to the backend behind the social inbox."
+---
+
+<Callout title="A map of the actual codebase">
+Based on revision `aebd2800`, inspected on 15 October 2026. This series documents MongoDB and Mongoose as they exist in Listenyzen; it uses the learning format of the PostgreSQL series. All interactive examples are local illustrations, with no connection to customer systems.
+</Callout>
+
+## Start with the shape of the system
+
+A company owns brands. Each brand connects social accounts. Agents work on conversations and public comments, assign responsibility, record outcomes and track how long customers wait. The HTTP API handles requests; a separate worker processes incoming webhook events.
+
+<SystemWalkthrough />
+
+## Your learning path
+
+Read in order for onboarding, or jump directly to the area you are changing. Each chapter combines the full reference with practical explanations and code paths to follow in your editor.
+
+<Cards>
+<Card title="01 · System & tech stack" href="/docs/listenyzen/system">Learn the domain vocabulary, runtime, dependencies and external services.</Card>
+<Card title="02 · Architecture & request lifecycle" href="/docs/listenyzen/architecture">Step through an inbox request and a queued webhook, from entry point to result.</Card>
+<Card title="03 · Data models & relationships" href="/docs/listenyzen/data-model">Explore 14 collections, references, indexes, snapshots and consistency boundaries.</Card>
+<Card title="04 · Authentication & access" href="/docs/listenyzen/security">Change roles and assignments to see why visibility and permission differ.</Card>
+<Card title="05 · Business workflows" href="/docs/listenyzen/workflows">Understand episodes, public threads, media, templates, settings and the SLA clock.</Card>
+<Card title="06 · Errors, logs & conventions" href="/docs/listenyzen/conventions">Read responses and operational signals, then follow the repository’s patterns.</Card>
+<Card title="07 · Local development" href="/docs/listenyzen/development">Configure the two processes, seed your account and navigate known gotchas.</Card>
+<Card title="08 · API reference" href="/docs/listenyzen/api-reference">Search all 111 mounted route declarations by method, feature or path.</Card>
+</Cards>
+
+## Three distinctions to remember
+
+<Tabs items={['Conversation vs session', 'Visibility vs action', 'Queued vs processed']}>
+<Tab value="Conversation vs session">
+A conversation is the long-lived customer thread. A session is one support episode inside it. A new incoming message after a resolved episode creates a new session; an ordinary outgoing follow-up does not.
+</Tab>
+<Tab value="Visibility vs action">
+An agent may have access to a brand and still be unable to modify a thread. The company’s assigned-only policy adds a mutation check after visibility has been established.
+</Tab>
+<Tab value="Queued vs processed">
+A webhook 200 means its entries reached Redis. The worker still has to persist domain records and broadcast updates. A healthy API alone cannot show that this work is happening.
+</Tab>
+</Tabs>
+
+## Read, explore, present
+
+Use the sidebar for chapters, search for specific concepts, and the page outline for long references. Presentation mode works with these lessons too. The interactive panels are keyboard-accessible and adapt to light and dark themes.
+
+[Download the complete Markdown reference](/downloads/LISTENYZEN_BACKEND_ONBOARDING.md)
+
+Source paths in this series refer to the Listenyzen repository, not this learning site. The documentation records a code snapshot; re-check the relevant source when behavior changes.

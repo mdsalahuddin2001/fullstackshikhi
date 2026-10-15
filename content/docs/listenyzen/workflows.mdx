@@ -1,0 +1,170 @@
+---
+title: "Business workflows"
+description: "Trace messages, sessions, public comments, media and SLA calculations."
+---
+
+<SessionSimulator />
+
+<SlaClock />
+
+
+## Company provisioning and staffing
+
+Public registration accepts companyName and owner identity/password. `provisionCompany` creates Company, creates a `company_owner` User, then links `ownerId`. On failure it attempts to delete the owner/company as compensation; cleanup failures are logged. Registration then attempts welcome email without undoing the account if delivery fails.
+
+Admin staff creation derives companyId from the caller unless the caller is super admin. Department membership is validated against that company. Query-manager operations apply a fixed role filter. Brand assignment checks that supplied departments/agents belong to the right company.
+
+## Channel connection
+
+| Channel                    | Implemented connection path                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Facebook                   | Client-provided authorization information → user/page token resolution → verify page subscription → persist Page credentials and diagnostics.                                  |
+| Instagram through Facebook | Resolve professional account linked to the Facebook Page; store Page-based token with `loginType: 'facebook'`. App Dashboard subscription setup remains relevant.              |
+| Instagram direct login     | Get login URL with signed 10-minute state → OAuth callback → exchange code/token → subscribe/verify → save direct-login account and token expiry → redirect client.            |
+| WhatsApp                   | Embedded Signup code + WABA/phone IDs → exchange code → read phone metadata to establish token access → subscribe WABA → attempt registration → persist connection/PIN/status. |
+
+WhatsApp subscription is blocking in the normal signup path, while registration can remain pending. `connected` and `registered` are different states. Manual connect is guarded by `WHATSAPP_ALLOW_MANUAL_CONNECT`; it is a development escape hatch. Disconnect attempts WABA unsubscribe only when another brand is not using that WABA.
+
+Instagram direct-token expiry is stored, but no active scheduled token-refresh job was found. Confirm the operational reconnection/refresh plan before relying on unattended long-lived integration.
+
+Sources: `server/src/modules/brand/meta-channels.ts`, `server/src/modules/brand/whatsapp.ts`, `server/src/libraries/common/webhook-subscription.ts`.
+
+## Incoming webhook processing
+
+```mermaid
+sequenceDiagram
+    participant Meta
+    participant API
+    participant Redis
+    participant Worker
+    participant Mongo
+    participant Agent
+    Meta->>API: Signed webhook POST
+    API->>API: Verify raw-body HMAC
+    API->>Redis: Bulk enqueue one job per entry
+    Redis-->>API: Enqueued
+    API-->>Meta: HTTP 200
+    Worker->>Redis: Consume fb-entry or wa-entry
+    Worker->>Worker: Resolve active brand and dispatch events
+    Worker->>Mongo: Dedupe and write domain records
+    Worker->>Mongo: Refresh SLA/summary state
+    Worker->>Redis: Publish realtime event
+    Redis->>API: Socket.IO adapter delivery
+    API-->>Agent: Brand room event
+```
+
+- Queue name: `webhooks`; topics: `fb-entry`, `wa-entry`.
+- API acknowledges only after enqueue succeeds. Enqueue failure returns 500; invalid signature returns 403. Unsupported top-level webhook object types are acknowledged without processing.
+- Producer timeout is two seconds. Failures reset its connection so delayed buffered writes do not silently outlive the expected request path.
+- Worker default concurrency is 5 (`QUEUE_CONCURRENCY`). Each entry can contain several events; processing attempts events, records failures, then throws if any failed so the entry can be retried.
+- Five total attempts; exponential backoff starting at two seconds. Completed jobs retained for up to one hour / 1,000 jobs; failed jobs retained for seven days.
+- Database provider IDs are the primary duplicate defense. Delivery is not exactly-once: read-before-write checks and unique indexes do not make all preview/counter/session side effects atomic.
+- Active channel resolution checks both brand and company status. Per-process TTL caches help resolve channel metadata; they are distinct from Redis transport state.
+- Only `libraries/queue/index.ts` imports BullMQ. Add domain jobs through that wrapper rather than scattering queue setup through modules.
+
+## Conversation and session lifecycle
+
+`recordIncomingMessage` deduplicates by mid, upserts the conversation, increments unread state, calls `assignMessageToSession`, stores the message, recalculates SLA, then emits the update. Outgoing persistence follows a similar path and clears unread state.
+
+Session selection:
+
+| Existing latest session     | Message kind                     | Result                                |
+| --------------------------- | -------------------------------- | ------------------------------------- |
+| None                        | Any                              | Create sequence 1, status pending.    |
+| Resolved                    | Incoming                         | Create next sequence, status pending. |
+| Resolved                    | Explicit re-engagement send      | Create next sequence, status pending. |
+| Resolved                    | Ordinary outgoing follow-up/echo | Keep the existing session.            |
+| Pending, unresolved or hold | Incoming/outgoing                | Continue the current session.         |
+
+The newest session's status, sentiment, assignee and tags are copied onto Conversation. Updating historical sessions triggers synchronization from the latest session rather than blindly copying the historical change.
+
+Wrap-up accepts only unresolved/resolved/hold (not pending) and writes status, sentiment, sessionType, optional summary and tags. Notes and resolution summaries are limited to 8,000 characters by their input schemas. `resolvedAt` is stamped for resolved and removed for other statuses. Status/wrap-up paths clear conversation unread count and emit updates. Internal notes increment noteCount without becoming provider messages.
+
+`PATCH /sessions/:id/status` also accepts `{ "mergeWithPrevious": true }`. This invokes `mergeIntoPrevious`, which moves messages/notes to the immediately preceding session, recounts them, removes the current session, recalculates SLA and emits `session:merged`. The merge branch takes precedence over a supplied status; it preserves the previous session’s outcome rather than applying that status. This multi-document operation is not transactional.
+
+Concurrency caveat: selecting the latest session and creating the next one are separate operations. There is no unique session sequence constraint or per-conversation queue serialization in the shown paths. Parallel jobs can race; assess this when changing ingestion or increasing worker concurrency.
+
+## Customer records
+
+Customer details are accessed through `/conversations/:id/customer`. Reads establish conversation visibility first. Updates additionally enforce actionable access, find/create the channel identity, apply allowed contact fields and link customerId if absent. Platform display snapshots on Conversation and the editable Customer are related but not interchangeable; do not assume changing Customer rewrites every existing display snapshot.
+
+## Public comments
+
+Webhook handling records Facebook feed changes and Instagram comment events. The comment collection contains both roots and replies. Thread detail walks children using provider parent IDs, with brand/post constraints. List ordering uses a root's `lastActivityAt`, which is bumped by new replies.
+
+Agents can reply, change classification, assign, tag, wrap up, hide/unhide, like/unlike where supported, and delete. Moderation calls the provider and then updates local state. Facebook-specific capabilities should not be assumed available for Instagram.
+
+Deletion walks the local descendant tree. Hiding changes moderation state and can affect SLA. A customer reply after resolved wrap-up **does not reopen** the comment thread or create a new SLA cycle; it can still float the thread to the top. This differs from direct-message session creation.
+
+## Tag vocabulary
+
+Tag names normalize whitespace, strip an initial `#`, and use `/` for hierarchy. Empty levels are invalid. The maximum tags on a record is 25. Selection validates IDs against the brand vocabulary. Parent filters expand to descendants.
+
+Agents may create tags; privileged roles curate rename/archive operations. Rename handles the subtree, creates missing ancestor paths, and rejects collisions with existing vocabulary names rather than merging references. The preflight collision check and bulk write are not a transaction. Archived IDs remain useful to historical records. Use `TAGS_POPULATE` for standard read shape. Do not restore older snapshot-style embedded tags from obsolete examples.
+
+## Versioned settings and SLA
+
+Settings save body is `{ baseVersion, value }`. The service loads current version, rejects a stale base with 409, and inserts version+1. A unique index catches simultaneous competing saves. History pages by numeric version cursor, unlike timestamp-based inbox cursors.
+
+Current defaults:
+
+| Setting                              | Default                                                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| SLA tier                             | Standard                                                                                                            |
+| Standard first response / resolution | 60 / 480 business minutes                                                                                           |
+| Priority first response / resolution | 45 / 240 business minutes                                                                                           |
+| Overrides                            | Null means use tier default; `{ on: false, minutes: ... }` disables a target.                                       |
+| Business timezone                    | `Asia/Dhaka`, fixed server-side; clients do not submit it.                                                          |
+| Weekly hours                         | 09:00–21:00 Saturday–Thursday; Friday closed.                                                                       |
+| Target range                         | Production minimum 5 minutes; other environments minimum 1 minute; maximum 4,320 minutes.                           |
+| Holidays                             | Unique ISO date strings; up to 366; saved values prune dates older than the configured one-year retention boundary. |
+
+SLA snapshots use the setting versions in force when the customer first wrote, not today's settings. Outbound-only sessions have nothing to measure until a customer message exists.
+
+**First response:** earliest non-failed outgoing message at/after the first customer message. Provider acceptance without a known failure currently counts; the code does not require a delivered receipt.
+
+**Resolution:** accumulated business time during which the customer waits on the team. A wait starts with a customer message and ends at the team's last reply before the next customer message, or resolved wrap-up if unanswered. Customer silence after a reply is excluded. A later agent reply can extend the previous charged interval. Failed sends and messages after resolvedAt are excluded from the resolution calculation.
+
+At-risk threshold is 80%; target is 100%. `usedMs` stores finished charged intervals; `waitingSince` and projected atRiskAt/dueAt represent an active wait. While paused below a threshold, its date may be null. Equality at the resolution target is treated as on time by the calculation.
+
+Session SLA recalculates from stored messages on message/status/failure changes. Guards compare messagesSeen, failedMessagesSeen and resolvedAt to avoid overwriting newer computations. Failures are logged without blocking the main domain operation, so an SLA repair backfill may be needed after a processing issue.
+
+Comment SLA reuses this calculation on customer-authored roots. Only visible comments from the **root author** start waits; page replies can end them. Other participants' incoming comments do not start that root's wait. `slaRevision` guards updates.
+
+`hold` and `unresolved` remain open for SLA calculations; this is explicitly provisional in the repository notes. The business-time helper bounds calendar scanning at 400 days; schedules with no usable work windows can yield no clock.
+
+Sources: `server/src/modules/session/sla.ts`, `server/src/modules/comment/sla.ts`, `server/src/libraries/business-time/index.ts`, `settings-sla-progress-context.md`.
+
+## Overview definitions
+
+The UI mixes live API-backed metrics with illustrative data; not every visible chart has a complete backend implementation.
+
+- `/stats`: pending sessions now; unassigned means no assignee (a department assignment counts as assigned).
+- `/sla`: at-risk/breached current targets; open set includes pending, unresolved and hold. Sessions and comments can be requested separately.
+- `/engagement`: inbound counts use first customer message for sessions and customer-authored comment roots in the selected range; response rates use firstResponseAt. Current unresolved backlog includes pending+unresolved, excluding hold.
+- `/inbound-trend`: incoming versus resolved counts per day; closure uses resolvedAt.
+- `/sla-compliance`: combines session and comment targets; met targets divided by decided targets, not a naive all-record denominator.
+
+Use `server/src/modules/overview/service.ts` and its date-boundary helpers when modifying reporting. Similar-looking metrics intentionally use different open/closed sets.
+
+## Media and WhatsApp templates
+
+- Outbound attachments first upload to object storage, then send through the selected provider, then persist a Message attachment storageKey. Instagram fetch URLs have a 900-second lifetime in the attachment-send path.
+- A multi-file request sends optional text first and files sequentially. It is not all-or-nothing; earlier provider sends/uploads can succeed before a later failure.
+- WhatsApp media may be stored initially as pending metadata with mediaId. The on-demand `POST /conversations/:id/messages/:messageId/media` resolves/downloads/stores media after visibility checks. In-flight requests for the same message collapse within a process.
+- Media code uses its own timeouts and format/size rules. The on-demand route enforces a seven-day window from message time based on the integration's assumptions; this is a local implementation rule, not a freshly verified provider guarantee.
+- Hosted media chooses public URL if configured; otherwise it is signed. Permanent storageKey is authoritative; an expiring URL is not a durable storage identity.
+- Customer media failures can produce a system notice. Automatic customer replies occur only if `WHATSAPP_AUTO_REPLY_ON_MEDIA_FAILURE=true`.
+- Brand routes administer WhatsApp templates in the provider; conversation routes list sendable templates and send them. Templates are not a separate Mongo collection.
+- Send paths resolve the template from the provider/cache, check approval/quality/support constraints, validate values and construct components. Media-header templates are not supported by the current agent picker/send implementation.
+- The code distinguishes normal messages from template re-engagement, including starting a new session after resolved work. The client's messaging-window UI is not proof of a universal server-side window guard on every free-form send.
+- Current WhatsApp status handler ignores every status except `failed`; enum support for `delivered` and `read` does not mean those receipts are recorded.
+
+## Realtime contract and background work
+
+Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `message:updated`, `conversation:read`, `session:updated`, `session:merged`, `note:added`, `comment:new`, `comment:updated`, `comment:deleted`, `assignment:changed`, `brand:tags-updated`, `typing`.
+
+The API emits through Socket.IO; worker operations emit through Redis. `emitToRoom` selects the available transport and skips with a debug log if neither exists. Persistence can therefore succeed without a live event. Client consumers live in `features/inbox/use-inbox-realtime.ts`, `features/comments/use-comments-realtime.ts` and associated cache helpers.
+
+Active background work is the BullMQ webhook consumer and process heartbeat intervals. No active general-purpose cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
+

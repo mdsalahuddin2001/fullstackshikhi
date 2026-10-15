@@ -87,7 +87,7 @@ export function TopicCard({ slug, live, index }: { slug: string; live: boolean; 
 
         <div className="mt-auto pt-8">
           <span className={cn(keyButton, 'group-hover:brightness-110')}>
-            শুরু করুন
+            {slug === 'listenyzen' ? 'Explore the backend' : 'শুরু করুন'}
             <ArrowRight className={cn('size-4 transition-transform duration-500 group-hover:translate-x-1', ease)} />
           </span>
         </div>
