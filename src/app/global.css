@@ -372,3 +372,27 @@ svg[aria-roledescription='er'] rect.label-container {
 .ly-method[data-method=DELETE] { color: var(--destructive); }
 .ly-route-detail { padding: .6rem 1rem 1rem; background: var(--muted); font-size: .8rem; }
 @media (max-width: 600px) { .ly-panel-body { padding: 1rem; } .ly-entity-layout { grid-template-columns: 1fr; } .ly-model-list { flex-direction: row; flex-wrap: wrap; } .ly-system-grid { grid-template-columns: repeat(2,1fr); } .ly-form-grid { grid-template-columns: 1fr; } }
+
+/* Preserve literal source layout while showing the currently explained line. */
+.ly-panel .ly-source { margin: 1rem 0; padding: 1rem 0; max-height: 34rem; overflow: auto; border: 1px solid var(--border); border-radius: .65rem; background: var(--background); font-size: .75rem; line-height: 1.8; tab-size: 2; }
+.ly-panel .ly-source code { display: block; min-width: max-content; font-size: inherit; }
+.ly-source-line { display: inline-block; min-width: 100%; padding-right: 1rem; }
+.ly-source-line[data-highlight=true] { background: color-mix(in srgb, var(--primary) 16%, var(--background)); box-shadow: inset 3px 0 var(--primary); }
+.ly-line-number { display: inline-block; width: 3.8rem; padding-right: 1rem; text-align: right; color: var(--muted-foreground); user-select: none; }
+
+/* API reference: source-derived examples, never a live request console. */
+.ly-api-filters { margin-top: 1rem; }
+.ly-api-list article { border-top: 1px solid var(--border); }
+.ly-api .ly-api-heading { display: flex; width: 100%; gap: .65rem; padding: 1rem .25rem; border: 0; border-radius: 0; text-align: left; justify-content: flex-start; }
+.ly-api-heading code { white-space: normal; overflow-wrap: anywhere; font-size: .75rem; }
+.ly-api-heading > svg { margin-left: auto; flex-shrink: 0; }
+.ly-api-heading[aria-expanded=true] > svg { transform: rotate(180deg); }
+.ly-api-detail { padding: .5rem 0 1.5rem; font-size: .85rem; }
+.ly-api-detail > p, .ly-api-detail li { line-height: 1.7; }
+.ly-api-detail ul { padding-left: 1.4rem; list-style: disc; }
+.ly-api-detail .ly-segment { flex-wrap: wrap; }
+.ly-api-example { margin: 1rem 0; border: 1px solid var(--border); border-radius: .65rem; overflow: hidden; }
+.ly-api-example-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .6rem .8rem; background: var(--muted); font-size: .7rem; overflow-wrap: anywhere; }
+.ly-api-example-head button { flex-shrink: 0; }
+.ly-api-example pre { margin: 0; padding: 1rem; max-height: 34rem; overflow: auto; font-size: .75rem; line-height: 1.7; background: var(--background); }
+.ly-api-example code { font-size: inherit; }

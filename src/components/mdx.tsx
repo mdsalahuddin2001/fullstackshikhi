@@ -1,3 +1,5 @@
+import { ApiReference } from './listenyzen/api-reference';
+import { CodeLens } from './listenyzen/code-lens';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
 import { Step } from 'fumadocs-ui/components/steps';
@@ -13,6 +15,8 @@ import { SystemWalkthrough, RequestFlow, EntityExplorer, AccessSimulator, Sessio
 export function getMDXComponents(components?: MDXComponents) {
   return {
     ...defaultMdxComponents,
+    CodeLens,
+    ApiReference,
     img: (props) => <ImageZoom {...(props as ComponentProps<typeof ImageZoom>)} />,
     Mermaid,
     Playground,

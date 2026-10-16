@@ -1,0 +1,273 @@
+---
+title: "Code walkthrough: identity & access"
+description: "Read JWT authentication, tenant filters, assignment gates and password updates at function level."
+---
+
+## What you are tracing
+
+An agent wants to reply to a conversation. Before a provider request is made, the backend must answer four different questions: who is calling, which company they belong to, whether they can see the brand, and whether they may modify this thread.
+
+```text
+POST /conversations/:id/messages
+  → authenticate
+  → authorize(...READ_ROLES)
+  → validateParams + validateBody
+  → ensureSendableConversation
+      → loadActionableConversation
+          → loadVisibleConversation
+          → assertCanAct
+      → assertActiveChannelOwner
+      → resolveSendChannel
+  → deliverText
+```
+
+This is a call path through the current code, not a proposal for a new abstraction. Open `server/src/modules/conversation/api.ts` and follow these names in your editor.
+
+## 1. Authentication turns a token into a request principal
+
+Source: `server/src/middlewares/auth/index.ts`, starting at line 15.
+
+```typescript title="server/src/middlewares/auth/index.ts"
+export const authenticate = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    // Extract token from Authorization header or cookies
+    let token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      token = req.cookies?.access_token;
+    }
+
+    if (!token) {
+      throw new UnauthorizedError('You are not authenticated', AUTHENTICATE_FROM);
+    }
+
+    // Verify token
+    const payload = verifyAccessToken(token);
+
+    // Company suspension takes effect on the next request, even for an access token minted while
+    // the tenant was active. Super-admins bypass this because they are platform identities.
+    await assertActiveCompanyAccess(payload, AUTHENTICATE_FROM);
+
+    // Attach user to request
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      role: payload.role,
+      companyId: payload.companyId,
+      departmentId: payload.departmentId,
+    };
+    setUserId(payload.sub);
+
+    next();
+  } catch (error) {
+    // An expired token is what every active session does every 15 minutes — routine, and logging it
+    // at `error` buried the failures that are not routine. A bad signature is worth a closer look:
+    // it is either a stale deploy secret or someone forging tokens.
+    const name = error instanceof Error ? error.name : '';
+    if (name === 'TokenExpiredError') {
+      logger.info('Authentication failed: token expired', { name });
+    } else {
+      logger.warn('Authentication failed', {
+        name,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+    next(new UnauthorizedError('Unauthenticated', AUTHENTICATE_FROM));
+  }
+};
+```
+
+Read the function in four blocks:
+
+| Expression | Meaning | Why it matters |
+| --- | --- | --- |
+| `req.headers.authorization?.replace('Bearer ', '')` | Prefer the Authorization header; fall back to the cookie when absent. | A supplied invalid header is not silently replaced by a valid cookie. |
+| `verifyAccessToken(token)` | Validate the JWT using the configured access secret. | Expired or invalid tokens throw before the handler runs. |
+| `assertActiveCompanyAccess(payload, ...)` | Check current company availability. | Company deactivation can deny a still-unexpired token. |
+| `req.user = ...` | Construct the principal consumed by route and domain helpers. | The role/department here are token claims, not a freshly loaded User. |
+| `setUserId(payload.sub)` | Attach identity to AsyncLocalStorage logging context. | Downstream loggers gain userId without passing it through every function. |
+| `next()` / `next(new UnauthorizedError(...))` | Continue or enter the global error path. | The route does not need its own JWT try/catch. |
+
+The catch logs expiry at info and other failures at warn, then gives clients the normalized `Unauthenticated` error. This avoids exposing every internal authentication failure reason.
+
+## 2. A scope is a query object, not a permission check by itself
+
+Source: `server/src/auth/tenant.ts`, starting at line 23.
+
+```typescript title="server/src/auth/tenant.ts"
+export const getTenantScope = (
+  user?: Express.User
+): Record<string, never> | { companyId: string } => {
+  if (!user) {
+    throw new UnauthorizedError('Cannot scope a query without an authenticated user', comingFrom);
+  }
+  if (user.role === ROLES.SUPER_ADMIN) return {};
+  // Fall back to '' (matches nothing) rather than dropping the key, which would match everything.
+  return { companyId: user.companyId ?? '' };
+};
+```
+
+`getTenantScope` returns a Mongo filter. It does not execute a query. For a tenant user, the caller must actually apply the returned companyId to a database read/write. For super admin, the empty object intentionally means no company restriction.
+
+<CodeLens tour="scope" />
+
+For an agent in company A, department D, with user ID U, the generated brand filter is conceptually:
+
+```typescript title="Illustrative filter — identifiers abbreviated"
+{
+  companyId: 'A',
+  $or: [
+    { departmentIds: 'D' },
+    { queryManagerIds: 'U' }
+  ]
+}
+```
+
+The surrounding brand service adds `_id` and executes `Model.findOne`. Mongo combines the top-level predicates: the brand must match the ID **and** company **and** at least one assignment branch. Do not move companyId inside just one `$or` branch.
+
+## 3. Visible and actionable are deliberately different
+
+`loadVisibleConversation` first loads the conversation, then resolves its brand with `getBrandScope`. An inaccessible brand is reported as a missing conversation. A guessed Mongo ID therefore does not bypass brand access.
+
+`loadActionableConversation` reuses that visibility result, then passes the conversation’s companyId and current assignee to the following guard:
+
+Source: `server/src/auth/reply-access.ts`, starting at line 75.
+
+```typescript title="server/src/auth/reply-access.ts"
+export const assertCanAct = async (
+  user: Express.User | undefined,
+  companyId: Types.ObjectId | string,
+  assignee: AssigneeRef | undefined | null,
+  comingFrom: string
+): Promise<void> => {
+  if (!(await policyApplies(user, companyId))) return;
+
+  if (!assignee) {
+    throw new ForbiddenError(
+      'This conversation is unassigned — an owner or admin has to assign it first',
+      comingFrom
+    );
+  }
+  if (!(await pointsAtCaller(user as Express.User, assignee))) {
+    throw new ForbiddenError('This conversation is assigned to someone else', comingFrom);
+  }
+};
+```
+
+- `policyApplies` is false for owners/admins/super admins. For query managers it reads the company setting and compares it to literal `true`.
+- An unset setting behaves as off, supporting companies created before the field existed.
+- Unassigned work is rejected when the policy applies; it is not implicitly available to everyone.
+- An individual assignment compares assignee.id with user.id.
+- A department assignment reloads the caller’s current department from User. This is a deliberate fresh read rather than trusting the JWT department claim.
+- Changing assignment has a separate guard, so agents cannot defeat assigned-only access by assigning work to themselves.
+
+<Callout title="Historical session access">
+Session mutation routes delegate through the parent conversation. The current thread holder controls action on its history; an old session’s assignee is not an independent permission grant.
+</Callout>
+
+## 4. Refresh reloads the current user
+
+Source: `server/src/auth/service.ts`, starting at line 153.
+
+```typescript title="server/src/auth/service.ts"
+export const refresh = async (
+  token: string
+): Promise<{ accessToken: string; refreshToken: string }> => {
+  let payload;
+  try {
+    payload = verifyRefreshToken(token);
+  } catch (error) {
+    logger.warn(REFRESH_REJECTED, error);
+    throw new BadRequestError(REFRESH_REJECTED, REFRESH_FROM);
+  }
+
+  // Unscoped on purpose: the subject is the token's own user, so there is no tenant to scope to —
+  // the token IS the claim of identity being re-checked.
+  const user = await getById(payload.sub);
+  if (!user) {
+    throw new BadRequestError(REFRESH_REJECTED, REFRESH_FROM);
+  }
+
+  const companyId = user.companyId?.toString();
+  if (!(await hasActiveCompanyAccess({ role: user.role, companyId }))) {
+    // Do not disclose whether the token, user, or tenant caused the rejection.
+    throw new BadRequestError(REFRESH_REJECTED, REFRESH_FROM);
+  }
+
+  // TODO: save refresh token in DB or cache
+  return generateTokens({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    companyId,
+    departmentId: user.departmentId?.toString(),
+  });
+};
+```
+
+After verifying the refresh JWT, the service loads User by `payload.sub`. New tokens take role, company and department from this current record. A deleted user or inactive company is rejected.
+
+One comment in `auth/reply-access.ts` still describes older refresh behavior that reused token claims. The implementation above is the current behavior: **refresh rereads User**. This is an example of why following executable code matters more than repeating comments.
+
+## 5. Password updates have two hashing paths
+
+Creating a User calls `.save()`, which triggers the schema’s bcrypt pre-save hook. Updating an existing password through `user/service.ts` instead hashes explicitly before a query update:
+
+Source: `server/src/modules/user/service.ts`, starting at line 96.
+
+```typescript title="server/src/modules/user/service.ts"
+export const updateById = async (
+  userId: string,
+  data: Partial<Omit<IUser, 'departmentId' | 'companyId'>> & {
+    departmentId?: string | Types.ObjectId;
+    companyId?: string | Types.ObjectId;
+  },
+  scope: Scope = {}
+): Promise<IUser | null> => {
+  if (data.password) {
+    data.password = await bcrypt.hash(data.password, 10);
+  }
+  const item = await Model.findOneAndUpdate({ _id: userId, ...scope }, data, {
+    new: true,
+  }).select('-password');
+  if (!item) {
+    logger.info(`updateById(): ${model} not found`, { userId });
+    return null;
+  }
+  logger.info(`updateById(): ${model} updated`, { userId });
+  return item;
+};
+```
+
+The `if (data.password)` branch converts the plaintext password to a bcrypt hash. `findOneAndUpdate` then persists that already-hashed value and returns the new document. `.select('-password')` prevents the hash being returned.
+
+**Preserve the service path for password changes.** A raw `findOneAndUpdate` does not run the document pre-save hashing hook. Conversely, passing an already-hashed password into a `.save()` path with a modified password can hash it again. Know which path you are using.
+
+## When you add a new protected operation
+
+<Steps>
+<Step>
+### Establish identity and route role
+Use the existing middleware; do not read unverified JWT payloads yourself.
+</Step>
+<Step>
+### Resolve the resource through the correct scope
+For conversation operations, prefer the shared visible/actionable loaders. Many low-level services default to an empty scope and are not safe authorization boundaries by themselves.
+</Step>
+<Step>
+### Decide whether the operation is a mutation
+Reads need visibility. Replies, notes, status edits and customer changes also need the applicable action policy. Assignment changes have their own rule.
+</Step>
+<Step>
+### Keep provider readiness separate
+A caller can be authorized while the channel is disconnected. The send-channel helper adds operational checks after access checks.
+</Step>
+</Steps>
+
+Continue with [query construction and pagination](/docs/listenyzen/code-queries).

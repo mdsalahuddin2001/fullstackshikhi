@@ -310,7 +310,7 @@ Source: [user/schema.ts](../server/src/modules/user/schema.ts).
 - `avatar?`: local storage key with virtual `avatarUrl`.
 - Roles: `super_admin`, `company_owner`, `company_admin`, `query_manager`.
 - Password is excluded from ordinary queries via `select: false` and removed by document serialization transforms. Login/password-change explicitly select it.
-- A pre-save hook hashes modified passwords using bcrypt with cost 10. Password updates must preserve the document `save()` path; raw update queries do not automatically execute that hook.
+- A pre-save hook hashes modified passwords using bcrypt with cost 10. Creation uses the document `save()` hook. Password updates through `user/service.ts` explicitly hash before `findOneAndUpdate`; raw update queries do not automatically execute the pre-save hook.
 - Query-manager operations reuse this collection with a role filter.
 
 #### Department
@@ -1278,3 +1278,8 @@ The following inventory is extracted from mounted feature router files. Paths in
 | POST   | `/api/v1/webhooks/whatsapp`       |
 
 Outside the versioned router: `GET /health`, `GET /health/queue`, static `/uploads`, and the Socket.IO transport.
+
+
+## API examples companion
+
+See [the complete API reference](LISTENYZEN_API_REFERENCE.md) for all 111 mounted API operations and two health endpoints, including curl requests, illustrative responses, access requirements and validation declarations. The interactive version is available at `/docs/listenyzen/api-reference`.

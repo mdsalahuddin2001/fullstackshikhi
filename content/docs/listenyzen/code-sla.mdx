@@ -1,0 +1,220 @@
+---
+title: "Code walkthrough: settings & SLA"
+description: "Read append-only settings, historical policy lookup, full-history calculation and guarded writes."
+---
+
+## Separate policy, calculation and persistence
+
+Three responsibilities cooperate:
+
+```text
+settings/service.ts       Which policy version applied at the clock start?
+         ↓
+session/sla.ts           What do stored messages imply about response and waiting?
+         ↓
+slaWrite + bulkWrite     Is this calculation still safe to persist?
+```
+
+The UI does not send a precomputed due date. The backend derives it from stored business events and the settings applicable at that time.
+
+## 1. Saving settings appends history
+
+The route first resolves an authorized brand, validates `{ baseVersion, value }`, selects the definition for the setting type and parses its value. Only then does it call `save`.
+
+<CodeLens tour="settings" />
+
+For example, two editors read version 3. Both request a save with baseVersion 3. The first insert creates version 4. The second either sees version 4 during the initial read or loses the unique-index race when inserting another version 4. Both failure paths become ConflictError, HTTP 409.
+
+The uniqueness key includes scope, scopeId, type and version. SLA and business-hours are independent version streams. The changedBy name is copied so a history entry remains readable if the user is renamed.
+
+<Callout title="The authorization boundary is the caller">
+Settings service lookups use scope, scopeId and type. The route resolves these from a visible Brand; it does not accept arbitrary scope IDs as proof of access. Keep this boundary if you expose additional setting scopes later.
+</Callout>
+
+## 2. Defaults are virtual version zero
+
+`getCurrent` returns the latest saved record or a synthesized default with version 0, changedBy null and savedAt null. No insert is needed just to read defaults.
+
+`getAt(owner, type, at)` restricts records to `createdAt <= at`, then selects the latest matching version. This allows an older episode to use the policy that existed when it started. Changing today’s target does not retroactively rewrite the setting history.
+
+SLA state stores slaVersion and hoursVersion so the chosen policy is visible on the record. Default tier values still come from code; changing those defaults can affect computations that use virtual version zero, especially a full recomputation.
+
+## 3. Compute from stored messages, not event arrival order
+
+Source: `server/src/modules/session/sla.ts`, starting at line 226.
+
+```typescript title="server/src/modules/session/sla.ts"
+export const computeSessionSla = async (
+  session: SlaSessionRef
+): Promise<SessionSlaState | null> => {
+  const messages = await MessageModel.find({ sessionId: session._id })
+    .select({ direction: 1, sentAt: 1, deliveryStatus: 1 })
+    .lean<SlaMessage[]>();
+  const start = messages
+    .filter(message => message.direction === 'incoming')
+    .reduce<Date | null>(
+      (min, message) => (!min || message.sentAt < min ? message.sentAt : min),
+      null
+    );
+  if (!start) return null;
+
+  const firstResponseAt = firstResponseAfter(messages, start);
+
+  const sla = await buildSlaState(
+    session.brandId,
+    session.companyId,
+    start,
+    messages,
+    session.resolvedAt
+  );
+
+  return {
+    firstCustomerMessageAt: start,
+    firstResponseAt,
+    sla: {
+      ...sla,
+      messagesSeen: messages.length,
+      failedMessagesSeen: messages.filter(message => message.deliveryStatus === 'failed').length,
+    },
+  };
+};
+```
+
+Walk through the return value:
+
+| Value | How it is derived |
+| --- | --- |
+| `firstCustomerMessageAt` | Minimum sentAt among incoming messages. No incoming message means no measurable session SLA. |
+| `firstResponseAt` | Earliest outgoing message at/after the customer start whose deliveryStatus is not failed. |
+| `sla` | Historical policy plus the first-response and resolution clocks. |
+| `messagesSeen` | Number of message records included in this computation. |
+| `failedMessagesSeen` | Number whose known deliveryStatus is failed. |
+
+The query selects only the fields needed for the calculation and uses lean objects. It still reads every message in the session. This trades bounded simplicity for work proportional to session history; do not assume a constant-cost update when sessions get large.
+
+<details>
+<summary>Does “first response” mean a delivery receipt was received?</summary>
+
+No. The predicate excludes failed sends; it does not require `deliveryStatus === 'delivered'`. A provider-accepted send counts until a known failure disqualifies it. That distinction matters because current WhatsApp processing does not persist ordinary delivered/read receipt transitions.
+
+</details>
+
+## 4. Resolution splits messages into customer waits
+
+The internal `waitsOf` calculation sorts by sentAt, removes failed messages and excludes messages beyond resolvedAt for the resolution clock. It tracks two local variables:
+
+- `waitStart`: first customer message in the current unanswered interval.
+- `lastReply`: latest team reply after that wait started.
+
+An incoming message after a team reply closes the prior interval at lastReply and begins a new wait. A second customer message before any team reply keeps the same waitStart. At the end, a reply or resolvedAt closes the remaining interval; otherwise it remains running.
+
+Example entirely within working hours:
+
+```text
+09:00 customer writes       waitStart = 09:00
+09:05 customer adds detail  waitStart stays 09:00
+09:10 agent acknowledges   lastReply = 09:10
+09:20 agent gives answer   lastReply = 09:20
+10:00 customer writes       close 09:00–09:20; start at 10:00
+10:05 agent replies         close 10:00–10:05
+
+Elapsed: 65 minutes
+Charged: 20 + 5 = 25 business minutes
+Excluded customer silence: 09:20–10:00
+```
+
+The business-time library charges only configured working intervals, excluding closed days and holidays. The same wall-clock sequence can therefore yield fewer charged minutes when it crosses a closed interval.
+
+<SlaClock />
+
+## 5. A calculation must not overwrite a newer one
+
+Source: `server/src/modules/session/sla.ts`, starting at line 274.
+
+```typescript title="server/src/modules/session/sla.ts"
+export const slaWrite = (session: SlaSessionRef, state: SessionSlaState): SlaWrite => ({
+  updateOne: {
+    filter: {
+      _id: session._id,
+      resolvedAt: session.resolvedAt ?? { $exists: false },
+      $and: [
+        {
+          $or: [
+            { 'sla.messagesSeen': { $exists: false } },
+            { 'sla.messagesSeen': { $lte: state.sla.messagesSeen } },
+          ],
+        },
+        {
+          $or: [
+            { 'sla.failedMessagesSeen': { $exists: false } },
+            { 'sla.failedMessagesSeen': { $lte: state.sla.failedMessagesSeen } },
+          ],
+        },
+      ],
+    },
+    update: {
+      $set: {
+        firstCustomerMessageAt: state.firstCustomerMessageAt,
+        sla: state.sla,
+        ...(state.firstResponseAt ? { firstResponseAt: state.firstResponseAt } : {}),
+      },
+      ...(state.firstResponseAt ? {} : { $unset: { firstResponseAt: '' as const } }),
+    },
+  },
+});
+```
+
+This function returns a Mongo bulkWrite operation; it does not execute it. Its filter is an optimistic guard:
+
+1. The session ID must match.
+2. resolvedAt must still match the value read before calculation (or still be absent).
+3. No already-persisted SLA may have seen more messages.
+4. No already-persisted SLA may have seen more failed messages.
+
+Suppose calculation A reads five messages, then B reads six and saves first. A’s messagesSeen 5 cannot overwrite B’s messagesSeen 6. If a send later becomes failed, failedMessagesSeen prevents an older success-only calculation from replacing the newer failure-aware state.
+
+The update sets firstCustomerMessageAt and SLA. It conditionally sets firstResponseAt or explicitly unsets it. Unset matters when the only qualifying response later fails: leaving the old date would falsely claim that a response still qualifies.
+
+These guards protect the specific monotonic counters and resolution state shown here. They are not a universal transaction or general document revision check for every possible future message edit/deletion.
+
+## 6. Synchronization is deliberately best-effort
+
+Source: `server/src/modules/session/sla.ts`, starting at line 317.
+
+```typescript title="server/src/modules/session/sla.ts"
+export const syncSessionSla = async (sessionId: Types.ObjectId | string): Promise<void> => {
+  try {
+    const session = await SessionModel.findById(sessionId).select(SLA_SESSION_FIELDS).lean();
+    if (!session) return;
+    const state = await computeSessionSla(session);
+    if (state) await SessionModel.bulkWrite([slaWrite(session, state)]);
+  } catch (error) {
+    logger.error('syncSessionSla(): failed', { sessionId: String(sessionId), error });
+  }
+};
+```
+
+The wrapper loads only session reference fields, computes state, and executes one guarded bulkWrite. Any exception is logged and swallowed. This preserves ingestion/status progress when timing calculation fails, but means successful message storage does not guarantee fresh SLA fields.
+
+Investigate `syncSessionSla(): failed` logs when derived timing is missing. The repair scripts can recompute existing data; confirm whether default behavior or `--all` matches the intended repair before applying it.
+
+## 7. Comments reuse the clock, not the session storage model
+
+`comment/sla.ts` uses the root comment as the timing record. It traverses descendants within the same brand/post, includes page replies and only visible incoming comments by the root author, then calls the shared SLA builder.
+
+Because comment deletion/hiding can change a thread without monotonically increasing a message count, comment synchronization uses `slaRevision`. Every relevant thread mutation bumps the root revision; the final write only applies when it still matches. A reply after resolved wrap-up does not create a new comment SLA cycle in the current implementation.
+
+## A safe way to extend SLA behavior
+
+Before changing a status or timing rule, decide all of these together:
+
+- Which stored events begin/end a wait?
+- Which historical policy version should be used?
+- What makes an earlier calculation stale?
+- Which mutation paths trigger recomputation?
+- Which overview aggregations depend on the persisted dates?
+- How will existing records be brought into the new representation?
+
+Changing only the UI’s color threshold will not change backend dueAt values or aggregation semantics. Conversely, changing the backend clock without updating the explanation and client labels can make correct data look contradictory.
+
+Return to [business workflows](/docs/listenyzen/workflows) for the complete domain context, or [local development](/docs/listenyzen/development) for the repair commands.

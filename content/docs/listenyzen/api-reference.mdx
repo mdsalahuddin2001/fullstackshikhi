@@ -1,9 +1,79 @@
 ---
 title: "API route reference"
-description: "A searchable catalog of all 111 mounted routes in the inspected backend."
+description: "All 111 API routes and two health endpoints, with curl requests, example responses, access rules and source-level validation."
 ---
 
-<EndpointExplorer />
+## Read the examples
+
+This reference covers **111 mounted API operations and two health endpoints**, inspected at revision `aebd2800` on October 15, 2026. Examples are derived from source; they are not captured live responses. Entity objects show a **compact selection of fields**. Audit fields, optional properties, virtuals and populated references may also appear in actual responses.
+
+[Download the complete API reference as Markdown](/downloads/LISTENYZEN_API_REFERENCE.md)
+
+Set `BASE_URL` to your backend origin, without `/api/v1`. Use the port from your backend configuration; the documentation site is a separate app.
+
+```bash
+export BASE_URL='http://localhost:5000'
+```
+
+Login first. Examples save and reuse authentication cookies using `-b cookies.txt -c cookies.txt`. Login and refresh set HttpOnly cookies; JWTs are not returned in their JSON bodies. An existing access token can also be sent with `Authorization: Bearer <ACCESS_TOKEN>`.
+
+Replace fictional ObjectIds with records visible to your account. Provider codes, signatures, tokens and URLs are placeholders. The copy buttons only copy text; running a mutation command yourself performs a real operation.
+
+<ApiReference />
+
+## Shared input rules
+
+- JSON bodies generally use strict Zod objects: omit unsupported keys. The validation panel shows the actual route declarations.
+- Offset lists use `page` and `limit`. Inbox cursor lists reject `page` and custom `sort`. Send the returned `nextCursor` unchanged for the next page.
+- Settings history uses a numeric version cursor, separate from the opaque inbox cursor format.
+- Overview ranges use inclusive Asia/Dhaka dates: send both `from` and `to`, or neither. The default is the last 30 days, with a one-year maximum.
+- Multipart requests use `logo`, `avatar`, `file` or `files` according to the endpoint. Brand creation requires its logo. Allow curl/browser to generate the multipart boundary.
+- Tenant create routes use the caller's company; a super administrator must supply `companyId` where that schema supports it.
+
+## Shared errors and exceptions
+
+| HTTP | Meaning |
+| --- | --- |
+| 400 | Invalid body, query, provider configuration or state. |
+| 401 | Missing/expired access token or an authentication failure. |
+| 403 | Role, assignment policy or provider signature denies the operation. |
+| 404 | Missing or invisible resource; manual WhatsApp connect also uses this when disabled. |
+| 409 | Version conflict while saving settings. Reload the current version before retrying. |
+| 429 | Request or credential rate limit reached. |
+| 500 | Internal, provider or queue failure; inspect the relevant handler and logs. |
+
+```json title="Typical application error"
+{ "success": false, "status": "error", "message": "Brand not found" }
+```
+
+Validation errors can add `errors`; nonproduction responses may include `comingFrom`. Login credential failures can return only a `message` field. Credential rate limiting returns `success: false` and `message`, without the normal `status` field. Webhook handlers use plain status text; OAuth callbacks redirect. The health endpoints have independent JSON shapes.
+
+Provider acceptance and local persistence are separate steps. After an outbound timeout or error, inspect the conversation before retrying to avoid duplicate sends.
+
+## Settings payload variants
+
+The endpoint examples select `type=sla`. The same three settings routes also accept `type=business-hours`. Read the current version first, then PUT its version as `baseVersion`:
+
+```json title="PUT /api/v1/brands/:brandId/settings/business-hours"
+{
+  "baseVersion": 0,
+  "value": {
+    "days": [
+      { "day": "Saturday", "open": true, "opens": "09:00", "closes": "21:00" },
+      { "day": "Sunday", "open": true, "opens": "09:00", "closes": "21:00" },
+      { "day": "Monday", "open": true, "opens": "09:00", "closes": "21:00" },
+      { "day": "Tuesday", "open": true, "opens": "09:00", "closes": "21:00" },
+      { "day": "Wednesday", "open": true, "opens": "09:00", "closes": "21:00" },
+      { "day": "Thursday", "open": true, "opens": "09:00", "closes": "21:00" },
+      { "day": "Friday", "open": false, "opens": "09:00", "closes": "21:00" }
+    ],
+    "holidays": []
+  }
+}
+```
+
+Every weekday must occur once. Opening time must precede closing time on an open day; overnight ranges are unsupported. Do not send `timezone`: the server adds `Asia/Dhaka` to the saved value. The response is `{ success, message, data }`, with `data.type`, `version`, `value`, `changedBy`, and `savedAt`. GET before the first save returns virtual version zero with null audit values; history includes saved versions only.
+
 
 ## How to trace an endpoint
 

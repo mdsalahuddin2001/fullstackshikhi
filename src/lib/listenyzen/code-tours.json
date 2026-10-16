@@ -1,0 +1,106 @@
+{
+  "scope": {
+    "file": "server/src/auth/tenant.ts",
+    "line": 42,
+    "code": "export const getBrandScope = (\n  user?: Express.User\n): { companyId?: string; $or?: Record<string, unknown>[] } => {\n  const scope = getTenantScope(user);\n  // Not optional-chained: getTenantScope above throws when there is no user, so reaching this line\n  // means there is one. Chaining here would imply otherwise.\n  if (user!.role === ROLES.QUERY_MANAGER) {\n    // Matching a scalar against an array field means \"array contains it\". Fall back to ''\n    // (matches nothing) if the token somehow lacks a department.\n    return {\n      ...scope,\n      $or: [{ departmentIds: user!.departmentId ?? '' }, { queryManagerIds: user!.id }],\n    };\n  }\n  return scope;\n};",
+    "title": "Build the brand visibility filter",
+    "notes": [
+      {
+        "label": "Start with the tenant",
+        "line": 3,
+        "detail": "This first filter restricts tenant roles to their own company. The super-admin scope is empty."
+      },
+      {
+        "label": "Narrow agent access",
+        "line": 6,
+        "detail": "Only the query-manager role gets the extra assignment filter. Owners/admins retain their company-wide brand visibility."
+      },
+      {
+        "label": "Keep both constraints",
+        "line": 10,
+        "detail": "The spread preserves companyId. The OR beneath it is evaluated within that tenant restriction, not instead of it."
+      },
+      {
+        "label": "Accept either access path",
+        "line": 11,
+        "detail": "The agent can be assigned individually or through a department. Missing department uses an empty value, not an unrestricted branch."
+      },
+      {
+        "label": "Return elevated-role scope",
+        "line": 14,
+        "detail": "For other roles the existing tenant scope is enough. This function builds data; the later query executes the restriction."
+      }
+    ]
+  },
+  "ingestion": {
+    "file": "server/src/modules/conversation/service.ts",
+    "line": 368,
+    "code": "export const recordIncomingMessage = async (\n  input: IncomingMessageInput\n): Promise<{ conversation: IConversation; message: IMessage } | null> => {\n  if (input.mid) {\n    const existing = await MessageModel.findOne({ mid: input.mid });\n    if (existing) {\n      logger.info('recordIncomingMessage(): duplicate webhook ignored', { mid: input.mid });\n      const conversation = await ConversationModel.findById(existing.conversationId);\n      return conversation ? { conversation, message: existing } : null;\n    }\n  }\n\n  const conversation = await upsertConversation(\n    input,\n    { text: input.preview ?? input.text, at: input.sentAt, direction: 'incoming' },\n    true\n  );\n\n  const session = await assignMessageToSession({\n    conversationId: conversation._id,\n    brandId: conversation.brandId,\n    companyId: conversation.companyId,\n    platform: input.platform,\n    direction: 'incoming',\n    sentAt: input.sentAt,\n  });\n\n  const message = await MessageModel.create({\n    conversationId: conversation._id,\n    sessionId: session.id,\n    brandId: conversation.brandId,\n    platform: input.platform,\n    direction: 'incoming',\n    mid: input.mid,\n    senderId: input.senderId,\n    text: input.text,\n    system: input.system,\n    attachments: input.attachments ?? [],\n    sentAt: input.sentAt,\n  });\n\n  // After the insert, so the SLA clock is worked out from a view that includes this message. Every\n  // message can move the resolution clock (it starts or ends a wait), so this always runs.\n  await syncSessionSla(session.id);\n\n  logger.info('recordIncomingMessage(): stored inbound message', {\n    conversationId: String(conversation._id),\n    mid: input.mid,\n  });\n  emitToRoom(brandRoom(String(conversation.brandId)), EVENTS.MESSAGE_NEW, {\n    conversationId: String(conversation._id),\n    brandId: String(conversation.brandId),\n    message,\n    conversation,\n  });\n  return { conversation, message };\n};",
+    "title": "Read an incoming-message write path",
+    "notes": [
+      {
+        "label": "Check the provider ID",
+        "line": 3,
+        "detail": "A repeated provider message can return the existing record. This early read is a convenience, not an atomic lock."
+      },
+      {
+        "label": "Update the inbox preview",
+        "line": 12,
+        "detail": "This write can increment unread state before Message.create succeeds. It is a separate database operation."
+      },
+      {
+        "label": "Choose the episode",
+        "line": 18,
+        "detail": "The latest episode and message direction determine whether to continue or create a session."
+      },
+      {
+        "label": "Persist the message",
+        "line": 27,
+        "detail": "Store references to conversation and session plus the provider identity. The sparse unique mid index rejects duplicate IDs."
+      },
+      {
+        "label": "Refresh derived timing",
+        "line": 43,
+        "detail": "SLA recomputes from stored messages. Its own error handling avoids blocking a successfully stored message."
+      },
+      {
+        "label": "Notify the room",
+        "line": 49,
+        "detail": "Persistence happens before the event. The transport is Socket.IO in the API or Redis emitter in the worker."
+      }
+    ]
+  },
+  "settings": {
+    "file": "server/src/modules/settings/service.ts",
+    "line": 63,
+    "code": "export const save = async (\n  owner: Owner,\n  type: SettingType,\n  baseVersion: number,\n  value: unknown,\n  changedBy: { id: string; name: string }\n): Promise<SettingView> => {\n  const latest = await findLatest(owner, type);\n  const current = latest?.version ?? 0;\n  if (baseVersion !== current) {\n    throw new ConflictError(\n      `Settings changed since you opened them (now version ${current}). Reload and try again.`,\n      comingFrom\n    );\n  }\n\n  try {\n    const doc = await modelOf(type).create({\n      scope: owner.scope,\n      scopeId: owner.scopeId,\n      companyId: owner.companyId,\n      version: current + 1,\n      value,\n      changedBy,\n    });\n    logger.info(`save(): ${type} setting saved`, {\n      scopeId: String(owner.scopeId),\n      version: doc.version,\n    });\n    return toView(doc);\n  } catch (error) {\n    // A concurrent save took this version first.\n    if ((error as { code?: number }).code === DUPLICATE_KEY) {\n      throw new ConflictError(\n        'Settings were just changed by someone else. Reload and try again.',\n        comingFrom\n      );\n    }\n    throw error;\n  }\n};",
+    "title": "Understand optimistic configuration saves",
+    "notes": [
+      {
+        "label": "Read the current version",
+        "line": 7,
+        "detail": "Load the latest saved setting for this scope and type. An unsaved setting has virtual version zero."
+      },
+      {
+        "label": "Detect a stale editor",
+        "line": 9,
+        "detail": "A caller must save against the version it read. A mismatch is a conflict, so the editor should reload rather than overwrite."
+      },
+      {
+        "label": "Append a version",
+        "line": 17,
+        "detail": "Select the discriminator model for the setting type. Insert a new record instead of updating the previous one."
+      },
+      {
+        "label": "Advance the version",
+        "line": 21,
+        "detail": "The unique scope/type/version index arbitrates simultaneous writers. History is retained in the same collection."
+      },
+      {
+        "label": "Handle a race",
+        "line": 32,
+        "detail": "Two callers may both read the same current value. Translate the losing insert into a 409 conflict."
+      }
+    ]
+  }
+}

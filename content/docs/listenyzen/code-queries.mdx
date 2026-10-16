@@ -1,0 +1,209 @@
+---
+title: "Code walkthrough: queries & pagination"
+description: "Understand how validated filters become Mongoose reads and why cursor pagination needs a compound order."
+---
+
+## Start at the feature, not at the utility
+
+`GET /conversations` first proves brand visibility in the router. Only then does it call this service with the accepted brandId, parsed query, and server-derived assignment/tag restrictions:
+
+Source: `server/src/modules/conversation/service.ts`, starting at line 72.
+
+```typescript title="server/src/modules/conversation/service.ts"
+export const listConversations = async (
+  brandId: string,
+  query: SearchQuery,
+  { assigneeIds, tagIds }: ListNarrowing = {}
+): Promise<CursorPaginatedData<IConversation>> => {
+  const builder = createQueryBuilder(QUERY_CONFIG)
+    .query(ConversationModel, query)
+    .where({ brandId });
+  if (assigneeIds?.length) {
+    builder.where({ 'assignee.id': { $in: assigneeIds } });
+  }
+  if (tagIds?.length) builder.where({ tags: { $in: tagIds } });
+  return builder
+    .lean()
+    .cursorPaginate({ sortField: 'lastMessageAt', direction: -1 })
+    .execute<IConversation>();
+};
+```
+
+### Read the fluent chain from top to bottom
+
+1. `createQueryBuilder(QUERY_CONFIG)` creates **a fresh mutable builder**. Share configuration constants, not builder instances between requests.
+2. `.query(ConversationModel, query)` establishes the model and input parameters.
+3. `.where({ brandId })` adds a server-controlled boundary. Optional `assigneeIds` and expanded `tagIds` add further narrowing.
+4. `.lean()` requests plain objects. This avoids document instances but also bypasses document serialization transforms and virtuals.
+5. `.cursorPaginate(...)` fixes the date field and direction for the endpoint.
+6. `.execute<IConversation>()` parses allowed input, constructs the query, executes it and produces the typed result shape.
+
+The TypeScript generic documents the expected result; it does not independently validate database output at runtime.
+
+<Callout type="warn" title="Keep scopes separate from user input">
+The feature config allowlists searchable/filterable/sortable fields. The router validates the request. The service adds mandatory server-derived filters. All three layers matter; none is a substitute for the others.
+</Callout>
+
+## The query builder has three execution modes
+
+| Call | Runtime path | Result before HTTP serialization |
+| --- | --- | --- |
+| No pagination modifier | `executeStandardQuery` | An array. |
+| `.paginate()` | `executeWithPagination` | Items plus page/count metadata. |
+| `.cursorPaginate(config)` | `executeWithCursorPagination` | Items plus hasNext/nextCursor metadata. |
+
+The builder’s generic mode changes with the modifier. Internally it uses a type assertion where runtime mode and TypeScript’s generic cannot be connected automatically. Do not infer that every `.execute()` call has the same response shape.
+
+## Cursor execution does not count every matching document
+
+Source: `server/src/libraries/query/QueryBuilder.ts`, starting at line 436.
+
+```typescript title="server/src/libraries/query/QueryBuilder.ts"
+  private async executeWithCursorPagination<T>(
+    filter: Record<string, any>,
+    select: string[],
+    config: CursorPaginationConfig
+  ): Promise<CursorPaginatedData<T>> {
+    const limit = Math.min(
+      Math.max(Number(this.queryParams.limit) || this.config.defaultLimit, 1),
+      this.config.maxLimit
+    );
+    const finalFilter = this.addCursorToFilter(filter, config);
+    let query = this.model.find(finalFilter).maxTimeMS(this.config.queryTimeout);
+
+    if (this.customSelect || select.length > 0) {
+      query = query.select(this.customSelect || select.join(' '));
+    }
+
+    if (this.projection) {
+      query = query.select(this.projection);
+    }
+
+    if (this.populateFields.length > 0) {
+      query = query.populate(this.populateFields);
+    }
+
+    if (this.isLean) {
+      query = query.lean();
+    }
+
+    if (this.indexHint) {
+      query = query.hint(this.indexHint);
+    }
+
+    if (this.collation) {
+      query = query.collation(this.collation);
+    }
+
+    const found = (await query
+      .sort({ [config.sortField]: config.direction, _id: config.direction })
+      .limit(limit + 1)) as T[];
+    return this.buildCursorResult(found, limit, config.sortField);
+  }
+```
+
+The first block clamps the page size. `addCursorToFilter` adds the boundary without removing the original scope. Projection, population, lean, hints and collation are applied before the final query.
+
+The two key lines at the end are the compound sort and `limit + 1`. If the client asks for 20 records, fetching 21 establishes whether another page exists. The extra record is not returned; the next cursor comes from the last returned record.
+
+Offset pagination follows a different path: `.skip()` plus `.limit()`, alongside `countDocuments`. That is useful when total pages are required but can cost more as offsets grow.
+
+## Why the cursor includes both a date and an ID
+
+Suppose newest-first rows have these positions:
+
+| Row | lastMessageAt | _id suffix |
+| --- | --- | --- |
+| A | 12:00 | 09 |
+| B | 12:00 | 08 |
+| C | 11:59 | 07 |
+
+After returning A, a cursor containing only `12:00` cannot distinguish A from B. The tie-breaker says “older timestamp, **or** same timestamp and smaller ID.”
+
+Source: `server/src/libraries/query/cursorPagination.ts`, starting at line 58.
+
+```typescript title="server/src/libraries/query/cursorPagination.ts"
+export const buildDateCursorFilter = (
+  sortField: string,
+  direction: 1 | -1,
+  position: DateCursorPosition
+): Record<string, unknown> => {
+  const operator = direction === -1 ? '$lt' : '$gt';
+  return {
+    $or: [
+      { [sortField]: { [operator]: position.value } },
+      { [sortField]: position.value, _id: { [operator]: position.id } },
+    ],
+  };
+};
+```
+
+For descending order, the operator is `$lt`; for ascending order it becomes `$gt`. The query compares dates first and IDs only when dates tie. The expected compound index follows the same field order after the scope prefix.
+
+This yields deterministic tie handling, not an immutable snapshot. If another message updates a conversation’s lastMessageAt between page requests, its position can move. Clients still need sensible realtime/cache reconciliation.
+
+## A cursor is encoded data, not authorization
+
+Source: `server/src/libraries/query/cursorPagination.ts`, starting at line 22.
+
+```typescript title="server/src/libraries/query/cursorPagination.ts"
+export const decodeDateCursor = (cursor: string, expectedSortField: string): DateCursorPosition => {
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<
+      string,
+      unknown
+    >;
+    const value = new Date(String(decoded.value));
+    const id = String(decoded.id);
+    if (
+      decoded.version !== 1 ||
+      decoded.sortField !== expectedSortField ||
+      Number.isNaN(value.getTime()) ||
+      !Types.ObjectId.isValid(id)
+    ) {
+      throw new Error('Invalid cursor payload');
+    }
+    return { value, id: new Types.ObjectId(id) };
+  } catch {
+    throw new BadRequestError('Invalid pagination cursor', COMING_FROM);
+  }
+};
+```
+
+The decoder validates version, expected sortField, date and ObjectId. It converts the date string back to Date and the ID back to ObjectId before constructing the Mongo condition. Invalid input becomes a 400 AppError.
+
+The cursor is base64url JSON, not encrypted or signed. This is acceptable only because the server reapplies tenant/brand filters independently. Possessing a cursor never grants access to another brand.
+
+<details>
+<summary>Why can I not send sort or page on this endpoint?</summary>
+
+The cursor describes a position in a specific fixed order. A different sort invalidates that position. The strict cursor-list schema explicitly rejects `sort` and legacy `page`, rather than silently returning the wrong slice. Settings history is a separate exception: it pages by version number, not this date cursor.
+
+</details>
+
+## What the response helper changes
+
+The service returns `{ items, pagination }`. `paginatedSuccessResponse` sends `{ success, message, data: items, pagination }`. This is why a client should read `response.data.data` for the items, rather than expecting an `items` property inside the API data field.
+
+## Recipe: adding a conversation filter
+
+<Steps>
+<Step>
+### Validate the public input
+Extend `listConversationsSchema` with the exact supported shape and any coercion. Unknown keys are rejected on this cursor list.
+</Step>
+<Step>
+### Decide where the filter belongs
+A simple allowed stored field may fit QUERY_CONFIG. A domain filter such as a tag subtree needs service work before the database read. Caller-controlled filters must not replace the mandatory brand predicate.
+</Step>
+<Step>
+### Match the index to the access path
+Use the scoped field, optional filter field and fixed sort pair when planning a compound index. Production autoIndex is disabled; a schema declaration alone does not deploy it.
+</Step>
+<Step>
+### Preserve the client contract
+Keep ordering and nextCursor semantics stable, and update client query keys when a filter changes the result set.
+</Step>
+</Steps>
+
+Continue with [message persistence and session assignment](/docs/listenyzen/code-ingestion).
