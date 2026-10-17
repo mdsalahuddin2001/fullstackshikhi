@@ -25,7 +25,7 @@ This is a call path through the current code, not a proposal for a new abstracti
 
 ## 1. Authentication turns a token into a request principal
 
-Source: `server/src/middlewares/auth/index.ts`, starting at line 15.
+Source: `server/src/middlewares/auth/index.ts`.
 
 ```typescript title="server/src/middlewares/auth/index.ts"
 export const authenticate = async (
@@ -97,7 +97,7 @@ The catch logs expiry at info and other failures at warn, then gives clients the
 
 ## 2. A scope is a query object, not a permission check by itself
 
-Source: `server/src/auth/tenant.ts`, starting at line 23.
+Source: `server/src/auth/tenant.ts`.
 
 ```typescript title="server/src/auth/tenant.ts"
 export const getTenantScope = (
@@ -136,7 +136,7 @@ The surrounding brand service adds `_id` and executes `Model.findOne`. Mongo com
 
 `loadActionableConversation` reuses that visibility result, then passes the conversation’s companyId and current assignee to the following guard:
 
-Source: `server/src/auth/reply-access.ts`, starting at line 75.
+Source: `server/src/auth/reply-access.ts`.
 
 ```typescript title="server/src/auth/reply-access.ts"
 export const assertCanAct = async (
@@ -172,7 +172,7 @@ Session mutation routes delegate through the parent conversation. The current th
 
 ## 4. Refresh reloads the current user
 
-Source: `server/src/auth/service.ts`, starting at line 153.
+Source: `server/src/auth/service.ts`.
 
 ```typescript title="server/src/auth/service.ts"
 export const refresh = async (
@@ -219,7 +219,7 @@ One comment in `auth/reply-access.ts` still describes older refresh behavior tha
 
 Creating a User calls `.save()`, which triggers the schema’s bcrypt pre-save hook. Updating an existing password through `user/service.ts` instead hashes explicitly before a query update:
 
-Source: `server/src/modules/user/service.ts`, starting at line 96.
+Source: `server/src/modules/user/service.ts`.
 
 ```typescript title="server/src/modules/user/service.ts"
 export const updateById = async (

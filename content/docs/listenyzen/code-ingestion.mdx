@@ -52,7 +52,7 @@ There is no general “only if newer” timestamp condition on that preview upda
 
 ## 3. Session assignment selects a business episode
 
-Source: `server/src/modules/session/service.ts`, starting at line 151.
+Source: `server/src/modules/session/service.ts`.
 
 ```typescript title="server/src/modules/session/service.ts"
 export const assignMessageToSession = async (input: AssignInput): Promise<AssignedSession> => {
@@ -111,7 +111,7 @@ The required sequence has no schema default: the creating path must derive it. I
 
 ### Branch B — continue an episode
 
-Otherwise, the service updates lastActivityAt and increments messageCount on the existing session. It returns the session’s ObjectId so Message can reference it. Ordinary outgoing follow-ups to a resolved episode remain in that episode; unresolved and hold also continue.
+Otherwise, the service updates lastActivityAt and increments messageCount on the existing session. It returns the session’s ObjectId so Message can reference it. Ordinary outgoing follow-ups to a resolved episode remain in that episode; unresolved and hold also reuse the episode. After the message insert, `onMessageStored` may return that same episode to pending: a new customer message reopens unresolved, while a qualifying non-automatic outgoing reply ends hold.
 
 The function increments a counter before the subsequent message insert. A later insertion failure can therefore leave a counter that requires reconciliation. There is no cross-document transaction around this sequence.
 
@@ -123,7 +123,7 @@ Attachments are embedded subdocuments, not references to the generic File model.
 
 ## 5. Session changes synchronize the current summary
 
-Source: `server/src/modules/session/service.ts`, starting at line 60.
+Source: `server/src/modules/session/service.ts`.
 
 ```typescript title="server/src/modules/session/service.ts"
 const syncConversationFromLatestSession = async (
@@ -193,3 +193,7 @@ Attachment sends can also partially succeed. The request sends optional text and
 | Persist a delivery status | WhatsApp status handler + message service | Monotonic status handling, failure semantics, SLA recomputation. |
 
 Continue with [versioned settings and guarded SLA writes](/docs/listenyzen/code-sla).
+
+## Status transitions follow message persistence
+
+The current ingestion path calls `onMessageStored` after inserting Message. It applies the pending rules, synchronizes the conversation summary and refreshes SLA. When status changed, `reloadConversation` ensures the emitted message event contains the updated summary. See [hold and reopening code](/docs/listenyzen/code-status) for timestamp guards and the distinction between provider rejection and a later delivery failure.

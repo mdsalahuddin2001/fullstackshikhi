@@ -17,110 +17,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/companies/me"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/companies/me/settings"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/companies/me/settings"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/companies"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/companies"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/companies/:id"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/companies/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/companies/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/users"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/users"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/users/me"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/users/:id"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/users/me"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/users/me/change-password"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/users/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/users/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/departments"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/departments"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/departments/:id"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/departments/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/departments/:id"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/query-managers"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/query-managers"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/query-managers/:id"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/query-managers/:id"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/query-managers/:id"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/brands"
   },
   {
@@ -156,84 +52,76 @@
     "path": "/api/v1/brands/:id"
   },
   {
-    "method": "GET",
-    "path": "/api/v1/conversations"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/conversations/:id/messages"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/conversations/:id/sessions"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/conversations/:id/stats"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/conversations/:id/customer"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/conversations/:id/customer"
-  },
-  {
     "method": "POST",
-    "path": "/api/v1/conversations/:id/messages"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/conversations/:id/attachments"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/conversations/:id/messages/:messageId/reaction"
+    "path": "/api/v1/brands/:id/facebook/connect"
   },
   {
     "method": "DELETE",
-    "path": "/api/v1/conversations/:id/messages/:messageId/reaction"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sessions"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sessions/assignees"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sessions/:id"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/sessions/:id/status"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/sessions/:id/sentiment"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/sessions/:id/wrap-up"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/sessions/:id/assignment"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/sessions/:id/tags"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/sessions/:id/notes"
+    "path": "/api/v1/brands/:id/facebook"
   },
   {
     "method": "POST",
-    "path": "/api/v1/sessions/:id/notes"
+    "path": "/api/v1/brands/:id/instagram/connect"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/brands/:id/instagram"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:id/instagram/login-url"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/instagram/oauth/callback"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:id/tags"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/brands/:id/tags"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/brands/:id/tags/:tagId"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/brands/:id/tags/:tagId/archive"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:id/whatsapp/templates"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/brands/:id/whatsapp/templates"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/brands/:id/whatsapp/templates/:templateId"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/brands/:id/whatsapp/templates/:templateId"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/brands/:id/whatsapp/connect"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/brands/:id/whatsapp/connect-manual"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/brands/:id/whatsapp/register"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/brands/:id/whatsapp"
   },
   {
     "method": "GET",
@@ -281,6 +169,110 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/companies/me"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/companies/me/settings"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/companies/me/settings"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/companies"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/companies"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/companies/:id"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/companies/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/companies/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/conversations"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/conversations/:id/messages"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/conversations/:id/sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/conversations/:id/stats"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/conversations/:id/customer"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/conversations/:id/customer"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/conversations/:id/messages"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/conversations/:id/attachments"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/conversations/:id/messages/:messageId/reaction"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/conversations/:id/messages/:messageId/reaction"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/conversations/:id/messages/:messageId/media"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/conversations/:id/whatsapp/templates"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/conversations/:id/whatsapp/templates"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/departments"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/departments"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/departments/:id"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/departments/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/departments/:id"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/files"
   },
   {
@@ -309,18 +301,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/v1/brands/:brandId/settings/:type"
-  },
-  {
-    "method": "PUT",
-    "path": "/api/v1/brands/:brandId/settings/:type"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/brands/:brandId/settings/:type/history"
-  },
-  {
-    "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/stats"
   },
   {
@@ -340,88 +320,108 @@
     "path": "/api/v1/brands/:brandId/overview/sla-compliance"
   },
   {
-    "method": "POST",
-    "path": "/api/v1/brands/:id/facebook/connect"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/brands/:id/facebook"
+    "method": "GET",
+    "path": "/api/v1/query-managers"
   },
   {
     "method": "POST",
-    "path": "/api/v1/brands/:id/instagram/connect"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/brands/:id/instagram"
+    "path": "/api/v1/query-managers"
   },
   {
     "method": "GET",
-    "path": "/api/v1/brands/:id/instagram/login-url"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/brands/instagram/oauth/callback"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/brands/:id/whatsapp/connect"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/brands/:id/whatsapp/connect-manual"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/brands/:id/whatsapp/register"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/brands/:id/whatsapp"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/brands/:id/whatsapp/templates"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/brands/:id/whatsapp/templates"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/brands/:id/whatsapp/templates/:templateId"
-  },
-  {
-    "method": "DELETE",
-    "path": "/api/v1/brands/:id/whatsapp/templates/:templateId"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/brands/:id/tags"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/brands/:id/tags"
+    "path": "/api/v1/query-managers/:id"
   },
   {
     "method": "PATCH",
-    "path": "/api/v1/brands/:id/tags/:tagId"
+    "path": "/api/v1/query-managers/:id"
   },
   {
-    "method": "PATCH",
-    "path": "/api/v1/brands/:id/tags/:tagId/archive"
-  },
-  {
-    "method": "POST",
-    "path": "/api/v1/conversations/:id/messages/:messageId/media"
+    "method": "DELETE",
+    "path": "/api/v1/query-managers/:id"
   },
   {
     "method": "GET",
-    "path": "/api/v1/conversations/:id/whatsapp/templates"
+    "path": "/api/v1/sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sessions/assignees"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sessions/:id"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/sessions/:id/status"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/sessions/:id/sentiment"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/sessions/:id/wrap-up"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/sessions/:id/assignment"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/sessions/:id/tags"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sessions/:id/notes"
   },
   {
     "method": "POST",
-    "path": "/api/v1/conversations/:id/whatsapp/templates"
+    "path": "/api/v1/sessions/:id/notes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/settings/:type"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/brands/:brandId/settings/:type"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/settings/:type/history"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/users"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/users"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/users/me"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/users/:id"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/users/me"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/users/me/change-password"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/users/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/users/:id"
   },
   {
     "method": "GET",
@@ -442,5 +442,17 @@
   {
     "method": "POST",
     "path": "/api/v1/webhooks/whatsapp"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sessions/:id/status-log"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/comments/:id/status-log"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/holds"
   }
 ]

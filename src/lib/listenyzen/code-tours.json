@@ -35,7 +35,7 @@
   "ingestion": {
     "file": "server/src/modules/conversation/service.ts",
     "line": 368,
-    "code": "export const recordIncomingMessage = async (\n  input: IncomingMessageInput\n): Promise<{ conversation: IConversation; message: IMessage } | null> => {\n  if (input.mid) {\n    const existing = await MessageModel.findOne({ mid: input.mid });\n    if (existing) {\n      logger.info('recordIncomingMessage(): duplicate webhook ignored', { mid: input.mid });\n      const conversation = await ConversationModel.findById(existing.conversationId);\n      return conversation ? { conversation, message: existing } : null;\n    }\n  }\n\n  const conversation = await upsertConversation(\n    input,\n    { text: input.preview ?? input.text, at: input.sentAt, direction: 'incoming' },\n    true\n  );\n\n  const session = await assignMessageToSession({\n    conversationId: conversation._id,\n    brandId: conversation.brandId,\n    companyId: conversation.companyId,\n    platform: input.platform,\n    direction: 'incoming',\n    sentAt: input.sentAt,\n  });\n\n  const message = await MessageModel.create({\n    conversationId: conversation._id,\n    sessionId: session.id,\n    brandId: conversation.brandId,\n    platform: input.platform,\n    direction: 'incoming',\n    mid: input.mid,\n    senderId: input.senderId,\n    text: input.text,\n    system: input.system,\n    attachments: input.attachments ?? [],\n    sentAt: input.sentAt,\n  });\n\n  // After the insert, so the SLA clock is worked out from a view that includes this message. Every\n  // message can move the resolution clock (it starts or ends a wait), so this always runs.\n  await syncSessionSla(session.id);\n\n  logger.info('recordIncomingMessage(): stored inbound message', {\n    conversationId: String(conversation._id),\n    mid: input.mid,\n  });\n  emitToRoom(brandRoom(String(conversation.brandId)), EVENTS.MESSAGE_NEW, {\n    conversationId: String(conversation._id),\n    brandId: String(conversation.brandId),\n    message,\n    conversation,\n  });\n  return { conversation, message };\n};",
+    "code": "export const recordIncomingMessage = async (\n  input: IncomingMessageInput\n): Promise<{ conversation: IConversation; message: IMessage } | null> => {\n  if (input.mid) {\n    const existing = await MessageModel.findOne({ mid: input.mid });\n    if (existing) {\n      logger.info('recordIncomingMessage(): duplicate webhook ignored', { mid: input.mid });\n      const conversation = await ConversationModel.findById(existing.conversationId);\n      return conversation ? { conversation, message: existing } : null;\n    }\n  }\n\n  const conversation = await upsertConversation(\n    input,\n    { text: input.preview ?? input.text, at: input.sentAt, direction: 'incoming' },\n    true\n  );\n\n  const session = await assignMessageToSession({\n    conversationId: conversation._id,\n    brandId: conversation.brandId,\n    companyId: conversation.companyId,\n    platform: input.platform,\n    direction: 'incoming',\n    sentAt: input.sentAt,\n  });\n\n  const message = await MessageModel.create({\n    conversationId: conversation._id,\n    sessionId: session.id,\n    brandId: conversation.brandId,\n    platform: input.platform,\n    direction: 'incoming',\n    mid: input.mid,\n    senderId: input.senderId,\n    text: input.text,\n    system: input.system,\n    attachments: input.attachments ?? [],\n    sentAt: input.sentAt,\n  });\n\n  // After the insert, so the status rules and the SLA clock work from a view that includes this\n  // message (a customer message reopens an unresolved session).\n  const statusChanged = await onMessageStored({\n    sessionId: session.id,\n    direction: 'incoming',\n    sentAt: input.sentAt,\n  });\n  const current = statusChanged ? await reloadConversation(conversation) : conversation;\n\n  logger.info('recordIncomingMessage(): stored inbound message', {\n    conversationId: String(conversation._id),\n    mid: input.mid,\n  });\n  emitToRoom(brandRoom(String(conversation.brandId)), EVENTS.MESSAGE_NEW, {\n    conversationId: String(conversation._id),\n    brandId: String(conversation.brandId),\n    message,\n    conversation: current,\n  });\n  return { conversation: current, message };\n};",
     "title": "Read an incoming-message write path",
     "notes": [
       {
@@ -59,20 +59,20 @@
         "detail": "Store references to conversation and session plus the provider identity. The sparse unique mid index rejects duplicate IDs."
       },
       {
-        "label": "Refresh derived timing",
+        "label": "Apply status rules after persistence",
         "line": 43,
-        "detail": "SLA recomputes from stored messages. Its own error handling avoids blocking a successfully stored message."
+        "detail": "onMessageStored can reopen an unresolved episode for a new customer message, synchronize its conversation summary and recompute SLA. Reload the conversation when status changed so the event carries current state."
       },
       {
         "label": "Notify the room",
-        "line": 49,
+        "line": 54,
         "detail": "Persistence happens before the event. The transport is Socket.IO in the API or Redis emitter in the worker."
       }
     ]
   },
   "settings": {
     "file": "server/src/modules/settings/service.ts",
-    "line": 63,
+    "line": 83,
     "code": "export const save = async (\n  owner: Owner,\n  type: SettingType,\n  baseVersion: number,\n  value: unknown,\n  changedBy: { id: string; name: string }\n): Promise<SettingView> => {\n  const latest = await findLatest(owner, type);\n  const current = latest?.version ?? 0;\n  if (baseVersion !== current) {\n    throw new ConflictError(\n      `Settings changed since you opened them (now version ${current}). Reload and try again.`,\n      comingFrom\n    );\n  }\n\n  try {\n    const doc = await modelOf(type).create({\n      scope: owner.scope,\n      scopeId: owner.scopeId,\n      companyId: owner.companyId,\n      version: current + 1,\n      value,\n      changedBy,\n    });\n    logger.info(`save(): ${type} setting saved`, {\n      scopeId: String(owner.scopeId),\n      version: doc.version,\n    });\n    return toView(doc);\n  } catch (error) {\n    // A concurrent save took this version first.\n    if ((error as { code?: number }).code === DUPLICATE_KEY) {\n      throw new ConflictError(\n        'Settings were just changed by someone else. Reload and try again.',\n        comingFrom\n      );\n    }\n    throw error;\n  }\n};",
     "title": "Understand optimistic configuration saves",
     "notes": [

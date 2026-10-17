@@ -164,6 +164,7 @@ SLA state shape:
 
 ```typescript
 {
+  rulesVersion?: number; // current clock rules: 2 for sessions and comments
   slaVersion: number;
   hoursVersion: number;
   firstResponse: null | { minutes: number; atRiskAt: Date; dueAt: Date };
@@ -176,10 +177,11 @@ SLA state shape:
   };
   messagesSeen: number;
   failedMessagesSeen: number;
+  statusChangesSeen: number;
 }
 ```
 
-The last two counters guard against stale concurrent SLA computations. Dates become ISO strings in JSON.
+The three counters guard against stale concurrent SLA computations. Dates become ISO strings in JSON.
 
 ### SessionNote
 
@@ -225,6 +227,30 @@ Source: `server/src/modules/settings/schema.ts`, `server/src/modules/settings/de
 - `SlaSetting` discriminator value `sla`: tier `Standard | Priority`; nullable first-response/resolution overrides with `{ on, minutes }`.
 - `BusinessHoursSetting` discriminator value `business-hours`: fixed server timezone, seven day entries `{ day, open, opens, closes }`, holiday date strings.
 - Each save inserts another document. Version 0 is a synthesized default and need not exist in MongoDB.
+
+
+### Embedded status history (Session and Comment)
+
+This is an embedded array, **not a fifteenth collection**. Both schemas reuse `statusChangeSchema` from `server/src/modules/session/schema.ts`.
+
+| Field | Schema / meaning |
+| --- | --- |
+| `statusLog[]` | Default empty, `select: false`; explicitly selected for clock computation and manager history reads. Ordinary reads and socket payloads should not expose it. |
+| `statusLog[].status` | Required `pending`, `hold`, `unresolved` or `resolved`. |
+| `statusLog[].at` | Required Date; an interval ends at the next entry's date. |
+| `statusLog[].cause` | Required `agent` (manual), `reply` (agent message ends hold), or `customer` (customer reopens unresolved). |
+| `statusLog[].by?` | User ObjectId reference. Absent for provider-originated changes without an internal actor. |
+| `statusLog[].reason?` | Trimmed string, maximum 500 characters; optional, including for hold. |
+| `statusRevision?` | Incremented on an actual status transition; used to guard concurrent status writes. |
+| `statusChangedAt`, `statusChangedBy` | Latest transition metadata; comment roots now store these too. |
+| `sla.rulesVersion?` | Calculation version, currently 2 for both sources; distinct from historical setting versions. |
+| `sla.statusChangesSeen` | Session calculation's count of log entries; guards against an older derived result overwriting a newer one. Comment SLA instead uses `slaRevision`. |
+
+The embedded entries have no `_id`. The chronological log records real transitions; re-saving the same status does not append an entry or change its original reason. History resolves user names at read time: a deleted user has an ID with a null name. This differs from `assignee.name` and `Setting.changedBy.name` snapshots.
+
+Both Session and Comment add `(brandId, statusChangedAt)` indexes for hold-log reads. Schema declarations do not establish that those indexes have been created in production. The hold-log service derives rows from these documents, so merging away a session or deleting a thread removes its history from that view.
+
+Message adds optional `isAutomatic: boolean`, with no default. It marks an actual automatic outgoing reply and is distinct from `system`, which marks an internal informational notice. First-response calculation and hold-ending rules ignore automatic replies.
 
 ## Index strategy
 

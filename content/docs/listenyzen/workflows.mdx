@@ -74,7 +74,9 @@ Session selection:
 | Resolved                    | Incoming                         | Create next sequence, status pending. |
 | Resolved                    | Explicit re-engagement send      | Create next sequence, status pending. |
 | Resolved                    | Ordinary outgoing follow-up/echo | Keep the existing session.            |
-| Pending, unresolved or hold | Incoming/outgoing                | Continue the current session.         |
+| Pending | Incoming/outgoing | Continue the current session. |
+| Unresolved | New customer message | Same session returns to pending. Agent replies leave it unresolved. |
+| Hold | Qualifying non-automatic agent reply | Same session returns to pending. Customer messages leave it held. |
 
 The newest session's status, sentiment, assignee and tags are copied onto Conversation. Updating historical sessions triggers synchronization from the latest session rather than blindly copying the historical change.
 
@@ -121,19 +123,23 @@ Current defaults:
 
 SLA snapshots use the setting versions in force when the customer first wrote, not today's settings. Outbound-only sessions have nothing to measure until a customer message exists.
 
-**First response:** earliest non-failed outgoing message at/after the first customer message. Provider acceptance without a known failure currently counts; the code does not require a delivered receipt.
+**First response:** earliest non-failed, non-automatic outgoing message at/after the first customer message. `isAutomatic: true` is excluded; holding or wrapping up does not pause the first-response clock. Provider acceptance without a known failure currently counts; the code does not require a delivered receipt.
 
-**Resolution:** accumulated business time during which the customer waits on the team. A wait starts with a customer message and ends at the team's last reply before the next customer message, or resolved wrap-up if unanswered. Customer silence after a reply is excluded. A later agent reply can extend the previous charged interval. Failed sends and messages after resolvedAt are excluded from the resolution calculation.
+**Resolution:** business time from the first customer message (or customer-authored root comment), including customer silence while pending. The status timeline subtracts every hold, unresolved and resolved interval. Returning to pending resumes the same clock with its previous charged time; a newly created session has its own clock.
 
-At-risk threshold is 80%; target is 100%. `usedMs` stores finished charged intervals; `waitingSince` and projected atRiskAt/dueAt represent an active wait. While paused below a threshold, its date may be null. Equality at the resolution target is treated as on time by the calculation.
+At-risk threshold is 80%; target is 100%. `usedMs` stores finished charged intervals; `waitingSince` (a retained legacy field name) and projected atRiskAt/dueAt represent an active pending span. While paused below a threshold, its date may be null. Equality at the resolution target is treated as on time by the calculation.
 
-Session SLA recalculates from stored messages on message/status/failure changes. Guards compare messagesSeen, failedMessagesSeen and resolvedAt to avoid overwriting newer computations. Failures are logged without blocking the main domain operation, so an SLA repair backfill may be needed after a processing issue.
+Session SLA recalculates from stored messages on message/status/failure changes. Guards compare messagesSeen, failedMessagesSeen, statusChangesSeen and resolvedAt to avoid overwriting newer computations. Failures are logged without blocking the main domain operation, so an SLA repair backfill may be needed after a processing issue.
 
-Comment SLA reuses this calculation on customer-authored roots. Only visible comments from the **root author** start waits; page replies can end them. Other participants' incoming comments do not start that root's wait. `slaRevision` guards updates.
+Comment SLA starts at a customer-authored root and uses its status timeline for resolution. The earliest page reply at any depth supplies first response. A root-author reply can reopen unresolved work; another participant cannot. A page reply ends hold. Resolved comment threads do not automatically reopen. `slaRevision` guards derived-state writes.
 
-`hold` and `unresolved` remain open for SLA calculations; this is explicitly provisional in the repository notes. The business-time helper bounds calendar scanning at 400 days; schedules with no usable work windows can yield no clock.
+`hold` and `unresolved` stop resolution but remain in the Overview open set. A stopped query is not resolution-at-risk; a target already exceeded before stopping stays breached. First response can still breach while held. The business-time helper bounds calendar scanning at 400 days; schedules with no usable work windows can yield no clock.
 
 Sources: `server/src/modules/session/sla.ts`, `server/src/modules/comment/sla.ts`, `server/src/libraries/business-time/index.ts`, `settings-sla-progress-context.md`.
+
+## Status history and hold reasons
+
+Actual status transitions append an embedded log entry; same-status saves keep the original timestamp and reason. Optional reasons are trimmed and capped at 500 characters. Sessions and comment roots share the revision-guarded writer. Only managers can read status history and the cross-query hold log. Read [the full status walkthrough](/docs/listenyzen/code-status) for state transitions and input/output examples.
 
 ## Overview definitions
 
@@ -143,6 +149,7 @@ The UI mixes live API-backed metrics with illustrative data; not every visible c
 - `/sla`: at-risk/breached current targets; open set includes pending, unresolved and hold. Sessions and comments can be requested separately.
 - `/engagement`: inbound counts use first customer message for sessions and customer-authored comment roots in the selected range; response rates use firstResponseAt. Current unresolved backlog includes pending+unresolved, excluding hold.
 - `/inbound-trend`: incoming versus resolved counts per day; closure uses resolvedAt.
+- `/holds`: manager-only overlapping holds, newest first, at most 1,000; full wall-clock and historical-business-hour durations, with no pagination.
 - `/sla-compliance`: combines session and comment targets; met targets divided by decided targets, not a naive all-record denominator.
 
 Use `server/src/modules/overview/service.ts` and its date-boundary helpers when modifying reporting. Similar-looking metrics intentionally use different open/closed sets.

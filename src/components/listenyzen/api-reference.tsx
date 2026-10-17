@@ -31,12 +31,18 @@ function EndpointDetail({ endpoint: e }: { endpoint: Endpoint }) {
     <p><strong>Access:</strong> {e.auth}</p>
     <p className="ly-caption">Source: <code>{e.source}</code></p>
     <div className="ly-segment" aria-label="Endpoint detail view">
-      {['Examples', 'Validation', 'Errors & behavior', 'Handler code'].map(tab => <button type="button" key={tab} aria-pressed={view === tab} onClick={() => setView(tab)}>{tab}</button>)}
+      {['Examples', 'Business logic', 'Validation', 'Errors & behavior', 'Handler code'].map(tab => <button type="button" key={tab} aria-pressed={view === tab} onClick={() => setView(tab)}>{tab}</button>)}
     </div>
     {view === 'Examples' && <>
       <p className="ly-caption">Illustrative values · entity fields abbreviated · requests are never executed here.</p>
       <Example label={`Request · ${e.requestType}`} value={e.request} />
       <Example label={`Response · HTTP ${e.status} · ${e.contentType}`} value={format(e.response)} />
+    </>}
+    {view === 'Business logic' && <>
+      <p><strong>Prerequisites:</strong> {e.prerequisites}</p>
+      <p>{e.businessLogic}</p>
+      <p><strong>Implementation entry points:</strong> <code>{e.implementation}</code></p>
+      <p>The feature explanation applies alongside this operation’s access rules and handler. Read Handler code for its exact validation, service calls and response.</p>
     </>}
     {view === 'Validation' && <>
       <p>Path placeholders identify existing records. The curl example substitutes fictional IDs. These are the route’s validation declarations; referenced constants and shared schemas live in their source modules.</p>
@@ -60,7 +66,7 @@ export function ApiReference() {
   const groups = [...new Set(contracts.map(e => e.group))].sort();
   const found = contracts.filter(e => (method === 'ALL' || e.method === method) && (group === 'ALL' || e.group === group) && `${e.path} ${e.group}`.toLowerCase().includes(query.toLowerCase()));
   return <section className="ly-panel ly-api not-prose" aria-label="Complete API reference">
-    <div className="ly-panel-head"><span className="ly-eyebrow">113 operations / source-derived examples</span><h2>Explore requests and responses</h2></div>
+    <div className="ly-panel-head"><span className="ly-eyebrow">{contracts.length} operations / source-derived examples</span><h2>Explore requests and responses</h2></div>
     <div className="ly-panel-body">
       <label className="ly-search"><Search size={17} /><input aria-label="Search API endpoints" placeholder="Search endpoints, e.g. assignment or templates…" value={query} onChange={e => setQuery(e.target.value)} /></label>
       <div className="ly-form-grid ly-api-filters">

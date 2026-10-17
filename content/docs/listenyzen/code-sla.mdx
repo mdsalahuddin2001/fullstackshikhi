@@ -10,7 +10,7 @@ Three responsibilities cooperate:
 ```text
 settings/service.ts       Which policy version applied at the clock start?
          ↓
-session/sla.ts           What do stored messages imply about response and waiting?
+session/sla.ts           What do messages and status history imply about the clocks?
          ↓
 slaWrite + bulkWrite     Is this calculation still safe to persist?
 ```
@@ -41,14 +41,14 @@ SLA state stores slaVersion and hoursVersion so the chosen policy is visible on 
 
 ## 3. Compute from stored messages, not event arrival order
 
-Source: `server/src/modules/session/sla.ts`, starting at line 226.
+Source: `server/src/modules/session/sla.ts`.
 
 ```typescript title="server/src/modules/session/sla.ts"
 export const computeSessionSla = async (
   session: SlaSessionRef
 ): Promise<SessionSlaState | null> => {
   const messages = await MessageModel.find({ sessionId: session._id })
-    .select({ direction: 1, sentAt: 1, deliveryStatus: 1 })
+    .select({ direction: 1, sentAt: 1, deliveryStatus: 1, isAutomatic: 1 })
     .lean<SlaMessage[]>();
   const start = messages
     .filter(message => message.direction === 'incoming')
@@ -64,8 +64,7 @@ export const computeSessionSla = async (
     session.brandId,
     session.companyId,
     start,
-    messages,
-    session.resolvedAt
+    statusTimeline(session)
   );
 
   return {
@@ -75,6 +74,7 @@ export const computeSessionSla = async (
       ...sla,
       messagesSeen: messages.length,
       failedMessagesSeen: messages.filter(message => message.deliveryStatus === 'failed').length,
+      statusChangesSeen: session.statusLog?.length ?? 0,
     },
   };
 };
@@ -85,10 +85,12 @@ Walk through the return value:
 | Value | How it is derived |
 | --- | --- |
 | `firstCustomerMessageAt` | Minimum sentAt among incoming messages. No incoming message means no measurable session SLA. |
-| `firstResponseAt` | Earliest outgoing message at/after the customer start whose deliveryStatus is not failed. |
+| `firstResponseAt` | Earliest outgoing message at/after the customer start whose deliveryStatus is not failed and whose isAutomatic flag is not true. |
 | `sla` | Historical policy plus the first-response and resolution clocks. |
 | `messagesSeen` | Number of message records included in this computation. |
 | `failedMessagesSeen` | Number whose known deliveryStatus is failed. |
+| `statusChangesSeen` | Number of status-log entries used for resolution. |
+| `rulesVersion` | Clock algorithm version; currently 2, separate from policy versions. |
 
 The query selects only the fields needed for the calculation and uses lean objects. It still reads every message in the session. This trades bounded simplicity for work proportional to session history; do not assume a constant-cost update when sessions get large.
 
@@ -99,37 +101,49 @@ No. The predicate excludes failed sends; it does not require `deliveryStatus ===
 
 </details>
 
-## 4. Resolution splits messages into customer waits
+## 4. Resolution follows status intervals
 
-The internal `waitsOf` calculation sorts by sentAt, removes failed messages and excludes messages beyond resolvedAt for the resolution clock. It tracks two local variables:
+Prerequisite: [status transitions and history](/docs/listenyzen/code-status). `computeSessionSla` uses messages to find the first customer timestamp and first qualifying response. It passes `statusTimeline(session)` to `buildSlaState` for resolution. Replies no longer split resolution into customer-wait intervals.
 
-- `waitStart`: first customer message in the current unanswered interval.
-- `lastReply`: latest team reply after that wait started.
-
-An incoming message after a team reply closes the prior interval at lastReply and begins a new wait. A second customer message before any team reply keeps the same waitStart. At the end, a reply or resolvedAt closes the remaining interval; otherwise it remains running.
-
-Example entirely within working hours:
+`chargedSpans` starts with a running interval at the first customer message. Each hold, resolved or unresolved entry closes that interval. A later pending entry opens another. `resolutionClock` counts only business hours within these intervals using the policy selected at the original clock start.
 
 ```text
-09:00 customer writes       waitStart = 09:00
-09:05 customer adds detail  waitStart stays 09:00
-09:10 agent acknowledges   lastReply = 09:10
-09:20 agent gives answer   lastReply = 09:20
-10:00 customer writes       close 09:00–09:20; start at 10:00
-10:05 agent replies         close 10:00–10:05
+10:00 customer writes          pending begins
+10:05 agent acknowledges      pending continues
+10:10 customer goes silent    pending continues
+10:30 agent places hold       30 business minutes charged
+11:00 customer asks for news  hold continues
+11:30 agent replies           pending resumes
+11:45 agent resolves          another 15 minutes charged
 
-Elapsed: 65 minutes
-Charged: 20 + 5 = 25 business minutes
-Excluded customer silence: 09:20–10:00
+Elapsed: 105 minutes
+Hold:     60 minutes
+Charged:  45 business minutes
 ```
 
-The business-time library charges only configured working intervals, excluding closed days and holidays. The same wall-clock sequence can therefore yield fewer charged minutes when it crosses a closed interval.
+For a 60-minute resolution target, this completed example returns:
+
+```json
+{
+  "minutes": 60,
+  "usedMs": 2700000,
+  "waitingSince": null,
+  "atRiskAt": null,
+  "dueAt": null
+}
+```
+
+The interval has not exceeded the 48-minute at-risk threshold. In a running interval, `waitingSince` records its start and due dates are projected; `usedMs` alone omits the still-running interval. The legacy field name does not mean the customer must be waiting for an agent reply.
+
+A finished interval must be strictly beyond a threshold to record its crossing; exactly 60 minutes at wrap-up is on time for a 60-minute target. A hold below the target has no future resolution due date until pending resumes. If the target was already exceeded before hold, its historical breach stays visible. The independent first-response clock keeps running during hold.
+
+`statusTimeline` also handles legacy records. If the log lacks the current status, it uses known statusChangedAt (resolvedAt for a legacy resolved record). If the stop time is unknown, resolution is left unmeasured instead of inventing an elapsed duration. `sla.rulesVersion` lets repair scripts find values computed under older rules.
 
 <SlaClock />
 
 ## 5. A calculation must not overwrite a newer one
 
-Source: `server/src/modules/session/sla.ts`, starting at line 274.
+Source: `server/src/modules/session/sla.ts`.
 
 ```typescript title="server/src/modules/session/sla.ts"
 export const slaWrite = (session: SlaSessionRef, state: SessionSlaState): SlaWrite => ({
@@ -148,6 +162,12 @@ export const slaWrite = (session: SlaSessionRef, state: SessionSlaState): SlaWri
           $or: [
             { 'sla.failedMessagesSeen': { $exists: false } },
             { 'sla.failedMessagesSeen': { $lte: state.sla.failedMessagesSeen } },
+          ],
+        },
+        {
+          $or: [
+            { 'sla.statusChangesSeen': { $exists: false } },
+            { 'sla.statusChangesSeen': { $lte: state.sla.statusChangesSeen } },
           ],
         },
       ],
@@ -170,16 +190,17 @@ This function returns a Mongo bulkWrite operation; it does not execute it. Its f
 2. resolvedAt must still match the value read before calculation (or still be absent).
 3. No already-persisted SLA may have seen more messages.
 4. No already-persisted SLA may have seen more failed messages.
+5. No already-persisted SLA may have seen more status changes.
 
 Suppose calculation A reads five messages, then B reads six and saves first. A’s messagesSeen 5 cannot overwrite B’s messagesSeen 6. If a send later becomes failed, failedMessagesSeen prevents an older success-only calculation from replacing the newer failure-aware state.
 
 The update sets firstCustomerMessageAt and SLA. It conditionally sets firstResponseAt or explicitly unsets it. Unset matters when the only qualifying response later fails: leaving the old date would falsely claim that a response still qualifies.
 
-These guards protect the specific monotonic counters and resolution state shown here. They are not a universal transaction or general document revision check for every possible future message edit/deletion.
+These guards protect the message, failure and append-only status counters plus resolution state shown here. They are not a universal transaction or general document revision check for every possible future message edit/deletion.
 
 ## 6. Synchronization is deliberately best-effort
 
-Source: `server/src/modules/session/sla.ts`, starting at line 317.
+Source: `server/src/modules/session/sla.ts`.
 
 ```typescript title="server/src/modules/session/sla.ts"
 export const syncSessionSla = async (sessionId: Types.ObjectId | string): Promise<void> => {
@@ -200,7 +221,7 @@ Investigate `syncSessionSla(): failed` logs when derived timing is missing. The 
 
 ## 7. Comments reuse the clock, not the session storage model
 
-`comment/sla.ts` uses the root comment as the timing record. It traverses descendants within the same brand/post, includes page replies and only visible incoming comments by the root author, then calls the shared SLA builder.
+`comment/sla.ts` uses the root comment as the timing record. It traverses descendants within the same brand/post to find the earliest page response, then calls the shared SLA builder with the root’s status timeline. Other participants do not create a new root clock. Root-author-only matching belongs to the unresolved-reopen rule, not resolution interval calculation.
 
 Because comment deletion/hiding can change a thread without monotonically increasing a message count, comment synchronization uses `slaRevision`. Every relevant thread mutation bumps the root revision; the final write only applies when it still matches. A reply after resolved wrap-up does not create a new comment SLA cycle in the current implementation.
 
@@ -208,7 +229,7 @@ Because comment deletion/hiding can change a thread without monotonically increa
 
 Before changing a status or timing rule, decide all of these together:
 
-- Which stored events begin/end a wait?
+- Which status transitions stop/resume the clock, and which messages qualify as a response?
 - Which historical policy version should be used?
 - What makes an earlier calculation stale?
 - Which mutation paths trigger recomputation?

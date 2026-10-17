@@ -1,25 +1,27 @@
 {
   "title": "Listenyzen Backend",
-  "description": "Architecture and developer onboarding \u2022 English",
+  "description": "Database-first, dependency-ordered backend documentation",
   "icon": "MessagesSquare",
   "root": true,
   "pages": [
     "index",
-    "---Understand the system---",
+    "---1 \u00b7 Database foundations---",
+    "data-model",
+    "---2 \u00b7 Requirements & prerequisites---",
+    "learning-path",
     "system",
     "architecture",
-    "data-model",
     "security",
-    "---Follow the work---",
-    "workflows",
     "conventions",
-    "---Build with confidence---",
-    "development",
-    "api-reference",
-    "---Read the implementation---",
     "code-access",
     "code-queries",
+    "---3 \u00b7 Dependent business workflows---",
+    "workflows",
     "code-ingestion",
-    "code-sla"
+    "code-status",
+    "code-sla",
+    "---4 \u00b7 Endpoint contracts & operations---",
+    "api-reference",
+    "development"
   ]
 }

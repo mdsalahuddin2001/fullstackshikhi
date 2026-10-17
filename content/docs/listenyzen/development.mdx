@@ -238,7 +238,7 @@ Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domai
 | Logo/avatar disappears after deploy              | Ephemeral local upload directory or incorrect BASE_URL.                                                                                             |
 | Long thread appears incomplete                   | `/conversations/:id/messages` returns the earliest 200 messages in ascending order; use grouped session thread reads appropriately.                 |
 | Large conversation response                      | Session thread pages cap session count, but fetch all messages/notes for selected sessions.                                                         |
-| SLA changes look surprising                      | Historical setting versions, business hours, root-author-only comments, last reply ending waits, hold/unresolved provisional behavior.              |
+| SLA changes look surprising                      | Historical settings, business hours, status history, automatic-reply exclusion and SLA rulesVersion.              |
 | SLA field missing although message saved         | SLA synchronization logs errors without failing the main write; inspect logs and use the relevant backfill.                                         |
 | Duplicate event/counter anomalies                | Non-atomic read-before-write dedupe and session creation; whole-entry retries; concurrent jobs and provider echoes.                                 |
 | Incorrect preview after late events              | Conversation upsert sets last-message values from the arriving event without a general monotonic timestamp guard.                                   |
@@ -261,3 +261,13 @@ Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domai
 
 Useful focused notes: `realtime-inbox-sockets.md`, `webhook-queue-bullmq.md`, `tag-system.md`, `whatsapp-integration.md`, `webhook-subscription-verification.md`, `logging-progress-context.md`. Treat progress/plan documents as context and verify their claims against current source before changing behavior.
 
+
+## October 17 SLA and index rollout
+
+Source revision `ea791d3` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
+
+Run repair commands only against the intended Listenyzen environment, using the script options in `server/scripts/dev/backfill-session-sla.ts` and `backfill-comment-sla.ts`. A `--all` recomputation is useful when data already carries the current rulesVersion but a later first-response rule changed. Inspect the script first: these commands write derived database fields, and the documentation build does not execute them.
+
+The source repository records a development backfill, but this review did not query that database or verify production completion. Production still needs the new `(brandId, statusChangedAt)` indexes on sessions and comments provisioned through the deployment process: production autoIndex is disabled. Greater charged resolution time after switching from the old customer-wait algorithm is expected.
+
+Manager history is embedded in query records. Merging/deleting records can remove their holds from reports. Hold-row deep links and assignment redesign remain deferred; they are not promised by this release.

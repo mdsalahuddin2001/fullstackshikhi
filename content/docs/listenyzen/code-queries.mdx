@@ -7,7 +7,7 @@ description: "Understand how validated filters become Mongoose reads and why cur
 
 `GET /conversations` first proves brand visibility in the router. Only then does it call this service with the accepted brandId, parsed query, and server-derived assignment/tag restrictions:
 
-Source: `server/src/modules/conversation/service.ts`, starting at line 72.
+Source: `server/src/modules/conversation/service.ts`.
 
 ```typescript title="server/src/modules/conversation/service.ts"
 export const listConversations = async (
@@ -56,7 +56,7 @@ The builder’s generic mode changes with the modifier. Internally it uses a typ
 
 ## Cursor execution does not count every matching document
 
-Source: `server/src/libraries/query/QueryBuilder.ts`, starting at line 436.
+Source: `server/src/libraries/query/QueryBuilder.ts`.
 
 ```typescript title="server/src/libraries/query/QueryBuilder.ts"
   private async executeWithCursorPagination<T>(
@@ -120,7 +120,7 @@ Suppose newest-first rows have these positions:
 
 After returning A, a cursor containing only `12:00` cannot distinguish A from B. The tie-breaker says “older timestamp, **or** same timestamp and smaller ID.”
 
-Source: `server/src/libraries/query/cursorPagination.ts`, starting at line 58.
+Source: `server/src/libraries/query/cursorPagination.ts`.
 
 ```typescript title="server/src/libraries/query/cursorPagination.ts"
 export const buildDateCursorFilter = (
@@ -144,7 +144,7 @@ This yields deterministic tie handling, not an immutable snapshot. If another me
 
 ## A cursor is encoded data, not authorization
 
-Source: `server/src/libraries/query/cursorPagination.ts`, starting at line 22.
+Source: `server/src/libraries/query/cursorPagination.ts`.
 
 ```typescript title="server/src/libraries/query/cursorPagination.ts"
 export const decodeDateCursor = (cursor: string, expectedSortField: string): DateCursorPosition => {

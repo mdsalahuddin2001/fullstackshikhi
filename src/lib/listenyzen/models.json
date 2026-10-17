@@ -34,36 +34,7 @@
   {
     "name": "User",
     "source": "server/src/modules/user/schema.ts",
-    "fields": [
-      {
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "name": "email",
-        "type": "string"
-      },
-      {
-        "name": "role",
-        "type": "Role"
-      },
-      {
-        "name": "password",
-        "type": "string"
-      },
-      {
-        "name": "companyId?",
-        "type": "Types.ObjectId"
-      },
-      {
-        "name": "departmentId?",
-        "type": "Types.ObjectId"
-      },
-      {
-        "name": "avatar?",
-        "type": "string"
-      }
-    ],
+    "fields": [],
     "relations": [
       "Company",
       "Department"
@@ -123,6 +94,18 @@
       {
         "name": "queryManagerIds",
         "type": "Types.ObjectId[]"
+      },
+      {
+        "name": "facebook?",
+        "type": "{\n    pageId: string;\n    pageName: string;\n    accessToken: string;\n    userAccessToken: string;\n    connected: boolean;\n    connectedAt?: Date;\n    // Whether Meta's `subscribed_apps` edge confirmed our app is subscribed to the page at all.\n    // False means the page is stored and usable for sends, but no webhook will arrive — the\n    // \"connected but nothing comes in\" state, which is otherwise invisible.\n    webhookSubscribed?: boolean;\n    // The fields Meta actually recorded.\n    webhookFields?: string[];\n    // The requested fields Meta refused. Separate from `webhookSubscribed` because a partial\n    // subscription still delivers everything it did accept — only the named fields go missing.\n    webhookMissingFields?: string[];\n    webhookCheckedAt?: Date;\n  }"
+      },
+      {
+        "name": "instagram?",
+        "type": "{\n    accountId: string;\n    username: string;\n    accessToken: string;\n    connected: boolean;\n    connectedAt?: Date;\n    // How the account was connected. Defaults to 'facebook' for pre-existing connections.\n    loginType?: 'facebook' | 'instagram';\n    // Absolute expiry of the IG user token (Instagram-Login only); used to schedule refreshes.\n    tokenExpiresAt?: Date;\n    // Written ONLY by the Instagram-Login flow (`loginType: 'instagram'`), which has a real\n    // `subscribed_apps` call on graph.instagram.com to verify. The Facebook-Login flow leaves these\n    // undefined: Instagram webhooks are not subscribable by API there at all — the `instagram`\n    // object in the App Dashboard is the subscription, so there is nothing for a connect to check.\n    // Expect `comments` in `webhookMissingFields` until the app is Live with Advanced Access.\n    webhookSubscribed?: boolean;\n    webhookFields?: string[];\n    webhookMissingFields?: string[];\n    webhookCheckedAt?: Date;\n  }"
+      },
+      {
+        "name": "whatsapp?",
+        "type": "{\n    // The WABA that owns the number. Needed to subscribe our app to its webhooks.\n    wabaId: string;\n    // The routable id — sends target /{phoneNumberId}/messages and inbound webhooks carry it as\n    // value.metadata.phone_number_id. This is the id we key the brand lookup on, not the WABA.\n    phoneNumberId: string;\n    // Human-readable, e.g. '+880 1712 345678'. Display only.\n    displayPhoneNumber: string;\n    // The name WhatsApp shows to customers, once Meta has approved it.\n    verifiedName: string;\n    accessToken: string;\n    // Whether POST /{phoneNumberId}/register succeeded. False means the number is PENDING in\n    // WhatsApp Manager and can neither send nor receive — the connection is credential-only.\n    registered: boolean;\n    // The two-step verification PIN set at registration. Required again to re-register the same\n    // number (Meta rejects a second /register with a different PIN), so it must survive the connect.\n    registrationPin?: string;\n    connected: boolean;\n    connectedAt?: Date;\n  }"
       }
     ],
     "relations": [
@@ -304,6 +287,10 @@
         "type": "boolean"
       },
       {
+        "name": "isAutomatic?",
+        "type": "boolean"
+      },
+      {
         "name": "conversationId",
         "type": "Types.ObjectId"
       },
@@ -426,6 +413,14 @@
       {
         "name": "statusChangedAt?",
         "type": "Date"
+      },
+      {
+        "name": "statusRevision?",
+        "type": "number"
+      },
+      {
+        "name": "statusLog?",
+        "type": "IStatusChange[]"
       },
       {
         "name": "assignee?",
@@ -636,6 +631,22 @@
         "type": "Date"
       },
       {
+        "name": "statusChangedBy?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "statusChangedAt?",
+        "type": "Date"
+      },
+      {
+        "name": "statusLog?",
+        "type": "IStatusChange[]"
+      },
+      {
+        "name": "statusRevision?",
+        "type": "number"
+      },
+      {
         "name": "sla?",
         "type": "ISlaState"
       },
@@ -758,7 +769,7 @@
       },
       {
         "name": "changedBy",
-        "type": "{ id: Types.ObjectId"
+        "type": "{ id: Types.ObjectId; name: string }"
       },
       {
         "name": "createdAt",

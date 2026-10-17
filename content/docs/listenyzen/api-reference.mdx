@@ -1,11 +1,11 @@
 ---
 title: "API route reference"
-description: "All 111 API routes and two health endpoints, with curl requests, example responses, access rules and source-level validation."
+description: "All 114 API routes and two health endpoints, with curl requests, example responses, access rules and source-level validation."
 ---
 
 ## Read the examples
 
-This reference covers **111 mounted API operations and two health endpoints**, inspected at revision `aebd2800` on October 15, 2026. Examples are derived from source; they are not captured live responses. Entity objects show a **compact selection of fields**. Audit fields, optional properties, virtuals and populated references may also appear in actual responses.
+This reference covers **114 mounted API operations and two health endpoints**, inspected at revision `ea791d3` on October 17, 2026. Examples are derived from source; they are not captured live responses. Entity objects show a **compact selection of fields**. Audit fields, optional properties, virtuals and populated references may also appear in actual responses.
 
 [Download the complete API reference as Markdown](/downloads/LISTENYZEN_API_REFERENCE.md)
 
@@ -18,6 +18,8 @@ export BASE_URL='http://localhost:5000'
 Login first. Examples save and reuse authentication cookies using `-b cookies.txt -c cookies.txt`. Login and refresh set HttpOnly cookies; JWTs are not returned in their JSON bodies. An existing access token can also be sent with `Authorization: Bearer <ACCESS_TOKEN>`.
 
 Replace fictional ObjectIds with records visible to your account. Provider codes, signatures, tokens and URLs are placeholders. The copy buttons only copy text; running a mutation command yourself performs a real operation.
+
+Start with [the dependency-ordered learning path](/docs/listenyzen/learning-path) if the entities are unfamiliar. Each operation’s **Business logic** tab explains prerequisites and feature behavior; **Handler code** shows the individual call sequence. New manager reads cover session status history, comment-root status history and overlapping brand holds.
 
 <ApiReference />
 
@@ -38,7 +40,7 @@ Replace fictional ObjectIds with records visible to your account. Provider codes
 | 401 | Missing/expired access token or an authentication failure. |
 | 403 | Role, assignment policy or provider signature denies the operation. |
 | 404 | Missing or invisible resource; manual WhatsApp connect also uses this when disabled. |
-| 409 | Version conflict while saving settings. Reload the current version before retrying. |
+| 409 | Settings version conflict or repeated concurrent status changes. Reload current state before retrying. |
 | 429 | Request or credential rate limit reached. |
 | 500 | Internal, provider or queue failure; inspect the relevant handler and logs. |
 

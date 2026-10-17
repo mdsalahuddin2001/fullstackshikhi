@@ -1,0 +1,136 @@
+---
+title: "Code walkthrough: hold, reopen & history"
+description: "Read the shared status writer, hold reasons, automatic-reply rules and manager reporting endpoints."
+---
+
+## Requirement and prerequisites
+
+A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
+
+Source snapshot: `ea791d3`, 17 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+
+## One writer for both kinds of query
+
+`server/src/modules/session/status-log.ts` exports `applyStatusChange`, used for sessions and comment roots. Its inputs are a Mongoose model, authorized record filter, change (`status`, `at`, `cause`, optional `by` and `reason`), optional extra wrap-up fields, and an acceptance predicate.
+
+1. Read current status, revision, timestamps and the last log entry.
+2. Evaluate the acceptance predicate against this current state. No match or rejected predicate returns null.
+3. If the status is unchanged, write only supplied extra fields; do not append history, move the timestamp, or replace the original reason.
+4. For a real transition, catch up missing legacy status history, clamp the new time so it is not earlier than its predecessor, set status metadata and append the new entry. Entering resolved sets resolvedAt; leaving it clears resolvedAt.
+5. Increment statusRevision and write with a filter matching the revision just read. A competing writer causes a re-read and retry, up to three attempts, then ConflictError (409).
+
+This is optimistic concurrency on one document. Conversation summaries, derived SLA and socket events remain separate writes. A successful status change does not make all those side effects transactional.
+
+## Put a session on hold
+
+`PATCH /api/v1/sessions/:id/status` first authenticates and validates, then `ensureVisibleSession(id, user, { act: true })` applies visibility and action policy. `changeStatus` delegates the transition to the shared writer and updates derived state. Use the actual session ID, not the conversation ID.
+
+```json title="Example input"
+{
+  "status": "hold",
+  "reason": "Waiting for warehouse confirmation"
+}
+```
+
+```json title="Example output — HTTP 200, compact entity"
+{
+  "success": true,
+  "message": "Session status updated",
+  "data": {
+    "_id": "670000000000000000000006",
+    "status": "hold",
+    "statusChangedAt": "2026-10-17T04:10:00.000Z"
+  }
+}
+```
+
+The ordinary response omits statusLog. Read the manager-only endpoint below for reason/history. The API accepts an optional trimmed reason up to 500 characters. Empty input does not become a meaningful reason; an overlong reason fails validation with 400. A concurrent status race can produce 409. Visibility, assignment policy and authentication can separately produce 404, 403 or 401.
+
+The same reason is accepted on session wrap-up, comment update and comment wrap-up. Wrap-up accepts hold/unresolved/resolved, with the required classification fields shown in the [API reference](/docs/listenyzen/api-reference). Session `mergeWithPrevious: true` chooses merge instead of the status-change branch; do not interpret a supplied reason as a guaranteed new history entry on that path.
+
+## Messages can move a query back to pending
+
+`conversation/service.ts` calls `onMessageStored` **after** Message.create. Session rules select the transition; `moveToPending` checks that the triggering message was initiated/sent at or after the current status began. Our send paths capture initiatedAt before the provider request, preventing a reply already in flight from ending a subsequently placed hold. Provider-originated messages use their message timestamp. Future event timestamps are capped at now for the log.
+
+| Current status | Event | Result |
+| --- | --- | --- |
+| hold | Qualifying outgoing agent message | Same query becomes pending; cause reply; resolution resumes. |
+| hold | Customer message, automatic reply, note or tag | Remains hold. |
+| unresolved | Customer message sent after wrap-up | Same session becomes pending; cause customer. |
+| unresolved | Agent message or older delayed customer event | Remains unresolved. |
+| resolved session | New customer message or explicit re-engagement | Creates another session; old session stays resolved. |
+| resolved session | Ordinary outgoing follow-up | Stays in that resolved session. |
+| unresolved comment root | New reply by the root author | Root returns to pending. Other participants cannot reopen it. |
+| resolved comment root | Later customer reply | Does not automatically reopen its SLA cycle. |
+
+An automatic reply has `isAutomatic: true`. It neither counts as first response nor ends hold. A `system` notice is a separate internal-message concept. The current automatic outbound use case is the optional WhatsApp media-failure reply.
+
+A provider-rejected send is not stored as a successful reply. A later asynchronous failure can disqualify first response, but **does not undo a hold already ended**. Native-platform echoes may end hold without an internal user ID. When eligible messages arrive out of order, whichever is stored first may establish the transition. `moveToPending` logs failure and returns false; it does not throw and undo stored messages.
+
+Send any courtesy message before putting the query on hold: a qualifying message afterwards ends the hold. The UI now shows this hint beside the optional hold reason.
+
+## Read one query's history
+
+`GET /api/v1/sessions/:id/status-log` and `GET /api/v1/comments/:id/status-log` require super_admin, company_owner or company_admin plus record visibility. A query manager receives 403. There is no separate supervisor role. A comment reply ID is resolved to its root.
+
+The route calls `readStatusLog`, explicitly selecting the normally hidden array. `namedStatusLog` loads unique user IDs once, resolves current names, and returns oldest first:
+
+```json title="Example output — HTTP 200"
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "status": "hold",
+      "at": "2026-10-17T04:10:00.000Z",
+      "cause": "agent",
+      "by": { "id": "670000000000000000000002", "name": "Amina Rahman" },
+      "reason": "Waiting for warehouse confirmation"
+    },
+    {
+      "status": "pending",
+      "at": "2026-10-17T04:40:00.000Z",
+      "cause": "reply",
+      "by": null,
+      "reason": null
+    }
+  ]
+}
+```
+
+No log returns an empty array. An unknown actor is null; a deleted account is an object retaining its ID with name null. Historical names are not snapshots here. These endpoints return recorded entries, whereas clock calculations can infer a missing legacy status point.
+
+## Derive the brand hold log
+
+Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17&source=sessions`. This uses the same manager roles and resolves a visible brand before calling `overview/holds.ts:listHolds`.
+
+1. Convert inclusive Asia/Dhaka dates to a start-inclusive/end-exclusive time range. Both dates or neither are required; default is the last 30 days, maximum range one year.
+2. Read candidate sessions and comment roots, selecting status history. Optional source is sessions or comments; omission combines both. There is no platform filter here.
+3. Pair each hold entry with its next transition (or now if still held). Keep holds that overlap the range, including ones that started before it.
+4. Sort newest hold first and keep at most 1,000 rows. There is no continuation cursor or truncation flag.
+5. Resolve users and business-hour versions. Measure the full hold, not just the portion overlapping the selected range, using hours applicable when the query's SLA clock started.
+
+```json title="Example output — HTTP 200"
+{
+  "success": true,
+  "message": "success",
+  "data": [{
+    "source": "session",
+    "id": "670000000000000000000006",
+    "conversationId": "670000000000000000000005",
+    "heldBy": { "id": "670000000000000000000002", "name": "Amina Rahman" },
+    "reason": "Waiting for warehouse confirmation",
+    "startedAt": "2026-10-17T04:10:00.000Z",
+    "endedAt": "2026-10-17T04:40:00.000Z",
+    "endedBy": { "cause": "reply", "by": null },
+    "durationMs": 1800000,
+    "businessMs": 1800000
+  }]
+}
+```
+
+The example is 10:10–10:40 Dhaka on a working Saturday, assuming the default schedule. An active hold has endedAt/endedBy null and durations calculated to read time. Comment rows use source comment and conversationId null. Query parameter sources are plural; row sources are singular.
+
+The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Deep links from hold rows and the broader assignment work remain deferred. Holds live on the query; merging away a session or deleting a thread removes its holds from this report. No separate immutable audit collection exists.
+
+Continue to [settings and SLA](/docs/listenyzen/code-sla) to see how these transitions determine charged time.
