@@ -18,26 +18,57 @@
       {
         "name": "ownerId?",
         "type": "Types.ObjectId"
-      },
-      {
-        "name": "settings?",
-        "type": "ICompanySettings"
       }
     ],
     "relations": [
       "User",
       "Brand",
       "Department",
-      "Customer"
+      "Customer",
+      "Team"
     ]
   },
   {
     "name": "User",
     "source": "server/src/modules/user/schema.ts",
-    "fields": [],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "email",
+        "type": "string"
+      },
+      {
+        "name": "role",
+        "type": "Role"
+      },
+      {
+        "name": "password",
+        "type": "string"
+      },
+      {
+        "name": "companyId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "teamId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "departmentId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "avatar?",
+        "type": "string"
+      }
+    ],
     "relations": [
       "Company",
-      "Department"
+      "Department",
+      "Team"
     ]
   },
   {
@@ -60,7 +91,38 @@
     "relations": [
       "Company",
       "User",
-      "Brand"
+      "Brand",
+      "Team"
+    ]
+  },
+  {
+    "name": "Team",
+    "source": "server/src/modules/team/schema.ts",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "TeamStatus"
+      },
+      {
+        "name": "departmentId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      }
+    ],
+    "relations": [
+      "Company",
+      "Department",
+      "User",
+      "Brand",
+      "Session",
+      "Comment"
     ]
   },
   {
@@ -92,6 +154,10 @@
         "type": "Types.ObjectId[]"
       },
       {
+        "name": "teamIds",
+        "type": "Types.ObjectId[]"
+      },
+      {
         "name": "queryManagerIds",
         "type": "Types.ObjectId[]"
       },
@@ -116,7 +182,8 @@
       "Conversation",
       "Comment",
       "Setting",
-      "FixedReply"
+      "FixedReply",
+      "Team"
     ]
   },
   {
@@ -266,6 +333,10 @@
         "type": "ISessionAssignee"
       },
       {
+        "name": "mirrorVersion?",
+        "type": "number"
+      },
+      {
         "name": "tags",
         "type": "Types.ObjectId[]"
       }
@@ -275,7 +346,8 @@
       "Company",
       "Customer",
       "Session",
-      "Message"
+      "Message",
+      "Team"
     ]
   },
   {
@@ -467,7 +539,8 @@
       "Department",
       "BrandTag",
       "SessionNote",
-      "Message"
+      "Message",
+      "Team"
     ]
   },
   {
@@ -661,7 +734,8 @@
       "Comment",
       "User",
       "Department",
-      "BrandTag"
+      "BrandTag",
+      "Team"
     ]
   },
   {

@@ -4,12 +4,12 @@ description: "Database first, then business requirements, prerequisites and code
 ---
 
 <Callout title="Current source snapshot">
-Based on Listenyzen revision `ea791d3`, inspected on 17 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 114 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
+Based on Listenyzen revision `2a5407c`, inspected on 18 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 121 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
 </Callout>
 
 ## 1. Understand the database before the endpoints
 
-Start with all 14 base collections: Company, User, Department, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File and Setting. SLA and business-hour settings share the Setting collection through discriminators. Status history is embedded in Session and Comment, not a separate collection.
+Start with all 15 base collections: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File and Setting. SLA and business-hour settings share the Setting collection through discriminators. Status history is embedded in Session and Comment, not a separate collection.
 
 <Cards>
 <Card title="Entities, schemas & relationships" href="/docs/listenyzen/data-model">Read field types, defaults, references, indexes, embedded history and consistency boundaries.</Card>
@@ -45,14 +45,19 @@ Once company identity and brand access exist, settings, tags and reusable replie
 Every operation has an example request and response, access requirements, prerequisites, business context, validation declarations and handler code. Read the learning path first when a route depends on unfamiliar entities or workflows.
 
 <Cards>
-<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 116 operations, including session/comment history and the brand hold log.</Card>
+<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 123 operations, including session/comment history and the brand hold log.</Card>
 <Card title="Development & repair" href="/docs/listenyzen/development">Configure the processes, understand backfills and check production index requirements.</Card>
 </Cards>
 
 ## Latest behavior to remember
 
+Teams now sit under departments. Query managers join a team; their department is derived from it. Brand visibility can come from a department, team or individual grant. Managers route work; agents claim unassigned work or their own pools before modifying it. The company-wide permission toggle and `/companies/me/settings` endpoints have been removed.
+
+[Read the teams, routing and claim walkthrough](/docs/listenyzen/code-assignment).
+
+
 Resolution charges business time while pending, including silence after an agent reply. Hold, unresolved and resolved intervals stop that clock. A customer message reopens unresolved work; an agent reply ends hold; automatic replies do neither the work of a first response nor ending a hold. First-response timing is independent of resolution pauses.
 
-The manager-only History tabs and Admin hold log expose who changed status, when and why. Hold-row deep links and the assignment redesign remain deferred.
+The manager-only History tabs and Admin hold log expose who changed status, when and why. Team pools, claims and manager routing are implemented. Hold-row deep links remain deferred.
 
 [Download the complete Markdown guide](/downloads/LISTENYZEN_BACKEND_ONBOARDING.md) · [Download the API reference](/downloads/LISTENYZEN_API_REFERENCE.md)

@@ -168,7 +168,7 @@ pnpm seed:super-admin
 
 The seed **updates an existing user with that email**, resets its password, sets role to super_admin and clears company/department links. It is not an insert-only script. Confirm that the configured database and email are the intended local/development target.
 
-Create a company/owner, departments and query managers, then create a brand and assign its departments/agents. Channel connection is a separate step. SLA/business-hour defaults work without saved Setting records; first save produces version 1.
+Create a company/owner, departments, teams and then query managers, then create a brand and grant its departments/teams/agents. Channel connection is a separate step. SLA/business-hour defaults work without saved Setting records; first save produces version 1.
 
 No general all-domain sample-data seeder or formal migration runner was found.
 
@@ -232,8 +232,8 @@ Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domai
 | Startup says missing/invalid config              | Wrong cwd; missing environment JSON; missing nested file/email objects; blank optional env values overriding JSON.                                  |
 | Messages accepted by webhook but inbox silent    | Worker absent/stopped; queue backlog; wrong Redis instance; worker emitter not connected; client not joined to brand room.                          |
 | Connected channel receives nothing               | Webhook subscription diagnostics, app permissions/dashboard setup, signature secret, active brand/company; connection flags alone are insufficient. |
-| Agent sees thread but cannot reply               | onlyAssignedCanAct and current assignee; direct/department mismatch; inactive or disconnected channel.                                              |
-| Same endpoint behaves differently by user        | Route roles, tenant scope, brand assignment, access-token department/role staleness.                                                                |
+| Agent sees thread but cannot reply               | Personal ownership of the current query; claim unassigned or own pooled work first; direct/team/department mismatch; inactive or disconnected channel.                                              |
+| Same endpoint behaves differently by user        | Route roles, tenant scope, brand assignment, access-token team/department/role staleness.                                                                |
 | R2 upload DNS or URL problems                    | API endpoint versus public read base; correct region; File.url legacy AWS-only virtual.                                                             |
 | Logo/avatar disappears after deploy              | Ephemeral local upload directory or incorrect BASE_URL.                                                                                             |
 | Long thread appears incomplete                   | `/conversations/:id/messages` returns the earliest 200 messages in ascending order; use grouped session thread reads appropriately.                 |
@@ -264,10 +264,16 @@ Useful focused notes: `realtime-inbox-sockets.md`, `webhook-queue-bullmq.md`, `t
 
 ## October 17 SLA and index rollout
 
-Source revision `ea791d3` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
+Source revision `2a5407c` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
 
 Run repair commands only against the intended Listenyzen environment, using the script options in `server/scripts/dev/backfill-session-sla.ts` and `backfill-comment-sla.ts`. A `--all` recomputation is useful when data already carries the current rulesVersion but a later first-response rule changed. Inspect the script first: these commands write derived database fields, and the documentation build does not execute them.
 
 The source repository records a development backfill, but this review did not query that database or verify production completion. Production still needs the new `(brandId, statusChangedAt)` indexes on sessions and comments provisioned through the deployment process: production autoIndex is disabled. Greater charged resolution time after switching from the old customer-wait algorithm is expected.
 
-Manager history is embedded in query records. Merging/deleting records can remove their holds from reports. Hold-row deep links and assignment redesign remain deferred; they are not promised by this release.
+Manager history is embedded in query records. Merging/deleting records can remove their holds from reports. Hold-row deep links remain deferred. Teams, pooled assignments and claims are included in this revision.
+
+## October 18 team migration
+
+`server/scripts/dev/backfill-default-teams.ts` provides `pnpm backfill:default-teams` (dry run) and `pnpm backfill:default-teams --apply` from the Listenyzen server directory. It creates/reuses a General team per department, following department status, and moves team-less query managers into it. Agents without a valid department are reported for administrative correction. This documentation update does not run the migration.
+
+Production must provision the Team unique `(departmentId, name)` index with English strength-2 collation, plus schema-declared access indexes; autoIndex is disabled there. Existing company permission settings may remain in old documents but are no longer read. Refresh tokens after a membership change to update brand access; claims and mine filters already read current membership. Deployment and migration completion have not been verified against a live database.

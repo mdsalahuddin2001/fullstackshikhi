@@ -1,34 +1,19 @@
 {
   "scope": {
     "file": "server/src/auth/tenant.ts",
-    "line": 42,
-    "code": "export const getBrandScope = (\n  user?: Express.User\n): { companyId?: string; $or?: Record<string, unknown>[] } => {\n  const scope = getTenantScope(user);\n  // Not optional-chained: getTenantScope above throws when there is no user, so reaching this line\n  // means there is one. Chaining here would imply otherwise.\n  if (user!.role === ROLES.QUERY_MANAGER) {\n    // Matching a scalar against an array field means \"array contains it\". Fall back to ''\n    // (matches nothing) if the token somehow lacks a department.\n    return {\n      ...scope,\n      $or: [{ departmentIds: user!.departmentId ?? '' }, { queryManagerIds: user!.id }],\n    };\n  }\n  return scope;\n};",
+    "line": 43,
+    "code": "export const getBrandScope = (\n  user?: Express.User\n): { companyId?: string; $or?: Record<string, unknown>[] } => {\n  const scope = getTenantScope(user);\n  // Not optional-chained: getTenantScope above throws when there is no user, so reaching this line\n  // means there is one. Chaining here would imply otherwise.\n  if (user!.role === ROLES.QUERY_MANAGER) {\n    // Matching a scalar against an array field means \"array contains it\". A query manager without a\n    // department or team sees only the brands they are assigned to by name (an empty id can't be\n    // cast, so those clauses are left out rather than matched against '').\n    // Department and team come from the token: a move between teams reaches brand visibility on the\n    // next token refresh, which re-reads the user (auth/service.ts `refresh`).\n    return {\n      ...scope,\n      $or: [\n        ...(user!.departmentId ? [{ departmentIds: user!.departmentId }] : []),\n        ...(user!.teamId ? [{ teamIds: user!.teamId }] : []),\n        { queryManagerIds: user!.id },\n      ],\n    };\n  }\n  return scope;\n};",
     "title": "Build the brand visibility filter",
     "notes": [
       {
-        "label": "Start with the tenant",
+        "label": "Preserve tenant isolation",
         "line": 3,
-        "detail": "This first filter restricts tenant roles to their own company. The super-admin scope is empty."
+        "detail": "The tenant constraint remains outside the alternative brand grants."
       },
       {
-        "label": "Narrow agent access",
-        "line": 6,
-        "detail": "Only the query-manager role gets the extra assignment filter. Owners/admins retain their company-wide brand visibility."
-      },
-      {
-        "label": "Keep both constraints",
-        "line": 10,
-        "detail": "The spread preserves companyId. The OR beneath it is evaluated within that tenant restriction, not instead of it."
-      },
-      {
-        "label": "Accept either access path",
-        "line": 11,
-        "detail": "The agent can be assigned individually or through a department. Missing department uses an empty value, not an unrestricted branch."
-      },
-      {
-        "label": "Return elevated-role scope",
+        "label": "Accept any of three grants",
         "line": 14,
-        "detail": "For other roles the existing tenant scope is enough. This function builds data; the later query executes the restriction."
+        "detail": "Department, team or individual grant can confer visibility. Missing membership clauses are omitted. Token refresh updates these claims; this does not grant permission to act on an unclaimed pool."
       }
     ]
   },

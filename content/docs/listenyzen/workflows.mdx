@@ -12,7 +12,13 @@ description: "Trace messages, sessions, public comments, media and SLA calculati
 
 Public registration accepts companyName and owner identity/password. `provisionCompany` creates Company, creates a `company_owner` User, then links `ownerId`. On failure it attempts to delete the owner/company as compensation; cleanup failures are logged. Registration then attempts welcome email without undoing the account if delivery fails.
 
-Admin staff creation derives companyId from the caller unless the caller is super admin. Department membership is validated against that company. Query-manager operations apply a fixed role filter. Brand assignment checks that supplied departments/agents belong to the right company.
+Admin staff creation derives companyId from the caller unless the caller is super admin. Query managers must select a team in that company; an active team and department are required when joining. Department membership is derived from the team. Query-manager operations apply a fixed role filter. Brand assignment checks that supplied departments/teams/agents belong to the right company.
+
+## Team pools and personal ownership
+
+Build the organization in this order: Company → Department → Team → Query manager. Grant brand visibility through departments, teams or individual agents. Manager-only assignment routes can pool an open query on an eligible active team/department or assign an individual. Query managers use Assign to me to take unassigned work or a pool they belong to; only then can they modify it. Routing or claiming does not end hold or resume SLA.
+
+`mine=true` includes personal work plus own team and department pools. Claims and mine filters use current database membership; brand visibility uses the access-token membership until refresh. See [the code-level assignment walkthrough](/docs/listenyzen/code-assignment) for examples, conflicts and resolved-work restrictions.
 
 ## Channel connection
 

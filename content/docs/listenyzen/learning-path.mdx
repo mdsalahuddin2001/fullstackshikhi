@@ -13,7 +13,7 @@ For each stage, read the requirement, prerequisites and code path before trying 
 flowchart TD
   DB[Entities, schemas, relationships] --> Shared[Runtime, validation, errors and queries]
   Shared --> Auth[Company onboarding and identity]
-  Auth --> Staff[Departments and staff]
+  Auth --> Staff[Departments, teams and staff]
   Auth --> Brand[Brands]
   Staff --> Access[Brand access and assignments]
   Brand --> Access
@@ -75,7 +75,7 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business rule and implementation:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business rule and implementation:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Personal assignment controls query-manager mutations; suspension is checked separately from role permission.
 
 **Read the code:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`.
 
@@ -115,8 +115,6 @@ curl -i -X POST "${BASE_URL}/api/v1/auth/register-company" \
 | POST | `/api/v1/auth/logout` |
 | POST | `/api/v1/auth/refresh` |
 | GET | `/api/v1/companies/me` |
-| GET | `/api/v1/companies/me/settings` |
-| PATCH | `/api/v1/companies/me/settings` |
 | GET | `/api/v1/companies` |
 | POST | `/api/v1/companies` |
 | GET | `/api/v1/companies/:id` |
@@ -125,9 +123,12 @@ curl -i -X POST "${BASE_URL}/api/v1/auth/register-company" \
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
-## 2. Staff and departments
+## 2. Departments, teams and staff
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+Follow Company → Department → Team → Query manager. `POST /teams` creates the organizational group; `POST /query-managers` now requires teamId and derives departmentId. Read the [teams and assignment walkthrough](/docs/listenyzen/code-assignment) for complete input/output examples and the claim → reply sequence.
+
+
+**Prerequisites:** Company and authenticated role. A department can exist before agents; create a team under that department before creating query managers. Team membership derives their department.
 
 **Business rule and implementation:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -179,6 +180,10 @@ curl -i -X POST "${BASE_URL}/api/v1/departments" \
 | PATCH | `/api/v1/users/me/change-password` |
 | PATCH | `/api/v1/users/:id` |
 | DELETE | `/api/v1/users/:id` |
+| GET | `/api/v1/teams` |
+| POST | `/api/v1/teams` |
+| GET | `/api/v1/teams/:id` |
+| PATCH | `/api/v1/teams/:id` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -186,7 +191,7 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business rule and implementation:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business rule and implementation:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Read the code:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`.
 
@@ -255,6 +260,8 @@ curl -i -X POST "${BASE_URL}/api/v1/brands/670000000000000000000004/tags" \
 | POST | `/api/v1/brands/:id/whatsapp/connect-manual` |
 | POST | `/api/v1/brands/:id/whatsapp/register` |
 | DELETE | `/api/v1/brands/:id/whatsapp` |
+| GET | `/api/v1/brands/:id/teams` |
+| PUT | `/api/v1/brands/:id/teams` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -454,6 +461,8 @@ curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/messa
 | POST | `/api/v1/conversations/:id/messages/:messageId/media` |
 | GET | `/api/v1/conversations/:id/whatsapp/templates` |
 | POST | `/api/v1/conversations/:id/whatsapp/templates` |
+| POST | `/api/v1/conversations/:id/claim` |
+| PATCH | `/api/v1/conversations/:id/assignment` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -569,6 +578,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/comments/670000000000000000000008/wrap-up" 
 | POST | `/api/v1/comments/:id/like` |
 | DELETE | `/api/v1/comments/:id` |
 | GET | `/api/v1/comments/:id/status-log` |
+| POST | `/api/v1/comments/:id/claim` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -634,6 +644,6 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 ## What changed in this revision
 
-Compared with the previous documentation snapshot (`aebd2800`), revision `ea791d3` adds full pending-business-time resolution accounting, logged status transitions, hold reasons, unresolved reopening, manager history/hold endpoints and automatic-reply exclusion. The client adds hold-reason fields, manager History tabs and the Admin hold-log page. The detailed transition examples are in [hold, reopen and history](/docs/listenyzen/code-status).
+Revision `2a5407c` adds teams, required query-manager membership, team brand grants and pools, atomic claims, personal-only modification permissions and guarded conversation mirroring. It retains the previously documented SLA and status-history behavior. The client adds hold-reason fields, manager History tabs and the Admin hold-log page. The detailed transition examples are in [hold, reopen and history](/docs/listenyzen/code-status).
 
-The assignment redesign and hold-row deep links remain deferred. Existing production index/backfill state is not verified by this source review. See [development and repair](/docs/listenyzen/development) before operating on stored data.
+Team pools, manager routing and claims are now implemented. Hold-row deep links remain deferred. Existing production index/backfill state is not verified by this source review. See [development and repair](/docs/listenyzen/development) before operating on stored data.

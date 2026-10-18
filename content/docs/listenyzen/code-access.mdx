@@ -60,6 +60,7 @@ export const authenticate = async (
       role: payload.role,
       companyId: payload.companyId,
       departmentId: payload.departmentId,
+      teamId: payload.teamId,
     };
     setUserId(payload.sub);
 
@@ -89,7 +90,7 @@ Read the function in four blocks:
 | `req.headers.authorization?.replace('Bearer ', '')` | Prefer the Authorization header; fall back to the cookie when absent. | A supplied invalid header is not silently replaced by a valid cookie. |
 | `verifyAccessToken(token)` | Validate the JWT using the configured access secret. | Expired or invalid tokens throw before the handler runs. |
 | `assertActiveCompanyAccess(payload, ...)` | Check current company availability. | Company deactivation can deny a still-unexpired token. |
-| `req.user = ...` | Construct the principal consumed by route and domain helpers. | The role/department here are token claims, not a freshly loaded User. |
+| `req.user = ...` | Construct the principal consumed by route and domain helpers. | The role/team/department here are token claims, not a freshly loaded User. |
 | `setUserId(payload.sub)` | Attach identity to AsyncLocalStorage logging context. | Downstream loggers gain userId without passing it through every function. |
 | `next()` / `next(new UnauthorizedError(...))` | Continue or enter the global error path. | The route does not need its own JWT try/catch. |
 
@@ -116,13 +117,14 @@ export const getTenantScope = (
 
 <CodeLens tour="scope" />
 
-For an agent in company A, department D, with user ID U, the generated brand filter is conceptually:
+For an agent in company A, department D and team T, with user ID U, the generated brand filter is conceptually:
 
 ```typescript title="Illustrative filter — identifiers abbreviated"
 {
   companyId: 'A',
   $or: [
     { departmentIds: 'D' },
+    { teamIds: 'T' },
     { queryManagerIds: 'U' }
   ]
 }
@@ -134,37 +136,36 @@ The surrounding brand service adds `_id` and executes `Model.findOne`. Mongo com
 
 `loadVisibleConversation` first loads the conversation, then resolves its brand with `getBrandScope`. An inaccessible brand is reported as a missing conversation. A guessed Mongo ID therefore does not bypass brand access.
 
-`loadActionableConversation` reuses that visibility result, then passes the conversation’s companyId and current assignee to the following guard:
+`loadActionableConversation` reuses that visibility result, then passes the conversation’s current assignee to the following guard:
 
 Source: `server/src/auth/reply-access.ts`.
 
 ```typescript title="server/src/auth/reply-access.ts"
 export const assertCanAct = async (
   user: Express.User | undefined,
-  companyId: Types.ObjectId | string,
   assignee: AssigneeRef | undefined | null,
   comingFrom: string
 ): Promise<void> => {
-  if (!(await policyApplies(user, companyId))) return;
+  if (user?.role !== ROLES.QUERY_MANAGER) return;
 
-  if (!assignee) {
+  if (assignee?.kind === 'query_manager' && String(assignee.id) === user.id) return;
+  if (!assignee || assignee.kind !== 'query_manager') {
     throw new ForbiddenError(
-      'This conversation is unassigned — an owner or admin has to assign it first',
+      assignee
+        ? 'This conversation is pooled: take it with Assign to me first'
+        : 'This conversation is unassigned: take it with Assign to me first',
       comingFrom
     );
   }
-  if (!(await pointsAtCaller(user as Express.User, assignee))) {
-    throw new ForbiddenError('This conversation is assigned to someone else', comingFrom);
-  }
+  throw new ForbiddenError('This conversation is assigned to someone else', comingFrom);
 };
 ```
 
-- `policyApplies` is false for owners/admins/super admins. For query managers it reads the company setting and compares it to literal `true`.
-- An unset setting behaves as off, supporting companies created before the field existed.
-- Unassigned work is rejected when the policy applies; it is not implicitly available to everyone.
-- An individual assignment compares assignee.id with user.id.
-- A department assignment reloads the caller’s current department from User. This is a deliberate fresh read rather than trusting the JWT department claim.
-- Changing assignment has a separate guard, so agents cannot defeat assigned-only access by assigning work to themselves.
+- Owners, admins and super admins pass the assignment gate; earlier authentication, tenant and brand checks still apply.
+- Query managers pass only when assignee.kind is query_manager and assignee.id is their own user ID. There is no company-setting read.
+- Unassigned and department/team-pooled work returns 403 with an Assign to me hint. Pool membership grants claiming, not modification.
+- Manager-only assignment routes choose or clear an assignee. Query managers use the separate claim route, which performs an atomic eligibility check and assignment write.
+- Claim eligibility and mine=true read current team/department membership from User. Brand scope still uses token claims until refresh.
 
 <Callout title="Historical session access">
 Session mutation routes delegate through the parent conversation. The current thread holder controls action on its history; an old session’s assignee is not an independent permission grant.
@@ -207,11 +208,12 @@ export const refresh = async (
     role: user.role,
     companyId,
     departmentId: user.departmentId?.toString(),
+    teamId: user.teamId?.toString(),
   });
 };
 ```
 
-After verifying the refresh JWT, the service loads User by `payload.sub`. New tokens take role, company and department from this current record. A deleted user or inactive company is rejected.
+After verifying the refresh JWT, the service loads User by `payload.sub`. New tokens take role, company, team and department from this current record. A deleted user or inactive company is rejected.
 
 One comment in `auth/reply-access.ts` still describes older refresh behavior that reused token claims. The implementation above is the current behavior: **refresh rereads User**. This is an example of why following executable code matters more than repeating comments.
 
@@ -224,8 +226,8 @@ Source: `server/src/modules/user/service.ts`.
 ```typescript title="server/src/modules/user/service.ts"
 export const updateById = async (
   userId: string,
-  data: Partial<Omit<IUser, 'departmentId' | 'companyId'>> & {
-    departmentId?: string | Types.ObjectId;
+  // Never team or department: those move together, on /query-managers only.
+  data: Partial<Omit<IUser, 'teamId' | 'departmentId' | 'companyId'>> & {
     companyId?: string | Types.ObjectId;
   },
   scope: Scope = {}

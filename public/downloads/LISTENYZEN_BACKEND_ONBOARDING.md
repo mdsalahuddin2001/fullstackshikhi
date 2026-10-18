@@ -1,6 +1,6 @@
 # Listenyzen backend — database-first learning guide
 
-Inspected 17 October 2026 at source revision `ea791d3`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
+Inspected 18 October 2026 at source revision `2a5407c`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
 
 # Data models & relationships
 *Interactive illustration available in the website chapter.*
@@ -8,7 +8,7 @@ Inspected 17 October 2026 at source revision `ea791d3`. Source-derived examples;
 
 ## Persistence fundamentals
 
-Mongoose models live beside features. There are **13 base domain models**: Company, User, Department, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply and File, plus **Setting** with two discriminator models. In total this is **14 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
+Mongoose models live beside features. There are **14 base domain models**: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply and File, plus **Setting** with two discriminator models. In total this is **15 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
 
 ObjectId references are application links, not relational foreign-key constraints. Mongoose `ref` enables population; it does not enforce existence, company membership, cascading deletion, or relationship cardinality. Several references are deliberately polymorphic or use external string IDs.
 
@@ -25,7 +25,11 @@ erDiagram
     COMPANY ||--o{ BRAND : owns
     COMPANY ||--o{ CUSTOMER : owns
     COMPANY o|--o| USER : owner_pointer
-    DEPARTMENT o|--o{ USER : membership
+    DEPARTMENT ||--o{ TEAM : contains
+    TEAM o|--o{ USER : teamId
+    DEPARTMENT o|--o{ USER : derived_departmentId
+    COMPANY ||--o{ TEAM : tenant
+    BRAND }o--o{ TEAM : teamIds
     BRAND }o--o{ DEPARTMENT : departmentIds
     BRAND }o--o{ USER : queryManagerIds
     BRAND ||--o{ BRAND_TAG : vocabulary
@@ -49,7 +53,7 @@ erDiagram
     USER o|--o{ FILE : uploadedBy
 ```
 
-A Session/Comment can additionally point to a User **or** Department through `assignee.kind` and `assignee.id`. These polymorphic links are omitted from the diagram to avoid implying both are populated simultaneously. Settings also support a company scope in the schema; currently mounted settings routes are brand-scoped.
+A Session/Comment can additionally point to a User, Team **or** Department through `assignee.kind` and `assignee.id`. These polymorphic links are omitted from the diagram to avoid implying both are populated simultaneously. Settings also support a company scope in the schema; currently mounted settings routes are brand-scoped.
 
 ## Model-by-model inventory
 
@@ -61,7 +65,7 @@ Source: `server/src/modules/company/schema.ts`.
 - `status`: `active | inactive`, default `active`.
 - `logo?`: local storage key; virtual `logoUrl` builds a public URL.
 - `ownerId?`: User pointer. Provisioning creates a company and its owner, then sets this pointer. No unique index makes ownership strictly one-to-one at database level.
-- `settings.onlyAssignedCanAct`: defaults false; determines whether query managers can modify only assigned work.
+- The former `settings.onlyAssignedCanAct` field is removed. Old stored values are ignored; query-manager mutations now require personal assignment unconditionally.
 - One company has many brands, departments, users and customer records. Active-company checks gate login, refresh and authenticated operations.
 
 ### User
@@ -70,7 +74,8 @@ Source: `server/src/modules/user/schema.ts`.
 
 - Required `name`, globally unique `email`, `role`, `password`.
 - `companyId?`: absent for super admin; expected for tenant roles by route/provisioning logic.
-- `departmentId?`: one department membership; agent-facing workflows use it.
+- `teamId?`: Team reference; required by query-manager create/membership workflows, optional on the shared User schema for other roles and legacy records.
+- `departmentId?`: derived from the selected team and written alongside teamId, never accepted independently in user bodies. Team changes must go through `/query-managers`.
 - `avatar?`: local storage key with virtual `avatarUrl`.
 - Roles: `super_admin`, `company_owner`, `company_admin`, `query_manager`.
 - Password is excluded from ordinary queries via `select: false` and removed by document serialization transforms. Login/password-change explicitly select it.
@@ -85,12 +90,23 @@ Source: `server/src/modules/department/schema.ts`.
 - Unique `(companyId, name)`.
 - A department has many users and can be assigned to many brands. Brand membership and department existence are checked in application code.
 
+### Team
+
+Source: `server/src/modules/team/schema.ts`.
+
+- Required trimmed `name`, required immutable `departmentId` and required indexed `companyId`; status is active/inactive, default active.
+- The create API accepts a name of 1–100 characters and derives companyId from the tenant-visible department. Creation and activation require an active department.
+- Unique `(departmentId, name)` with collation `{ locale: 'en', strength: 2 }`: case-insensitive names within one department. Duplicate creates/renames return 409.
+- One department contains many teams; a query manager belongs to one team. Team membership derives the user's department.
+- No DELETE endpoint and no department-move operation. Deactivate instead. A department containing teams cannot be deleted, even if those teams are inactive.
+- Inactive teams cannot receive new members or pooled assignments; existing members and pooled work remain, and eligible members can still claim existing pools.
+
 ### Brand
 
 Source: `server/src/modules/brand/schema.ts`.
 
 - Required `name`, normalized lowercase `email`, local `logo`, `companyId`; active/inactive status.
-- `departmentIds[]`, `queryManagerIds[]`: two independent ways an agent can gain access.
+- `departmentIds[]`, `teamIds[]`, `queryManagerIds[]`: three alternative brand-access grants. `teamIds` references Team and is indexed. A direct individual grant does not grant access to the agent’s whole team.
 - `facebook?`: `pageId`, `pageName`, page/user tokens, connection state/date, verified webhook subscription fields/missing fields/check time.
 - `instagram?`: `accountId`, `username`, token, connection state/date, `loginType` (`facebook` or `instagram`), optional token expiry, webhook subscription diagnostics for the direct-login flow.
 - `whatsapp?`: `wabaId`, `phoneNumberId`, display number, verified name, token, `registered`, registration PIN, connection state/date.
@@ -130,7 +146,7 @@ Source: `server/src/modules/conversation/schema.ts`.
 - Defaults: incoming direction, unread count 0, status `pending`, sentiment `NEUTRAL`.
 - Unique `(pageId, participantId)` — **platform and company are not in this unique key**.
 - One conversation has many sessions/messages. Customer-to-conversation is not constrained to one-to-one by a unique customer reference.
-- Summary fields are intentionally denormalized; update them through the session/message services.
+- Summary fields are intentionally denormalized; update them through the session/message services. Optional `mirrorVersion` is a numeric compare-and-swap guard when copying the latest session onto Conversation. Each successful mirror increments it; it is not the statusRevision or SLA version.
 
 ### Message
 
@@ -154,7 +170,7 @@ Source: `server/src/modules/session/schema.ts`.
 - Required `conversationId`, `brandId`, `companyId`, `platform`, and `sequence`.
 - Status `pending | unresolved | resolved | hold`; sentiment `POSITIVE | NEUTRAL | NEGATIVE | MIXED`.
 - `startedAt`, `lastActivityAt`; optional `resolvedAt`, `statusChangedBy`, `statusChangedAt`.
-- Optional `assignee: { kind: query_manager | department, id, name }`. `name` is a display snapshot; `id` has no fixed Mongoose `ref`.
+- Optional `assignee: { kind: query_manager | department | team, id, name }`. `name` is a display snapshot; `id` has no fixed Mongoose `ref`.
 - `tags[]`, `messageCount`, `noteCount`.
 - Optional `sessionType`: `complain | inquiry | compliment | support | sales | other`. Preserve the exact spelling `complain` in payloads.
 - Optional `resolutionSummary`, `firstCustomerMessageAt`, `firstResponseAt`, `sla`.
@@ -231,7 +247,7 @@ Source: `server/src/modules/settings/schema.ts`, `server/src/modules/settings/de
 
 ### Embedded status history (Session and Comment)
 
-This is an embedded array, **not a fifteenth collection**. Both schemas reuse `statusChangeSchema` from `server/src/modules/session/schema.ts`.
+This is an embedded array, **not a sixteenth collection**. Both schemas reuse `statusChangeSchema` from `server/src/modules/session/schema.ts`.
 
 | Field | Schema / meaning |
 | --- | --- |
@@ -294,7 +310,7 @@ For each stage, read the requirement, prerequisites and code path before trying 
 flowchart TD
   DB[Entities, schemas, relationships] --> Shared[Runtime, validation, errors and queries]
   Shared --> Auth[Company onboarding and identity]
-  Auth --> Staff[Departments and staff]
+  Auth --> Staff[Departments, teams and staff]
   Auth --> Brand[Brands]
   Staff --> Access[Brand access and assignments]
   Brand --> Access
@@ -356,7 +372,7 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business rule and implementation:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business rule and implementation:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Personal assignment controls query-manager mutations; suspension is checked separately from role permission.
 
 **Read the code:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`.
 
@@ -396,8 +412,6 @@ curl -i -X POST "${BASE_URL}/api/v1/auth/register-company" \
 | POST | `/api/v1/auth/logout` |
 | POST | `/api/v1/auth/refresh` |
 | GET | `/api/v1/companies/me` |
-| GET | `/api/v1/companies/me/settings` |
-| PATCH | `/api/v1/companies/me/settings` |
 | GET | `/api/v1/companies` |
 | POST | `/api/v1/companies` |
 | GET | `/api/v1/companies/:id` |
@@ -406,9 +420,12 @@ curl -i -X POST "${BASE_URL}/api/v1/auth/register-company" \
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
-## 2. Staff and departments
+## 2. Departments, teams and staff
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+Follow Company → Department → Team → Query manager. `POST /teams` creates the organizational group; `POST /query-managers` now requires teamId and derives departmentId. Read the [teams and assignment walkthrough](/docs/listenyzen/code-assignment) for complete input/output examples and the claim → reply sequence.
+
+
+**Prerequisites:** Company and authenticated role. A department can exist before agents; create a team under that department before creating query managers. Team membership derives their department.
 
 **Business rule and implementation:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -460,6 +477,10 @@ curl -i -X POST "${BASE_URL}/api/v1/departments" \
 | PATCH | `/api/v1/users/me/change-password` |
 | PATCH | `/api/v1/users/:id` |
 | DELETE | `/api/v1/users/:id` |
+| GET | `/api/v1/teams` |
+| POST | `/api/v1/teams` |
+| GET | `/api/v1/teams/:id` |
+| PATCH | `/api/v1/teams/:id` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -467,7 +488,7 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business rule and implementation:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business rule and implementation:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Read the code:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`.
 
@@ -536,6 +557,8 @@ curl -i -X POST "${BASE_URL}/api/v1/brands/670000000000000000000004/tags" \
 | POST | `/api/v1/brands/:id/whatsapp/connect-manual` |
 | POST | `/api/v1/brands/:id/whatsapp/register` |
 | DELETE | `/api/v1/brands/:id/whatsapp` |
+| GET | `/api/v1/brands/:id/teams` |
+| PUT | `/api/v1/brands/:id/teams` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -735,6 +758,8 @@ curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/messa
 | POST | `/api/v1/conversations/:id/messages/:messageId/media` |
 | GET | `/api/v1/conversations/:id/whatsapp/templates` |
 | POST | `/api/v1/conversations/:id/whatsapp/templates` |
+| POST | `/api/v1/conversations/:id/claim` |
+| PATCH | `/api/v1/conversations/:id/assignment` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -850,6 +875,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/comments/670000000000000000000008/wrap-up" 
 | POST | `/api/v1/comments/:id/like` |
 | DELETE | `/api/v1/comments/:id` |
 | GET | `/api/v1/comments/:id/status-log` |
+| POST | `/api/v1/comments/:id/claim` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -915,9 +941,9 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 ## What changed in this revision
 
-Compared with the previous documentation snapshot (`aebd2800`), revision `ea791d3` adds full pending-business-time resolution accounting, logged status transitions, hold reasons, unresolved reopening, manager history/hold endpoints and automatic-reply exclusion. The client adds hold-reason fields, manager History tabs and the Admin hold-log page. The detailed transition examples are in [hold, reopen and history](/docs/listenyzen/code-status).
+Revision `2a5407c` adds teams, required query-manager membership, team brand grants and pools, atomic claims, personal-only modification permissions and guarded conversation mirroring. It retains the previously documented SLA and status-history behavior. The client adds hold-reason fields, manager History tabs and the Admin hold-log page. The detailed transition examples are in [hold, reopen and history](/docs/listenyzen/code-status).
 
-The assignment redesign and hold-row deep links remain deferred. Existing production index/backfill state is not verified by this source review. See [development and repair](/docs/listenyzen/development) before operating on stored data.
+Team pools, manager routing and claims are now implemented. Hold-row deep links remain deferred. Existing production index/backfill state is not verified by this source review. See [development and repair](/docs/listenyzen/development) before operating on stored data.
 
 ---
 
@@ -934,7 +960,7 @@ The critical vocabulary is:
 | Term            | Meaning in this codebase                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Company         | Tenant boundary; owns brands and staff.                                                                             |
-| Brand           | Operational inbox boundary; contains connected channel credentials and staff/department access assignments.         |
+| Brand           | Operational inbox boundary; contains connected channel credentials and individual/team/department access grants.         |
 | Query manager   | An agent handling customer interactions; a `User` with `role: 'query_manager'`, not a separate database model.      |
 | Customer        | A channel-specific identity and editable contact record. Not automatically one identity across all social channels. |
 | Conversation    | Long-lived direct-message thread for a page/phone/account and participant.                                          |
@@ -942,7 +968,7 @@ The critical vocabulary is:
 | Session         | A support episode within a conversation; carries ownership, classification, outcome, notes, and SLA.                |
 | Comment thread  | A root public comment plus replies; separate from direct-message conversations and sessions.                        |
 | Post            | Platform context copied onto comments, not a `Post` collection.                                                     |
-| Assignment      | Either one query manager or one department; distinct from permission to see a brand.                                |
+| Assignment      | One query manager, department pool or team pool; distinct from permission to see a brand.                                |
 | Brand tag       | A reusable, optionally hierarchical label; records store its ID.                                                    |
 | Setting version | An immutable saved configuration record; history and current value share one collection.                            |
 
@@ -1062,10 +1088,11 @@ No active cron directory/scheduler was found under `server/src`, despite referen
 | Feature         | Responsibility and important files                                                                                                       |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `auth`          | Company registration/provisioning, login/refresh/logout; `tenant.ts`, `reply-access.ts`, `company-access.ts` define shared access rules. |
-| `company`       | Tenant CRUD, owner link, active status, `onlyAssignedCanAct` setting.                                                                    |
+| `company`       | Tenant CRUD, owner link and active status; the old company permission setting is removed.                                                                    |
 | `user`          | Staff CRUD, self-profile, password changes, role hierarchy enforcement.                                                                  |
 | `department`    | Tenant department CRUD and membership validation helpers.                                                                                |
-| `query-manager` | Agent-oriented operations over the User model; department and avatar handling.                                                           |
+| `team` | Department-bound groups, immutable membership parent, deactivate-only lifecycle and pool eligibility. |
+| `query-manager` | Agent operations over User; required team, derived department and avatar handling.                                                           |
 | `brand`         | Brand CRUD, visibility assignments, account credentials; `meta-channels.ts`, `whatsapp.ts`, `whatsapp-templates.ts`, `assignees.ts`.     |
 | `brand/tags`    | Hierarchical vocabulary, normalized uniqueness, rename/archive/restore, ID resolution.                                                   |
 | `conversation`  | Inbox listing, customer access, messages, sending, reactions; `access.ts`, `send-channel.ts`, `media.ts`, `whatsapp-templates.ts`.       |
@@ -1092,8 +1119,8 @@ Cookie: access_token=<JWT>
 3. `conversation/api.ts` runs `authenticate`. It verifies a Bearer token or the access-token cookie, checks active-company access, attaches the token principal to `req.user`, and enriches logging context.
 4. `authorize(...READ_ROLES)` permits the four defined roles. This alone does **not** establish access to the requested brand.
 5. `validateQuery(listConversationsSchema)` checks `brandId`, coerces `limit`, validates filters, rejects unknown cursor-list parameters, and writes parsed values back to `req.query`.
-6. The handler loads the brand through `getBrandById(brandId, getBrandScope(req.user))`. Owners/admins are company-scoped; query managers additionally need direct or department brand assignment. A missing/inaccessible brand returns 404.
-7. `mine=true` derives assignee IDs from the user's ID and department ID. Optional tag filters expand selected parent tags to descendant tag IDs.
+6. The handler loads the brand through `getBrandById(brandId, getBrandScope(req.user))`. Owners/admins are company-scoped; query managers additionally need direct, team or department brand assignment. A missing/inaccessible brand returns 404.
+7. `mine=true` derives personal, team and department assignee IDs from current User membership, not token pool claims. Optional tag filters expand selected parent tags to descendant tag IDs.
 8. `listConversations` builds a query with mandatory `{ brandId }`, optional assignee/tag restrictions, allowlisted search/filter fields, and cursor ordering by `lastMessageAt DESC, _id DESC`.
 9. `QueryBuilder` applies a cursor boundary, fetches one extra result to establish `hasNext`, and returns plain documents via `.lean()`.
 10. `paginatedSuccessResponse` dispatches the result. `logRequest` records completion status/duration.
@@ -1138,8 +1165,8 @@ All paths below have `/api/v1` prepended, except health and uploads. The complet
 | `/auth`                           | Register company, login, logout, refresh.                                                                                      |
 | `/companies`                      | Super-admin tenant management; `/me` and `/me/settings` for the current tenant.                                                |
 | `/users`                          | Staff management; `/me`, `/me/change-password`.                                                                                |
-| `/departments`, `/query-managers` | Tenant staffing and routing configuration.                                                                                     |
-| `/brands`                         | CRUD, department/agent assignment, tags, channel connection, template administration.                                          |
+| `/departments`, `/teams`, `/query-managers` | Tenant staffing and routing configuration.                                                                                     |
+| `/brands`                         | CRUD, department/team/agent grants, tags, channel connection, template administration.                                          |
 | `/brands/:brandId/fixed-replies`  | Reusable reply CRUD.                                                                                                           |
 | `/brands/:brandId/settings`       | Get/save `sla` and `business-hours`; per-type history.                                                                         |
 | `/brands/:brandId/overview`       | `stats`, `sla`, `engagement`, `inbound-trend`, `sla-compliance`.                                                               |
@@ -1164,11 +1191,11 @@ Sources: `server/src/auth/api.ts`, `server/src/auth/service.ts`, `server/src/lib
 - Passport local strategy authenticates email/password. There is no Passport server-session persistence in this flow.
 - Login and company registration issue access/refresh JWTs in **HTTP-only cookies** named `access_token` and `refresh_token`. Their success payload returns the user, not raw tokens.
 - Protected HTTP middleware first reads the Authorization header, then falls back to the cookie.
-- JWT identity includes `sub`, email, name, role, companyId and departmentId, with separate signing secrets for access and refresh.
+- JWT identity includes `sub`, email, name, role, companyId, departmentId and teamId, with separate signing secrets for access and refresh.
 - `POST /auth/refresh` reads the refresh cookie, verifies it, reloads the User, rechecks company access, and issues another token pair with current identity fields.
 - Logout clears cookies. No token blacklist, persisted refresh-token family, single-use rotation record or password-change token revocation mechanism was found.
 - Cookie options are `httpOnly`, `sameSite: 'strict'`, and secure in production. Cookie max ages are hardcoded to 15 minutes and seven days; JWT expirations are configurable. Keep both aligned when changing lifetimes.
-- Ordinary access authentication uses role/department claims from the access token, rather than reloading the User on every request. Changes may therefore remain stale until refresh/expiry. Assigned-only department checks explicitly load current department membership.
+- Ordinary access authentication uses role/team/department claims from the access token, rather than reloading the User on every request. Changes may therefore remain stale until refresh/expiry. Claim and mine=true filters reload current team/department membership; personal action checks compare the current assignee directly.
 - Password creation/update policy: 8–72 characters, at least one letter and digit. The rule counts characters, while bcrypt's effective limit is bytes; do not describe this as a byte-aware Unicode length check.
 
 The client Axios interceptor makes one shared refresh request for concurrent 401s, retries the original request once, and clears local user state if refresh fails. See `client/src/lib/api.ts`.
@@ -1182,8 +1209,8 @@ The client Axios interceptor makes one shared refresh request for concurrent 401
 | Tenant scope          | `getTenantScope(user)`                               | Non-super-admin queries use caller companyId.                                              |
 | Brand visibility      | `getBrandScope(user)`                                | Query managers require direct brand assignment or membership in an assigned department.    |
 | Resource visibility   | `loadVisibleConversation` and route-specific loaders | Resource belongs to a brand the caller can see.                                            |
-| Mutation permission   | `assertCanAct`                                       | Under assigned-only policy, query manager matches direct or current department assignment. |
-| Assignment permission | `assertCanChangeAssignment`                          | Under assigned-only policy, agents cannot reassign work themselves.                        |
+| Mutation permission   | `assertCanAct`                                       | Query manager must personally hold the current query; pools must be claimed first. |
+| Assignment permission | Manager role gate + `routeSession` / comment routing                          | Managers route; query managers use claim endpoints for eligible open work.                        |
 | Operational channel   | `assertActiveChannelOwner`, `resolveSendChannel`     | Brand/company active and relevant connection/token available.                              |
 
 These are cumulative checks. A route-role check alone is never a replacement for tenant/brand/resource checks. Many service helpers default to an empty scope; callers must supply one or establish visibility before invoking unscoped helpers.
@@ -1195,13 +1222,15 @@ These are cumulative checks. A route-role check alone is never a replacement for
 | `super_admin`   | Cross-company administration; company CRUD; broad brand/staff/inbox access. Some `/me` company operations inherently require a company-bound identity.                                           |
 | `company_owner` | Manage own company staff/brands/departments; create/manage subordinate company admins and agents; settings/overview access.                                                                      |
 | `company_admin` | Manage brands/departments/agents within their company; cannot mutate owners or peer admins through the guarded user-management paths.                                                            |
-| `query_manager` | Work on visible brand inboxes/comments, use fixed replies and add/select tags; cannot curate tag renames/archives or administer SLA settings. Assigned-only policy further constrains mutations. |
+| `query_manager` | Work on visible brand inboxes/comments, use fixed replies and add/select tags; cannot curate tag renames/archives or administer SLA settings. Personal assignment is required for query mutations; own pools must be claimed first. |
 
 `ROLE_RANK` exists, but `authorize` uses explicit membership, not automatic hierarchy inheritance. User management has separate `resolveCreateRole`, `assertCanAssignRole`, and `assertCanActOnUser` logic.
 
 Session access follows its parent conversation; mutation checks use the conversation’s current assignee, not the historical session’s assignee.
 
-`onlyAssignedCanAct` is a **mutation policy**, not a universal hiding policy. An unassigned thread can be visible but reject modification. Visibility failures commonly become 404; assignment policy failures become 403.
+The old `onlyAssignedCanAct` toggle has been removed. Personal ownership is now an unconditional query-manager mutation requirement, not a hiding rule. An unassigned thread can be visible but reject modification. Visibility failures commonly become 404; assignment policy failures become 403.
+
+A page-authored comment root has no claimable owner; its reply/moderation paths skip the personal-owner gate for agents with brand access. Resolved work that is unassigned or pooled remains admin-only because resolved assignments are frozen. The shared guard assumes authentication has already run.
 
 ## Socket security
 
@@ -1368,6 +1397,7 @@ export const authenticate = async (
       role: payload.role,
       companyId: payload.companyId,
       departmentId: payload.departmentId,
+      teamId: payload.teamId,
     };
     setUserId(payload.sub);
 
@@ -1397,7 +1427,7 @@ Read the function in four blocks:
 | `req.headers.authorization?.replace('Bearer ', '')` | Prefer the Authorization header; fall back to the cookie when absent. | A supplied invalid header is not silently replaced by a valid cookie. |
 | `verifyAccessToken(token)` | Validate the JWT using the configured access secret. | Expired or invalid tokens throw before the handler runs. |
 | `assertActiveCompanyAccess(payload, ...)` | Check current company availability. | Company deactivation can deny a still-unexpired token. |
-| `req.user = ...` | Construct the principal consumed by route and domain helpers. | The role/department here are token claims, not a freshly loaded User. |
+| `req.user = ...` | Construct the principal consumed by route and domain helpers. | The role/team/department here are token claims, not a freshly loaded User. |
 | `setUserId(payload.sub)` | Attach identity to AsyncLocalStorage logging context. | Downstream loggers gain userId without passing it through every function. |
 | `next()` / `next(new UnauthorizedError(...))` | Continue or enter the global error path. | The route does not need its own JWT try/catch. |
 
@@ -1422,7 +1452,7 @@ export const getTenantScope = (
 
 `getTenantScope` returns a Mongo filter. It does not execute a query. For a tenant user, the caller must actually apply the returned companyId to a database read/write. For super admin, the empty object intentionally means no company restriction.
 
-Source: `server/src/auth/tenant.ts:42`
+Source: `server/src/auth/tenant.ts:43`
 
 ```typescript
 export const getBrandScope = (
@@ -1432,30 +1462,35 @@ export const getBrandScope = (
   // Not optional-chained: getTenantScope above throws when there is no user, so reaching this line
   // means there is one. Chaining here would imply otherwise.
   if (user!.role === ROLES.QUERY_MANAGER) {
-    // Matching a scalar against an array field means "array contains it". Fall back to ''
-    // (matches nothing) if the token somehow lacks a department.
+    // Matching a scalar against an array field means "array contains it". A query manager without a
+    // department or team sees only the brands they are assigned to by name (an empty id can't be
+    // cast, so those clauses are left out rather than matched against '').
+    // Department and team come from the token: a move between teams reaches brand visibility on the
+    // next token refresh, which re-reads the user (auth/service.ts `refresh`).
     return {
       ...scope,
-      $or: [{ departmentIds: user!.departmentId ?? '' }, { queryManagerIds: user!.id }],
+      $or: [
+        ...(user!.departmentId ? [{ departmentIds: user!.departmentId }] : []),
+        ...(user!.teamId ? [{ teamIds: user!.teamId }] : []),
+        { queryManagerIds: user!.id },
+      ],
     };
   }
   return scope;
 };
 ```
 
-- **Start with the tenant:** This first filter restricts tenant roles to their own company. The super-admin scope is empty.
-- **Narrow agent access:** Only the query-manager role gets the extra assignment filter. Owners/admins retain their company-wide brand visibility.
-- **Keep both constraints:** The spread preserves companyId. The OR beneath it is evaluated within that tenant restriction, not instead of it.
-- **Accept either access path:** The agent can be assigned individually or through a department. Missing department uses an empty value, not an unrestricted branch.
-- **Return elevated-role scope:** For other roles the existing tenant scope is enough. This function builds data; the later query executes the restriction.
+- **Preserve tenant isolation:** The tenant constraint remains outside the alternative brand grants.
+- **Accept any of three grants:** Department, team or individual grant can confer visibility. Missing membership clauses are omitted. Token refresh updates these claims; this does not grant permission to act on an unclaimed pool.
 
-For an agent in company A, department D, with user ID U, the generated brand filter is conceptually:
+For an agent in company A, department D and team T, with user ID U, the generated brand filter is conceptually:
 
 ```typescript title="Illustrative filter — identifiers abbreviated"
 {
   companyId: 'A',
   $or: [
     { departmentIds: 'D' },
+    { teamIds: 'T' },
     { queryManagerIds: 'U' }
   ]
 }
@@ -1467,37 +1502,36 @@ The surrounding brand service adds `_id` and executes `Model.findOne`. Mongo com
 
 `loadVisibleConversation` first loads the conversation, then resolves its brand with `getBrandScope`. An inaccessible brand is reported as a missing conversation. A guessed Mongo ID therefore does not bypass brand access.
 
-`loadActionableConversation` reuses that visibility result, then passes the conversation’s companyId and current assignee to the following guard:
+`loadActionableConversation` reuses that visibility result, then passes the conversation’s current assignee to the following guard:
 
 Source: `server/src/auth/reply-access.ts`.
 
 ```typescript title="server/src/auth/reply-access.ts"
 export const assertCanAct = async (
   user: Express.User | undefined,
-  companyId: Types.ObjectId | string,
   assignee: AssigneeRef | undefined | null,
   comingFrom: string
 ): Promise<void> => {
-  if (!(await policyApplies(user, companyId))) return;
+  if (user?.role !== ROLES.QUERY_MANAGER) return;
 
-  if (!assignee) {
+  if (assignee?.kind === 'query_manager' && String(assignee.id) === user.id) return;
+  if (!assignee || assignee.kind !== 'query_manager') {
     throw new ForbiddenError(
-      'This conversation is unassigned — an owner or admin has to assign it first',
+      assignee
+        ? 'This conversation is pooled: take it with Assign to me first'
+        : 'This conversation is unassigned: take it with Assign to me first',
       comingFrom
     );
   }
-  if (!(await pointsAtCaller(user as Express.User, assignee))) {
-    throw new ForbiddenError('This conversation is assigned to someone else', comingFrom);
-  }
+  throw new ForbiddenError('This conversation is assigned to someone else', comingFrom);
 };
 ```
 
-- `policyApplies` is false for owners/admins/super admins. For query managers it reads the company setting and compares it to literal `true`.
-- An unset setting behaves as off, supporting companies created before the field existed.
-- Unassigned work is rejected when the policy applies; it is not implicitly available to everyone.
-- An individual assignment compares assignee.id with user.id.
-- A department assignment reloads the caller’s current department from User. This is a deliberate fresh read rather than trusting the JWT department claim.
-- Changing assignment has a separate guard, so agents cannot defeat assigned-only access by assigning work to themselves.
+- Owners, admins and super admins pass the assignment gate; earlier authentication, tenant and brand checks still apply.
+- Query managers pass only when assignee.kind is query_manager and assignee.id is their own user ID. There is no company-setting read.
+- Unassigned and department/team-pooled work returns 403 with an Assign to me hint. Pool membership grants claiming, not modification.
+- Manager-only assignment routes choose or clear an assignee. Query managers use the separate claim route, which performs an atomic eligibility check and assignment write.
+- Claim eligibility and mine=true read current team/department membership from User. Brand scope still uses token claims until refresh.
 
 **Historical session access**
 Session mutation routes delegate through the parent conversation. The current thread holder controls action on its history; an old session’s assignee is not an independent permission grant.
@@ -1540,11 +1574,12 @@ export const refresh = async (
     role: user.role,
     companyId,
     departmentId: user.departmentId?.toString(),
+    teamId: user.teamId?.toString(),
   });
 };
 ```
 
-After verifying the refresh JWT, the service loads User by `payload.sub`. New tokens take role, company and department from this current record. A deleted user or inactive company is rejected.
+After verifying the refresh JWT, the service loads User by `payload.sub`. New tokens take role, company, team and department from this current record. A deleted user or inactive company is rejected.
 
 One comment in `auth/reply-access.ts` still describes older refresh behavior that reused token claims. The implementation above is the current behavior: **refresh rereads User**. This is an example of why following executable code matters more than repeating comments.
 
@@ -1557,8 +1592,8 @@ Source: `server/src/modules/user/service.ts`.
 ```typescript title="server/src/modules/user/service.ts"
 export const updateById = async (
   userId: string,
-  data: Partial<Omit<IUser, 'departmentId' | 'companyId'>> & {
-    departmentId?: string | Types.ObjectId;
+  // Never team or department: those move together, on /query-managers only.
+  data: Partial<Omit<IUser, 'teamId' | 'departmentId' | 'companyId'>> & {
     companyId?: string | Types.ObjectId;
   },
   scope: Scope = {}
@@ -1825,7 +1860,13 @@ Continue with [message persistence and session assignment](/docs/listenyzen/code
 
 Public registration accepts companyName and owner identity/password. `provisionCompany` creates Company, creates a `company_owner` User, then links `ownerId`. On failure it attempts to delete the owner/company as compensation; cleanup failures are logged. Registration then attempts welcome email without undoing the account if delivery fails.
 
-Admin staff creation derives companyId from the caller unless the caller is super admin. Department membership is validated against that company. Query-manager operations apply a fixed role filter. Brand assignment checks that supplied departments/agents belong to the right company.
+Admin staff creation derives companyId from the caller unless the caller is super admin. Query managers must select a team in that company; an active team and department are required when joining. Department membership is derived from the team. Query-manager operations apply a fixed role filter. Brand assignment checks that supplied departments/teams/agents belong to the right company.
+
+## Team pools and personal ownership
+
+Build the organization in this order: Company → Department → Team → Query manager. Grant brand visibility through departments, teams or individual agents. Manager-only assignment routes can pool an open query on an eligible active team/department or assign an individual. Query managers use Assign to me to take unassigned work or a pool they belong to; only then can they modify it. Routing or claiming does not end hold or resume SLA.
+
+`mine=true` includes personal work plus own team and department pools. Claims and mine filters use current database membership; brand visibility uses the access-token membership until refresh. See [the code-level assignment walkthrough](/docs/listenyzen/code-assignment) for examples, conflicts and resolved-work restrictions.
 
 ## Channel connection
 
@@ -2118,7 +2159,7 @@ Source: `server/src/modules/session/service.ts`.
 export const assignMessageToSession = async (input: AssignInput): Promise<AssignedSession> => {
   const latest = await SessionModel.findOne({
     conversationId: input.conversationId,
-  }).sort({ startedAt: -1 });
+  }).sort(LATEST_FIRST);
 
   /**
    * Who may reopen a wrapped-up thread as a new episode.
@@ -2186,33 +2227,46 @@ Attachments are embedded subdocuments, not references to the generic File model.
 Source: `server/src/modules/session/service.ts`.
 
 ```typescript title="server/src/modules/session/service.ts"
-const syncConversationFromLatestSession = async (
+export const syncConversationFromLatestSession = async (
   conversationId: Types.ObjectId | string
 ): Promise<void> => {
-  const latest = await SessionModel.findOne({ conversationId }).sort({
-    startedAt: -1,
+  for (let attempt = 0; attempt < MIRROR_ATTEMPTS; attempt += 1) {
+    const conversation = await ConversationModel.findById(conversationId)
+      .select({ mirrorVersion: 1 })
+      .lean();
+    if (!conversation) return;
+    // Read after the version: a session change landing in between bumps it before this write.
+    const latest = await SessionModel.findOne({ conversationId }).sort(LATEST_FIRST).lean();
+    if (!latest) return;
+    const version = conversation.mirrorVersion;
+    const written = await ConversationModel.updateOne(
+      {
+        _id: conversationId,
+        mirrorVersion: version === undefined ? { $exists: false } : version,
+      },
+      {
+        $set: {
+          status: latest.status,
+          sentiment: latest.sentiment,
+          // Bare ids: this read doesn't populate, so `tags` is exactly what the conversation stores.
+          tags: latest.tags,
+          ...(latest.assignee ? { assignee: latest.assignee } : {}),
+          mirrorVersion: (version ?? 0) + 1,
+        },
+        // Unassigned: drop the copy, so the thread stops matching "assigned to me".
+        ...(latest.assignee ? {} : { $unset: { assignee: '' } }),
+      }
+    );
+    if (written.matchedCount) return;
+  }
+  // Losing twice means a copy read after this sync's own change has landed, so the copy is current.
+  logger.info('syncConversationFromLatestSession(): overtaken by newer copies', {
+    conversationId: String(conversationId),
   });
-  if (!latest) return;
-  // Mirror status/sentiment/tags and the assignee snapshot; `$unset` the assignee when the latest
-  // session is unassigned so the conversation stops matching the "assigned to me" filter. Tags need
-  // no such dance — an empty array is a perfectly good "no tags", and it keeps the field's type stable.
-  const update: Record<string, unknown> = {
-    $set: {
-      status: latest.status,
-      sentiment: latest.sentiment,
-      // Bare ids: this read doesn't populate, so `tags` is exactly what the conversation should store.
-      tags: latest.tags,
-      ...(latest.assignee ? { assignee: latest.assignee } : {}),
-    },
-    ...(latest.assignee ? {} : { $unset: { assignee: '' } }),
-  };
-  await ConversationModel.updateOne({ _id: conversationId }, update);
 };
-
-// Push a session- or note-level event to everyone viewing the brand's inbox.
 ```
 
-The helper always loads the **latest** session. It copies status, sentiment and tags, then either sets or unsets assignee. This matters when a historical session is edited: copying that old session directly onto Conversation would make the inbox display stale ownership and outcome.
+The helper reads Conversation.mirrorVersion, then loads the **latest** session. It conditionally writes against that version and increments it; a competing copy triggers a retry, up to five attempts. This protects the mirrored owner and state from stale overwrites. It copies status, sentiment and tags, then either sets or unsets assignee. This matters when a historical session is edited: copying that old session directly onto Conversation would make the inbox display stale ownership and outcome.
 
 Mongo update operators are intentional here:
 
@@ -2260,12 +2314,184 @@ The current ingestion path calls `onMessageStored` after inserting Message. It a
 
 ---
 
+# Code walkthrough: teams, routing & claims
+## Business requirement and dependencies
+
+Departments organize staff; teams divide a department into working groups. Managers distribute work to a person or pool. Agents can see a brand's work but must take responsibility before changing a query. A pool is a queue to claim from, not shared permission to reply.
+
+Read [entities and relationships](/docs/listenyzen/data-model), [identity and visibility](/docs/listenyzen/code-access), and [session identity](/docs/listenyzen/code-ingestion) first. This chapter reflects source revision `2a5407c`, inspected 18 October 2026. Examples use fictional IDs and compact responses; they were not executed against a live backend.
+
+```mermaid
+flowchart LR
+  Company --> Department --> Team --> Agent[Query manager]
+  Department --> Visibility[Brand visibility]
+  Team --> Visibility
+  Agent --> Visibility
+  Visibility --> Pool[Unassigned or eligible pool]
+  Pool --> Claim[Assign to me]
+  Claim --> Personal[Personal assignment]
+  Personal --> Action[Reply or modify query]
+```
+
+## 1. Create the team before the query manager
+
+`POST /api/v1/teams` accepts name, departmentId and optional status. In `team/api.ts`, the handler reads the department with tenant scope, rejects missing/inactive departments, derives companyId from it, then calls `team/service.ts:create`. A tenant caller cannot pick another company by adding companyId to this strict body.
+
+```json title="Example request body"
+{ "name": "Night shift", "departmentId": "670000000000000000000003" }
+```
+
+```json title="Example response — HTTP 200"
+{
+  "success": true,
+  "message": "Team created successfully",
+  "data": {
+    "_id": "670000000000000000000020",
+    "name": "Night shift",
+    "status": "active",
+    "departmentId": "670000000000000000000003",
+    "companyId": "670000000000000000000001"
+  }
+}
+```
+
+`GET /teams` is an offset-paginated, tenant-scoped list; departmentId and status are optional filters. `GET /teams/:id` reads one team. `PATCH /teams/:id` renames or changes status. All four routes require company_owner, company_admin or super_admin. There is no DELETE route.
+
+The case-insensitive unique department/name index arbitrates concurrent creates and renames; duplicate names return 409. Names may repeat in different departments. PATCH rejects departmentId; a team cannot move because it would silently change every member's department. Deactivation preserves existing references. A department containing even inactive teams returns 409 on deletion.
+
+The UI manages teams from the Departments page: Manage teams opens a sheet with create, edit and activate/deactivate actions. Its per-department list currently caps at 100.
+
+## 2. Membership is one write of two related fields
+
+Create a query manager through `POST /api/v1/query-managers`:
+
+```json title="Example request body"
+{
+  "name": "Amina Rahman",
+  "email": "amina@example.com",
+  "password": "ExamplePassword1!",
+  "teamId": "670000000000000000000020"
+}
+```
+
+`team/membership.ts:resolveMembership` reads the team within the manager's company, checks both team and department are active, and returns teamId plus departmentId. The query-manager service writes these together. The response is HTTP 200 with message `Query manager created successfully` and a User object containing both IDs and role query_manager. Password is excluded from serialization.
+
+Updates accept teamId, not departmentId. Re-sending the same team skips membership resolution so an agent already in a deactivated team remains editable. A move to a different team must pass current membership checks. The generic `/users` paths reject creating query managers or changing into/out of that role; use the dedicated feature. A company_admin calling POST /users currently gets 400 because its resolved creation role is query_manager.
+
+JWTs and socket principals carry teamId and departmentId. Refresh re-reads User. A membership change therefore reaches brand visibility on refresh, while claims and the mine filter read current User membership immediately.
+
+## 3. Grant visibility without assigning a query
+
+`PUT /api/v1/brands/:id/teams` replaces the full direct team-grant set:
+
+```json title="Example request body"
+{ "teamIds": ["670000000000000000000020"] }
+```
+
+The handler resolves the brand in tenant scope, verifies every supplied team belongs to the brand's company, calls `setTeams`, and returns HTTP 200, message `Teams assigned successfully`, with the updated Brand. `GET /brands/:id/teams` returns directly granted teams; it is not the list of all teams eligible through department grants. An empty array clears direct grants only.
+
+Brand access is the union of departmentIds, teamIds and queryManagerIds, inside the company constraint. The Brand Access UI saves these through three separate PUT requests, so a partially failed save is not atomic.
+
+`GET /api/v1/sessions/assignees?brandId=...` returns departments, teams and queryManagers. Team entries contain id, name and departmentName. `brand/assignees.ts` shares the eligibility logic between the picker and mutation handlers. New team assignments require an active team in an active department, granted directly or through its department. Department pools require that department grant and an active department.
+
+## 4. Managers route; query managers claim
+
+| Operation | Who | Record actually updated |
+| --- | --- | --- |
+| PATCH `/sessions/:id/assignment` | Managers | Named session. |
+| PATCH `/conversations/:id/assignment` | Managers | Latest session of that conversation. |
+| PATCH `/comments/:id/assignment` | Managers | Thread root, even when a reply ID is supplied. |
+| POST `/conversations/:id/claim` | Query manager | Latest session. |
+| POST `/comments/:id/claim` | Query manager | Thread root. |
+
+All paths above have `/api/v1` prefix. Managers means super_admin, company_owner and company_admin, subject to visibility/tenant rules. Claim is not exposed directly by session ID.
+
+```json title="Manager assignment body"
+{ "assigneeType": "team", "assigneeId": "670000000000000000000020" }
+```
+
+The other kinds are department and query_manager. `{ "assigneeType": null }` clears assignment. A body cannot supply the assignee's display name: the server resolves and stores the name snapshot. Conversation assignment returns the updated **Session**, not a Conversation wrapper.
+
+`session/assignment.ts:routeSession` rejects resolved work, resolves an eligible target, then calls `assignSession` with openOnly. The write itself checks status is not resolved, closing the race where wrap-up happens after the initial read. Comment routing applies the same rule to the root. Hold and unresolved are still eligible; changing ownership preserves their status and clock pause.
+
+## 5. Claim checks eligibility in the write
+
+Example input, with no body:
+
+```sh
+curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/claim" \
+  -b cookies.txt -c cookies.txt
+```
+
+```json title="Example response — HTTP 200, compact Session"
+{
+  "success": true,
+  "message": "Assigned to you",
+  "data": {
+    "_id": "670000000000000000000006",
+    "conversationId": "670000000000000000000005",
+    "status": "hold",
+    "assignee": {
+      "kind": "query_manager",
+      "id": "670000000000000000000002",
+      "name": "Amina Rahman"
+    }
+  }
+}
+```
+
+In order, `claimForCaller` checks non-resolved status, recognizes an already-personally-assigned caller, resolves the caller as an eligible brand agent, builds `claimableFilter`, and performs `claimSession`. `claimableFilter` loads current User departmentId/teamId and allows unassigned work, the caller's department pool, or the caller's team pool. A sibling team's pool and another agent's personal work are excluded.
+
+The eligibility condition is inside `findOneAndUpdate`, together with the non-resolved status condition. Two agents cannot both turn the same eligible pool into their personal assignment: one write wins and the other no longer matches. The losing route returns 409, such as `Someone else has this conversation` or `Someone else has this thread`. A previously resolved query returns 409 even if the caller was its assignee. An open query already assigned to the caller returns HTTP 200 with `Already assigned to you`.
+
+A missing conversation session or broken comment-root chain returns 404. Query managers retain record visibility checks before claiming. An inactive team/departments takes no **new** pooled assignments, but existing pools remain claimable by their members. Claiming does not change hold to pending; sending a qualifying reply afterwards does.
+
+The database write is small because visibility, actor eligibility and the claim filter were established by its caller:
+
+```typescript title="server/src/modules/session/service.ts"
+export const claimSession = async (
+  id: string,
+  assignee: ISessionAssignee,
+  claimable: Record<string, unknown>
+): Promise<ISession | null> => {
+  const session = await SessionModel.findOneAndUpdate(
+    { _id: id, status: { $ne: 'resolved' }, ...claimable },
+    { $set: { assignee } },
+    { new: true }
+  ).populate(TAGS_POPULATE);
+  if (session) await afterAssignment(session);
+  return session;
+};
+```
+
+## 6. Personal ownership gates changes
+
+`auth/reply-access.ts:assertCanAct(user, assignee, comingFrom)` has no company-setting lookup. For query managers, only kind query_manager with their own user ID passes. Unassigned and pooled work returns 403 with an Assign to me hint. Another personal owner returns 403. This applies to replies, reactions, moderation, status, sentiment, tags, notes and customer edits through the relevant query routes. Reads remain governed by brand visibility.
+
+Session mutations use the conversation's current owner, including when editing historical sessions. An old session assignment does not independently authorize a former handler. The page-authored comment-thread exception bypasses this gate for reply/moderation paths: those roots have no claimable owner. Resolved unassigned or pooled queries remain admin-only because assignment is frozen.
+
+The old onlyAssignedCanAct setting, GET/PATCH `/companies/me/settings`, client Settings page and nav entry are removed. Stored legacy setting values no longer affect permissions. Brand SLA/business-hours settings remain supported.
+
+## 7. Keep list rows and permissions consistent
+
+`mine=true` means personally assigned work **plus** the caller's team and department pools. `assignedToMeIds` reads live membership; the brand gate still uses token claims. A pooled result is an offer to claim, not permission to reply. List rows now show an assignment card and Assign to me action; routing/claiming by conversation ID avoids needing a session ID on those rows.
+
+`syncConversationFromLatestSession` copies status, sentiment, tags and assignee. It now reads Conversation.mirrorVersion **before** reading the latest session, then writes only if that version is unchanged and increments it. On a race it retries up to five times. This prevents a late copy from overwriting a newer owner/status summary, which matters because the action gate reads that summary. It does not make the session and conversation writes a multi-document transaction.
+
+Assignment changes emit `assignment:changed`. The session event includes conversationId so inbox/list caches can invalidate the correct conversation; comment consumers refresh the relevant thread/list. Changing a pool does not append a status-log entry or end a hold.
+
+## Migration and known boundaries
+
+See [development](/docs/listenyzen/development) for the dry-run default-team migration and production index requirements. This source review did not execute a migration or confirm live deployment state. Hold-log deep links remain deferred; team pools, manager routing and claims are implemented in this snapshot.
+
+---
+
 # Code walkthrough: hold, reopen & history
 ## Requirement and prerequisites
 
 A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
 
-Source snapshot: `ea791d3`, 17 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+Source snapshot: `2a5407c`, 18 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
 
 ## One writer for both kinds of query
 
@@ -2389,7 +2615,7 @@ Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17
 
 The example is 10:10–10:40 Dhaka on a working Saturday, assuming the default schedule. An active hold has endedAt/endedBy null and durations calculated to read time. Comment rows use source comment and conversationId null. Query parameter sources are plural; row sources are singular.
 
-The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Deep links from hold rows and the broader assignment work remain deferred. Holds live on the query; merging away a session or deleting a thread removes its holds from this report. No separate immutable audit collection exists.
+The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Team pools, claims and manager routing are implemented. Deep links from hold rows remain deferred. Holds live on the query; merging away a session or deleting a thread removes its holds from this report. No separate immutable audit collection exists.
 
 Continue to [settings and SLA](/docs/listenyzen/code-sla) to see how these transitions determine charged time.
 
@@ -2851,7 +3077,7 @@ pnpm seed:super-admin
 
 The seed **updates an existing user with that email**, resets its password, sets role to super_admin and clears company/department links. It is not an insert-only script. Confirm that the configured database and email are the intended local/development target.
 
-Create a company/owner, departments and query managers, then create a brand and assign its departments/agents. Channel connection is a separate step. SLA/business-hour defaults work without saved Setting records; first save produces version 1.
+Create a company/owner, departments, teams and then query managers, then create a brand and grant its departments/teams/agents. Channel connection is a separate step. SLA/business-hour defaults work without saved Setting records; first save produces version 1.
 
 No general all-domain sample-data seeder or formal migration runner was found.
 
@@ -2915,8 +3141,8 @@ Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domai
 | Startup says missing/invalid config              | Wrong cwd; missing environment JSON; missing nested file/email objects; blank optional env values overriding JSON.                                  |
 | Messages accepted by webhook but inbox silent    | Worker absent/stopped; queue backlog; wrong Redis instance; worker emitter not connected; client not joined to brand room.                          |
 | Connected channel receives nothing               | Webhook subscription diagnostics, app permissions/dashboard setup, signature secret, active brand/company; connection flags alone are insufficient. |
-| Agent sees thread but cannot reply               | onlyAssignedCanAct and current assignee; direct/department mismatch; inactive or disconnected channel.                                              |
-| Same endpoint behaves differently by user        | Route roles, tenant scope, brand assignment, access-token department/role staleness.                                                                |
+| Agent sees thread but cannot reply               | Personal ownership of the current query; claim unassigned or own pooled work first; direct/team/department mismatch; inactive or disconnected channel.                                              |
+| Same endpoint behaves differently by user        | Route roles, tenant scope, brand assignment, access-token team/department/role staleness.                                                                |
 | R2 upload DNS or URL problems                    | API endpoint versus public read base; correct region; File.url legacy AWS-only virtual.                                                             |
 | Logo/avatar disappears after deploy              | Ephemeral local upload directory or incorrect BASE_URL.                                                                                             |
 | Long thread appears incomplete                   | `/conversations/:id/messages` returns the earliest 200 messages in ascending order; use grouped session thread reads appropriately.                 |
@@ -2947,14 +3173,20 @@ Useful focused notes: `realtime-inbox-sockets.md`, `webhook-queue-bullmq.md`, `t
 
 ## October 17 SLA and index rollout
 
-Source revision `ea791d3` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
+Source revision `2a5407c` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
 
 Run repair commands only against the intended Listenyzen environment, using the script options in `server/scripts/dev/backfill-session-sla.ts` and `backfill-comment-sla.ts`. A `--all` recomputation is useful when data already carries the current rulesVersion but a later first-response rule changed. Inspect the script first: these commands write derived database fields, and the documentation build does not execute them.
 
 The source repository records a development backfill, but this review did not query that database or verify production completion. Production still needs the new `(brandId, statusChangedAt)` indexes on sessions and comments provisioned through the deployment process: production autoIndex is disabled. Greater charged resolution time after switching from the old customer-wait algorithm is expected.
 
-Manager history is embedded in query records. Merging/deleting records can remove their holds from reports. Hold-row deep links and assignment redesign remain deferred; they are not promised by this release.
+Manager history is embedded in query records. Merging/deleting records can remove their holds from reports. Hold-row deep links remain deferred. Teams, pooled assignments and claims are included in this revision.
+
+## October 18 team migration
+
+`server/scripts/dev/backfill-default-teams.ts` provides `pnpm backfill:default-teams` (dry run) and `pnpm backfill:default-teams --apply` from the Listenyzen server directory. It creates/reuses a General team per department, following department status, and moves team-less query managers into it. Agents without a valid department are reported for administrative correction. This documentation update does not run the migration.
+
+Production must provision the Team unique `(departmentId, name)` index with English strength-2 collation, plus schema-declared access indexes; autoIndex is disabled there. Existing company permission settings may remain in old documents but are no longer read. Refresh tokens after a membership change to update brand access; claims and mine filters already read current membership. Deployment and migration completion have not been verified against a live database.
 
 ## Complete endpoint contracts
 
-See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 114 API operations and two health checks.
+See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 121 API operations and two health checks.

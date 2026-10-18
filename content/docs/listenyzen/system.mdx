@@ -15,7 +15,7 @@ The critical vocabulary is:
 | Term            | Meaning in this codebase                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Company         | Tenant boundary; owns brands and staff.                                                                             |
-| Brand           | Operational inbox boundary; contains connected channel credentials and staff/department access assignments.         |
+| Brand           | Operational inbox boundary; contains connected channel credentials and individual/team/department access grants.         |
 | Query manager   | An agent handling customer interactions; a `User` with `role: 'query_manager'`, not a separate database model.      |
 | Customer        | A channel-specific identity and editable contact record. Not automatically one identity across all social channels. |
 | Conversation    | Long-lived direct-message thread for a page/phone/account and participant.                                          |
@@ -23,7 +23,7 @@ The critical vocabulary is:
 | Session         | A support episode within a conversation; carries ownership, classification, outcome, notes, and SLA.                |
 | Comment thread  | A root public comment plus replies; separate from direct-message conversations and sessions.                        |
 | Post            | Platform context copied onto comments, not a `Post` collection.                                                     |
-| Assignment      | Either one query manager or one department; distinct from permission to see a brand.                                |
+| Assignment      | One query manager, department pool or team pool; distinct from permission to see a brand.                                |
 | Brand tag       | A reusable, optionally hierarchical label; records store its ID.                                                    |
 | Setting version | An immutable saved configuration record; history and current value share one collection.                            |
 

@@ -7,7 +7,7 @@ description: "Read the shared status writer, hold reasons, automatic-reply rules
 
 A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
 
-Source snapshot: `ea791d3`, 17 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+Source snapshot: `2a5407c`, 18 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
 
 ## One writer for both kinds of query
 
@@ -131,6 +131,6 @@ Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17
 
 The example is 10:10–10:40 Dhaka on a working Saturday, assuming the default schedule. An active hold has endedAt/endedBy null and durations calculated to read time. Comment rows use source comment and conversationId null. Query parameter sources are plural; row sources are singular.
 
-The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Deep links from hold rows and the broader assignment work remain deferred. Holds live on the query; merging away a session or deleting a thread removes its holds from this report. No separate immutable audit collection exists.
+The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Team pools, claims and manager routing are implemented. Deep links from hold rows remain deferred. Holds live on the query; merging away a session or deleting a thread removes its holds from this report. No separate immutable audit collection exists.
 
 Continue to [settings and SLA](/docs/listenyzen/code-sla) to see how these transitions determine charged time.

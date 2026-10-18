@@ -1,6 +1,6 @@
 ---
 title: "Data models & relationships"
-description: "Explore all 14 collections, references, indexes and consistency rules."
+description: "Explore all 15 collections, references, indexes and consistency rules."
 ---
 
 <EntityExplorer />
@@ -8,7 +8,7 @@ description: "Explore all 14 collections, references, indexes and consistency ru
 
 ## Persistence fundamentals
 
-Mongoose models live beside features. There are **13 base domain models**: Company, User, Department, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply and File, plus **Setting** with two discriminator models. In total this is **14 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
+Mongoose models live beside features. There are **14 base domain models**: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply and File, plus **Setting** with two discriminator models. In total this is **15 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
 
 ObjectId references are application links, not relational foreign-key constraints. Mongoose `ref` enables population; it does not enforce existence, company membership, cascading deletion, or relationship cardinality. Several references are deliberately polymorphic or use external string IDs.
 
@@ -25,7 +25,11 @@ erDiagram
     COMPANY ||--o{ BRAND : owns
     COMPANY ||--o{ CUSTOMER : owns
     COMPANY o|--o| USER : owner_pointer
-    DEPARTMENT o|--o{ USER : membership
+    DEPARTMENT ||--o{ TEAM : contains
+    TEAM o|--o{ USER : teamId
+    DEPARTMENT o|--o{ USER : derived_departmentId
+    COMPANY ||--o{ TEAM : tenant
+    BRAND }o--o{ TEAM : teamIds
     BRAND }o--o{ DEPARTMENT : departmentIds
     BRAND }o--o{ USER : queryManagerIds
     BRAND ||--o{ BRAND_TAG : vocabulary
@@ -49,7 +53,7 @@ erDiagram
     USER o|--o{ FILE : uploadedBy
 ```
 
-A Session/Comment can additionally point to a User **or** Department through `assignee.kind` and `assignee.id`. These polymorphic links are omitted from the diagram to avoid implying both are populated simultaneously. Settings also support a company scope in the schema; currently mounted settings routes are brand-scoped.
+A Session/Comment can additionally point to a User, Team **or** Department through `assignee.kind` and `assignee.id`. These polymorphic links are omitted from the diagram to avoid implying both are populated simultaneously. Settings also support a company scope in the schema; currently mounted settings routes are brand-scoped.
 
 ## Model-by-model inventory
 
@@ -61,7 +65,7 @@ Source: `server/src/modules/company/schema.ts`.
 - `status`: `active | inactive`, default `active`.
 - `logo?`: local storage key; virtual `logoUrl` builds a public URL.
 - `ownerId?`: User pointer. Provisioning creates a company and its owner, then sets this pointer. No unique index makes ownership strictly one-to-one at database level.
-- `settings.onlyAssignedCanAct`: defaults false; determines whether query managers can modify only assigned work.
+- The former `settings.onlyAssignedCanAct` field is removed. Old stored values are ignored; query-manager mutations now require personal assignment unconditionally.
 - One company has many brands, departments, users and customer records. Active-company checks gate login, refresh and authenticated operations.
 
 ### User
@@ -70,7 +74,8 @@ Source: `server/src/modules/user/schema.ts`.
 
 - Required `name`, globally unique `email`, `role`, `password`.
 - `companyId?`: absent for super admin; expected for tenant roles by route/provisioning logic.
-- `departmentId?`: one department membership; agent-facing workflows use it.
+- `teamId?`: Team reference; required by query-manager create/membership workflows, optional on the shared User schema for other roles and legacy records.
+- `departmentId?`: derived from the selected team and written alongside teamId, never accepted independently in user bodies. Team changes must go through `/query-managers`.
 - `avatar?`: local storage key with virtual `avatarUrl`.
 - Roles: `super_admin`, `company_owner`, `company_admin`, `query_manager`.
 - Password is excluded from ordinary queries via `select: false` and removed by document serialization transforms. Login/password-change explicitly select it.
@@ -85,12 +90,23 @@ Source: `server/src/modules/department/schema.ts`.
 - Unique `(companyId, name)`.
 - A department has many users and can be assigned to many brands. Brand membership and department existence are checked in application code.
 
+### Team
+
+Source: `server/src/modules/team/schema.ts`.
+
+- Required trimmed `name`, required immutable `departmentId` and required indexed `companyId`; status is active/inactive, default active.
+- The create API accepts a name of 1–100 characters and derives companyId from the tenant-visible department. Creation and activation require an active department.
+- Unique `(departmentId, name)` with collation `{ locale: 'en', strength: 2 }`: case-insensitive names within one department. Duplicate creates/renames return 409.
+- One department contains many teams; a query manager belongs to one team. Team membership derives the user's department.
+- No DELETE endpoint and no department-move operation. Deactivate instead. A department containing teams cannot be deleted, even if those teams are inactive.
+- Inactive teams cannot receive new members or pooled assignments; existing members and pooled work remain, and eligible members can still claim existing pools.
+
 ### Brand
 
 Source: `server/src/modules/brand/schema.ts`.
 
 - Required `name`, normalized lowercase `email`, local `logo`, `companyId`; active/inactive status.
-- `departmentIds[]`, `queryManagerIds[]`: two independent ways an agent can gain access.
+- `departmentIds[]`, `teamIds[]`, `queryManagerIds[]`: three alternative brand-access grants. `teamIds` references Team and is indexed. A direct individual grant does not grant access to the agent’s whole team.
 - `facebook?`: `pageId`, `pageName`, page/user tokens, connection state/date, verified webhook subscription fields/missing fields/check time.
 - `instagram?`: `accountId`, `username`, token, connection state/date, `loginType` (`facebook` or `instagram`), optional token expiry, webhook subscription diagnostics for the direct-login flow.
 - `whatsapp?`: `wabaId`, `phoneNumberId`, display number, verified name, token, `registered`, registration PIN, connection state/date.
@@ -130,7 +146,7 @@ Source: `server/src/modules/conversation/schema.ts`.
 - Defaults: incoming direction, unread count 0, status `pending`, sentiment `NEUTRAL`.
 - Unique `(pageId, participantId)` — **platform and company are not in this unique key**.
 - One conversation has many sessions/messages. Customer-to-conversation is not constrained to one-to-one by a unique customer reference.
-- Summary fields are intentionally denormalized; update them through the session/message services.
+- Summary fields are intentionally denormalized; update them through the session/message services. Optional `mirrorVersion` is a numeric compare-and-swap guard when copying the latest session onto Conversation. Each successful mirror increments it; it is not the statusRevision or SLA version.
 
 ### Message
 
@@ -154,7 +170,7 @@ Source: `server/src/modules/session/schema.ts`.
 - Required `conversationId`, `brandId`, `companyId`, `platform`, and `sequence`.
 - Status `pending | unresolved | resolved | hold`; sentiment `POSITIVE | NEUTRAL | NEGATIVE | MIXED`.
 - `startedAt`, `lastActivityAt`; optional `resolvedAt`, `statusChangedBy`, `statusChangedAt`.
-- Optional `assignee: { kind: query_manager | department, id, name }`. `name` is a display snapshot; `id` has no fixed Mongoose `ref`.
+- Optional `assignee: { kind: query_manager | department | team, id, name }`. `name` is a display snapshot; `id` has no fixed Mongoose `ref`.
 - `tags[]`, `messageCount`, `noteCount`.
 - Optional `sessionType`: `complain | inquiry | compliment | support | sales | other`. Preserve the exact spelling `complain` in payloads.
 - Optional `resolutionSummary`, `firstCustomerMessageAt`, `firstResponseAt`, `sla`.
@@ -231,7 +247,7 @@ Source: `server/src/modules/settings/schema.ts`, `server/src/modules/settings/de
 
 ### Embedded status history (Session and Comment)
 
-This is an embedded array, **not a fifteenth collection**. Both schemas reuse `statusChangeSchema` from `server/src/modules/session/schema.ts`.
+This is an embedded array, **not a sixteenth collection**. Both schemas reuse `statusChangeSchema` from `server/src/modules/session/schema.ts`.
 
 | Field | Schema / meaning |
 | --- | --- |

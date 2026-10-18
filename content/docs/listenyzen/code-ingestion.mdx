@@ -58,7 +58,7 @@ Source: `server/src/modules/session/service.ts`.
 export const assignMessageToSession = async (input: AssignInput): Promise<AssignedSession> => {
   const latest = await SessionModel.findOne({
     conversationId: input.conversationId,
-  }).sort({ startedAt: -1 });
+  }).sort(LATEST_FIRST);
 
   /**
    * Who may reopen a wrapped-up thread as a new episode.
@@ -126,33 +126,46 @@ Attachments are embedded subdocuments, not references to the generic File model.
 Source: `server/src/modules/session/service.ts`.
 
 ```typescript title="server/src/modules/session/service.ts"
-const syncConversationFromLatestSession = async (
+export const syncConversationFromLatestSession = async (
   conversationId: Types.ObjectId | string
 ): Promise<void> => {
-  const latest = await SessionModel.findOne({ conversationId }).sort({
-    startedAt: -1,
+  for (let attempt = 0; attempt < MIRROR_ATTEMPTS; attempt += 1) {
+    const conversation = await ConversationModel.findById(conversationId)
+      .select({ mirrorVersion: 1 })
+      .lean();
+    if (!conversation) return;
+    // Read after the version: a session change landing in between bumps it before this write.
+    const latest = await SessionModel.findOne({ conversationId }).sort(LATEST_FIRST).lean();
+    if (!latest) return;
+    const version = conversation.mirrorVersion;
+    const written = await ConversationModel.updateOne(
+      {
+        _id: conversationId,
+        mirrorVersion: version === undefined ? { $exists: false } : version,
+      },
+      {
+        $set: {
+          status: latest.status,
+          sentiment: latest.sentiment,
+          // Bare ids: this read doesn't populate, so `tags` is exactly what the conversation stores.
+          tags: latest.tags,
+          ...(latest.assignee ? { assignee: latest.assignee } : {}),
+          mirrorVersion: (version ?? 0) + 1,
+        },
+        // Unassigned: drop the copy, so the thread stops matching "assigned to me".
+        ...(latest.assignee ? {} : { $unset: { assignee: '' } }),
+      }
+    );
+    if (written.matchedCount) return;
+  }
+  // Losing twice means a copy read after this sync's own change has landed, so the copy is current.
+  logger.info('syncConversationFromLatestSession(): overtaken by newer copies', {
+    conversationId: String(conversationId),
   });
-  if (!latest) return;
-  // Mirror status/sentiment/tags and the assignee snapshot; `$unset` the assignee when the latest
-  // session is unassigned so the conversation stops matching the "assigned to me" filter. Tags need
-  // no such dance — an empty array is a perfectly good "no tags", and it keeps the field's type stable.
-  const update: Record<string, unknown> = {
-    $set: {
-      status: latest.status,
-      sentiment: latest.sentiment,
-      // Bare ids: this read doesn't populate, so `tags` is exactly what the conversation should store.
-      tags: latest.tags,
-      ...(latest.assignee ? { assignee: latest.assignee } : {}),
-    },
-    ...(latest.assignee ? {} : { $unset: { assignee: '' } }),
-  };
-  await ConversationModel.updateOne({ _id: conversationId }, update);
 };
-
-// Push a session- or note-level event to everyone viewing the brand's inbox.
 ```
 
-The helper always loads the **latest** session. It copies status, sentiment and tags, then either sets or unsets assignee. This matters when a historical session is edited: copying that old session directly onto Conversation would make the inbox display stale ownership and outcome.
+The helper reads Conversation.mirrorVersion, then loads the **latest** session. It conditionally writes against that version and increments it; a competing copy triggers a retry, up to five attempts. This protects the mirrored owner and state from stale overwrites. It copies status, sentiment and tags, then either sets or unsets assignee. This matters when a historical session is edited: copying that old session directly onto Conversation would make the inbox display stale ownership and outcome.
 
 Mongo update operators are intentional here:
 

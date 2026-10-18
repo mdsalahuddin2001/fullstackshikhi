@@ -18,6 +18,7 @@
     "---3 \u00b7 Dependent business workflows---",
     "workflows",
     "code-ingestion",
+    "code-assignment",
     "code-status",
     "code-sla",
     "---4 \u00b7 Endpoint contracts & operations---",

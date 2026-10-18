@@ -62,10 +62,11 @@ No active cron directory/scheduler was found under `server/src`, despite referen
 | Feature         | Responsibility and important files                                                                                                       |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `auth`          | Company registration/provisioning, login/refresh/logout; `tenant.ts`, `reply-access.ts`, `company-access.ts` define shared access rules. |
-| `company`       | Tenant CRUD, owner link, active status, `onlyAssignedCanAct` setting.                                                                    |
+| `company`       | Tenant CRUD, owner link and active status; the old company permission setting is removed.                                                                    |
 | `user`          | Staff CRUD, self-profile, password changes, role hierarchy enforcement.                                                                  |
 | `department`    | Tenant department CRUD and membership validation helpers.                                                                                |
-| `query-manager` | Agent-oriented operations over the User model; department and avatar handling.                                                           |
+| `team` | Department-bound groups, immutable membership parent, deactivate-only lifecycle and pool eligibility. |
+| `query-manager` | Agent operations over User; required team, derived department and avatar handling.                                                           |
 | `brand`         | Brand CRUD, visibility assignments, account credentials; `meta-channels.ts`, `whatsapp.ts`, `whatsapp-templates.ts`, `assignees.ts`.     |
 | `brand/tags`    | Hierarchical vocabulary, normalized uniqueness, rename/archive/restore, ID resolution.                                                   |
 | `conversation`  | Inbox listing, customer access, messages, sending, reactions; `access.ts`, `send-channel.ts`, `media.ts`, `whatsapp-templates.ts`.       |
@@ -92,8 +93,8 @@ Cookie: access_token=<JWT>
 3. `conversation/api.ts` runs `authenticate`. It verifies a Bearer token or the access-token cookie, checks active-company access, attaches the token principal to `req.user`, and enriches logging context.
 4. `authorize(...READ_ROLES)` permits the four defined roles. This alone does **not** establish access to the requested brand.
 5. `validateQuery(listConversationsSchema)` checks `brandId`, coerces `limit`, validates filters, rejects unknown cursor-list parameters, and writes parsed values back to `req.query`.
-6. The handler loads the brand through `getBrandById(brandId, getBrandScope(req.user))`. Owners/admins are company-scoped; query managers additionally need direct or department brand assignment. A missing/inaccessible brand returns 404.
-7. `mine=true` derives assignee IDs from the user's ID and department ID. Optional tag filters expand selected parent tags to descendant tag IDs.
+6. The handler loads the brand through `getBrandById(brandId, getBrandScope(req.user))`. Owners/admins are company-scoped; query managers additionally need direct, team or department brand assignment. A missing/inaccessible brand returns 404.
+7. `mine=true` derives personal, team and department assignee IDs from current User membership, not token pool claims. Optional tag filters expand selected parent tags to descendant tag IDs.
 8. `listConversations` builds a query with mandatory `{ brandId }`, optional assignee/tag restrictions, allowlisted search/filter fields, and cursor ordering by `lastMessageAt DESC, _id DESC`.
 9. `QueryBuilder` applies a cursor boundary, fetches one extra result to establish `hasNext`, and returns plain documents via `.lean()`.
 10. `paginatedSuccessResponse` dispatches the result. `logRequest` records completion status/duration.
@@ -138,8 +139,8 @@ All paths below have `/api/v1` prepended, except health and uploads. The complet
 | `/auth`                           | Register company, login, logout, refresh.                                                                                      |
 | `/companies`                      | Super-admin tenant management; `/me` and `/me/settings` for the current tenant.                                                |
 | `/users`                          | Staff management; `/me`, `/me/change-password`.                                                                                |
-| `/departments`, `/query-managers` | Tenant staffing and routing configuration.                                                                                     |
-| `/brands`                         | CRUD, department/agent assignment, tags, channel connection, template administration.                                          |
+| `/departments`, `/teams`, `/query-managers` | Tenant staffing and routing configuration.                                                                                     |
+| `/brands`                         | CRUD, department/team/agent grants, tags, channel connection, template administration.                                          |
 | `/brands/:brandId/fixed-replies`  | Reusable reply CRUD.                                                                                                           |
 | `/brands/:brandId/settings`       | Get/save `sla` and `business-hours`; per-type history.                                                                         |
 | `/brands/:brandId/overview`       | `stats`, `sla`, `engagement`, `inbound-trend`, `sla-compliance`.                                                               |

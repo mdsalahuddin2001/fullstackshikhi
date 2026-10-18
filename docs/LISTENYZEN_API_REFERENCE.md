@@ -1,6 +1,6 @@
 # Listenyzen API endpoint reference
 
-Source-derived examples for all 114 mounted API operations and two health endpoints. Inspected on 2026-10-17. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
+Source-derived examples for all 121 mounted API operations and two health endpoints. Inspected on 2026-10-18. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
 
 Entity objects are compact projections: audit fields, virtuals and optional fields are omitted for readability. Envelopes, status codes and special response types follow the implementation. Optional fields, populated references and lean reads can change the returned entity fields. Read the linked source location for the complete handler.
 
@@ -28,6 +28,9 @@ Use the port configured for your backend; 5000 above is only an example. The doc
 
 
 
+
+
+
 ## POST /api/v1/auth/register-company
 
 **Source:** `server/src/auth/api.ts:46`
@@ -36,7 +39,7 @@ Use the port configured for your backend; 5000 above is only an example. The doc
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -104,6 +107,7 @@ router.post(
         role: user.role,
         companyId: user.companyId?.toString(),
         departmentId: user.departmentId?.toString(),
+        teamId: user.teamId?.toString(),
       });
       setAuthCookies(res, { accessToken, refreshToken });
       successResponse(res, {
@@ -116,13 +120,13 @@ router.post(
 
 ## POST /api/v1/auth/login
 
-**Source:** `server/src/auth/api.ts:73`
+**Source:** `server/src/auth/api.ts:74`
 
 **Access:** Email and password via the local authentication strategy; no existing access token required. Active company required for tenant users.
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -192,6 +196,7 @@ router.post(
             role: user.role,
             companyId: user.companyId?.toString(),
             departmentId: user.departmentId?.toString(),
+            teamId: user.teamId?.toString(),
           });
           setAuthCookies(res, { accessToken, refreshToken });
           successResponse(res, {
@@ -206,13 +211,13 @@ router.post(
 
 ## POST /api/v1/auth/logout
 
-**Source:** `server/src/auth/api.ts:106`
+**Source:** `server/src/auth/api.ts:108`
 
 **Access:** No JWT middleware on this route.
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -255,13 +260,13 @@ router.post('/logout', (_req: Request, res: Response) => {
 
 ## POST /api/v1/auth/refresh
 
-**Source:** `server/src/auth/api.ts:116`
+**Source:** `server/src/auth/api.ts:118`
 
 **Access:** No JWT middleware on this route.
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -308,13 +313,13 @@ router.post('/refresh', authLimiter, async (req: Request, res: Response) => {
 
 ## GET /api/v1/brands
 
-**Source:** `server/src/modules/brand/api.ts:54`
+**Source:** `server/src/modules/brand/api.ts:60`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -390,13 +395,13 @@ router.get(
 
 ## POST /api/v1/brands
 
-**Source:** `server/src/modules/brand/api.ts:69`
+**Source:** `server/src/modules/brand/api.ts:75`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -494,13 +499,13 @@ router.post(
 
 ## GET /api/v1/brands/:id
 
-**Source:** `server/src/modules/brand/api.ts:110`
+**Source:** `server/src/modules/brand/api.ts:116`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -559,13 +564,13 @@ router.get(
 
 ## GET /api/v1/brands/:id/departments
 
-**Source:** `server/src/modules/brand/api.ts:127`
+**Source:** `server/src/modules/brand/api.ts:133`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -632,13 +637,13 @@ router.get(
 
 ## PUT /api/v1/brands/:id/departments
 
-**Source:** `server/src/modules/brand/api.ts:149`
+**Source:** `server/src/modules/brand/api.ts:155`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -732,15 +737,187 @@ router.put(
   )
 ```
 
+## GET /api/v1/brands/:id/teams
+
+**Source:** `server/src/modules/brand/api.ts:191`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+
+**Prerequisites:** Visible brand and teams belonging to its company.
+
+**Business logic:** GET resolves the directly granted brand.teamIds. PUT validates that every team belongs to the brand company, replaces the full teamIds array and returns the updated brand. This grants visibility; it does not assign a query.
+
+**Implementation entry points:** `server/src/modules/brand/api.ts`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/teams" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "_id": "670000000000000000000020",
+      "name": "Night shift",
+      "status": "active",
+      "departmentId": "670000000000000000000003",
+      "companyId": "670000000000000000000001"
+    }
+  ]
+}
+```
+
+- An empty teamIds array clears direct team grants; department or individual grants can still allow access.
+- Brand access saves department, team and individual grant sets through three separate PUTs, not one transaction.
+
+### Validation declarations
+
+**Params: deleteBrandSchema** — `server/src/modules/brand/validation.ts`
+
+```typescript
+export const deleteBrandSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+    '/:id/teams',
+    authenticate,
+    authorize(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),
+    validateParams(deleteBrandSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const scope = getTenantScope(req.user);
+      const brand = await getById(String(req.params.id ?? ''), scope);
+      if (!brand) {
+        throw new NotFoundError(`${model} not found`, `module/brand/api.ts - /:id/teams`);
+      }
+      const items = await getTeamsByIds(brand.teamIds ?? [], scope);
+      successResponse(res, { data: items });
+    }
+  )
+```
+
+## PUT /api/v1/brands/:id/teams
+
+**Source:** `server/src/modules/brand/api.ts:213`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+
+**Prerequisites:** Visible brand and teams belonging to its company.
+
+**Business logic:** GET resolves the directly granted brand.teamIds. PUT validates that every team belongs to the brand company, replaces the full teamIds array and returns the updated brand. This grants visibility; it does not assign a query.
+
+**Implementation entry points:** `server/src/modules/brand/api.ts`
+
+### Request example
+
+```sh
+curl -i -X PUT "${BASE_URL}/api/v1/brands/670000000000000000000004/teams" \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  --data '{"teamIds":["670000000000000000000020"]}'
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "Teams assigned successfully",
+  "data": {
+    "_id": "670000000000000000000004",
+    "teamIds": [
+      "670000000000000000000020"
+    ]
+  }
+}
+```
+
+- An empty teamIds array clears direct team grants; department or individual grants can still allow access.
+- Brand access saves department, team and individual grant sets through three separate PUTs, not one transaction.
+
+### Validation declarations
+
+**Params: deleteBrandSchema** — `server/src/modules/brand/validation.ts`
+
+```typescript
+export const deleteBrandSchema = z.object({
+  id: idSchema,
+});
+```
+
+**Body: assignTeamsSchema** — `server/src/modules/brand/validation.ts`
+
+```typescript
+export const assignTeamsSchema = z.strictObject({
+  teamIds: z.array(idSchema),
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.put(
+    '/:id/teams',
+    authenticate,
+    authorize(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),
+    validateParams(deleteBrandSchema),
+    validateBody(assignTeamsSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const scope = getTenantScope(req.user);
+      const brand = await getById(String(req.params.id ?? ''), scope);
+      if (!brand) {
+        throw new NotFoundError(`${model} not found`, `module/brand/api.ts - /:id/teams`);
+      }
+
+      const { teamIds } = req.body as { teamIds: string[] };
+
+      // Every assigned team must belong to the brand's own company.
+      if (!(await allTeamsInCompany(teamIds, brand.companyId))) {
+        throw new BadRequestError(
+          'One or more teams do not belong to this company',
+          `module/brand/api.ts - /:id/teams`
+        );
+      }
+
+      const item = await setTeams(String(req.params.id ?? ''), teamIds, scope);
+      if (!item) {
+        throw new NotFoundError(`${model} not found`, `module/brand/api.ts - /:id/teams`);
+      }
+      successResponse(res, { data: item, message: 'Teams assigned successfully' });
+    }
+  )
+```
+
 ## GET /api/v1/brands/:id/query-managers
 
-**Source:** `server/src/modules/brand/api.ts:186`
+**Source:** `server/src/modules/brand/api.ts:249`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -797,6 +974,7 @@ export const deleteBrandSchema = z.object({
 ```typescript
 export const listQueryManagersSchema = listQuerySchema.extend({
   departmentId: idSchema.optional(),
+  teamId: idSchema.optional(),
 });
 ```
 
@@ -828,13 +1006,13 @@ router.get(
 
 ## PUT /api/v1/brands/:id/query-managers
 
-**Source:** `server/src/modules/brand/api.ts:208`
+**Source:** `server/src/modules/brand/api.ts:271`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -930,13 +1108,13 @@ router.put(
 
 ## PATCH /api/v1/brands/:id
 
-**Source:** `server/src/modules/brand/api.ts:269`
+**Source:** `server/src/modules/brand/api.ts:332`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1044,13 +1222,13 @@ router.patch(
 
 ## DELETE /api/v1/brands/:id
 
-**Source:** `server/src/modules/brand/api.ts:324`
+**Source:** `server/src/modules/brand/api.ts:387`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1123,7 +1301,7 @@ router.delete(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1276,7 +1454,7 @@ router.post(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1351,7 +1529,7 @@ router.delete(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1479,7 +1657,7 @@ router.post(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1554,7 +1732,7 @@ router.delete(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1632,7 +1810,7 @@ router.get(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1673,7 +1851,7 @@ router.get('/instagram/oauth/callback', logRequest({}), handleInstagramOAuthCall
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1758,7 +1936,7 @@ router.get(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1852,7 +2030,7 @@ router.post(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -1938,7 +2116,7 @@ router.patch(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2029,7 +2207,7 @@ router.patch(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2094,7 +2272,7 @@ router.get(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2215,7 +2393,7 @@ router.post(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2339,7 +2517,7 @@ router.post(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2419,7 +2597,7 @@ router.delete(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2565,7 +2743,7 @@ router.post(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2714,7 +2892,7 @@ router.post(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2843,7 +3021,7 @@ router.post(
 
 **Prerequisites:** Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.
 
-**Business logic:** Brand departmentIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
+**Business logic:** Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.
 
 **Implementation entry points:** `server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts`
 
@@ -2925,7 +3103,7 @@ router.delete(
 
 ## GET /api/v1/comments
 
-**Source:** `server/src/modules/comment/api.ts:145`
+**Source:** `server/src/modules/comment/api.ts:158`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -2988,6 +3166,8 @@ curl -i -X GET "${BASE_URL}/api/v1/comments?brandId=670000000000000000000004&lim
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Single-item final-page example. Continue with nextCursor when hasNext is true; the token is omitted on the final page.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- mine=true includes personal work and own department/team pools. Pool membership is read from User, while brand visibility still follows token claims until refresh.
 
 ### Validation declarations
 
@@ -3037,12 +3217,9 @@ router.get(
       if (!brand) {
         throw new NotFoundError('Brand not found', `${comingFrom} - GET /`);
       }
-      // "Assigned to me" → the caller's own user id and department id (a comment is assigned to a
-      // query_manager by User id, or to a department by Department id). Sourced from the token.
+      // "Assigned to me" → held by the caller, or pooled on their department or team.
       const assigneeIds =
-        mine === 'true'
-          ? [req.user?.id, req.user?.departmentId].filter((v): v is string => Boolean(v))
-          : undefined;
+        mine === 'true' ? await assignedToMeIds(req.user as Express.User) : undefined;
       const data = await listCommentThreads(String(brandId), {
         platform,
         status,
@@ -3062,7 +3239,7 @@ router.get(
 
 ## GET /api/v1/comments/posts
 
-**Source:** `server/src/modules/comment/api.ts:188`
+**Source:** `server/src/modules/comment/api.ts:198`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3094,6 +3271,7 @@ curl -i -X GET "${BASE_URL}/api/v1/comments/posts?brandId=6700000000000000000000
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -3154,7 +3332,7 @@ router.get(
 
 ## GET /api/v1/comments/:id
 
-**Source:** `server/src/modules/comment/api.ts:229`
+**Source:** `server/src/modules/comment/api.ts:239`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3210,6 +3388,7 @@ curl -i -X GET "${BASE_URL}/api/v1/comments/670000000000000000000008" \
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -3249,7 +3428,7 @@ router.get(
 
 ## POST /api/v1/comments/:id/replies
 
-**Source:** `server/src/modules/comment/api.ts:251`
+**Source:** `server/src/modules/comment/api.ts:261`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3292,6 +3471,7 @@ curl -i -X POST "${BASE_URL}/api/v1/comments/670000000000000000000008/replies" \
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -3368,9 +3548,99 @@ router.post(
   )
 ```
 
+## GET /api/v1/comments/:id/status-log
+
+**Source:** `server/src/modules/comment/api.ts:314`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
+
+**Prerequisites:** Brand/channel and ingested comment tree. Uses the shared access, tag, status and SLA concepts; no Conversation or Session document is required.
+
+**Business logic:** After manager-role and record-visibility checks, explicitly read the hidden statusLog and resolve actor names. Comment replies resolve to their thread root. Return oldest first; unknown actors/reasons are null and deleted users retain their ID with name null.
+
+**Implementation entry points:** `server/src/modules/comment/api.ts; comment/service.ts; comment/sla.ts; modules/session/status-log.ts`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/comments/670000000000000000000008/status-log" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "status": "hold",
+      "at": "2026-10-17T04:10:00.000Z",
+      "cause": "agent",
+      "by": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman"
+      },
+      "reason": "Waiting for warehouse confirmation"
+    },
+    {
+      "status": "pending",
+      "at": "2026-10-17T04:40:00.000Z",
+      "cause": "reply",
+      "by": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman"
+      },
+      "reason": null
+    }
+  ]
+}
+```
+
+- History is oldest first; no history returns an empty array.
+- by is null for an unknown actor; a deleted user retains id with name null. Missing reason is null.
+- A reply ID resolves to the thread root before reading history.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+
+### Validation declarations
+
+**Params: commentIdSchema** — `server/src/modules/comment/validation.ts`
+
+```typescript
+export const commentIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+- HTTP 403: You do not have permission to access this resource
+
+### Handler code
+
+```typescript
+router.get(
+    '/:id/status-log',
+    authenticate,
+    authorize(...MANAGER_ROLES),
+    validateParams(commentIdSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const id = String(req.params.id ?? '');
+      await ensureVisibleComment(id, req.user);
+      // A reply's id reads its thread's root, which carries the status.
+      const comment = await getCommentById(id);
+      const root = comment && (await getThreadRoot(comment));
+      const log = root ? await readStatusLog(CommentModel, root._id) : [];
+      successResponse(res, { data: await namedStatusLog(log) });
+    }
+  )
+```
+
 ## PATCH /api/v1/comments/:id
 
-**Source:** `server/src/modules/comment/api.ts:324`
+**Source:** `server/src/modules/comment/api.ts:334`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3415,6 +3685,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/comments/670000000000000000000008" \
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
 - Optional reason is trimmed and limited to 500 characters. Only a real status transition appends a log; re-saving the same status does not replace its reason.
 - hold, unresolved and resolved stop resolution time. First-response time is independent of these pauses.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -3475,7 +3746,7 @@ router.patch(
 
 ## PUT /api/v1/comments/:id/tags
 
-**Source:** `server/src/modules/comment/api.ts:354`
+**Source:** `server/src/modules/comment/api.ts:364`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3518,6 +3789,7 @@ curl -i -X PUT "${BASE_URL}/api/v1/comments/670000000000000000000008/tags" \
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -3569,13 +3841,13 @@ router.put(
 
 ## PATCH /api/v1/comments/:id/assignment
 
-**Source:** `server/src/modules/comment/api.ts:380`
+**Source:** `server/src/modules/comment/api.ts:391`
 
-**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
 
 **Prerequisites:** Brand/channel and ingested comment tree. Uses the shared access, tag, status and SLA concepts; no Conversation or Session document is required.
 
-**Business logic:** Provider parentCommentId joins replies to a root within brand/post scope. The root owns thread status and SLA. Page replies end hold, and root-author replies reopen unresolved roots. Resolved roots do not automatically reopen. Replies, hiding, liking and deletion can call the provider; local wrap-up and classification update domain state. Reading history using a reply ID resolves the root first.
+**Business logic:** Owners/admins route a non-resolved session or comment root after brand visibility and target validation. Conversation routes resolve the latest session; comment reply IDs resolve the thread root. A conditional open-only write prevents routing a query resolved concurrently. Update the conversation mirror where relevant and emit assignment:changed.
 
 **Implementation entry points:** `server/src/modules/comment/api.ts; comment/service.ts; comment/sla.ts; modules/session/status-log.ts`
 
@@ -3615,9 +3887,10 @@ curl -i -X PATCH "${BASE_URL}/api/v1/comments/670000000000000000000008/assignmen
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
-- Assignment changes have a separate company-policy gate; assigned-only mode restricts agent reassignment.
 - Use {"assigneeType":null} to clear; response message becomes Comment unassigned.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- assigneeType accepts query_manager, team, department or null (clear). The target must be eligible for this brand; inactive teams/departments take no new work.
+- Resolved work rejects assignment changes with 409. Routing and claiming preserve status, including hold.
 
 ### Validation declarations
 
@@ -3652,7 +3925,7 @@ Shared authentication, validation and service errors apply.
 router.patch(
     '/:id/assignment',
     authenticate,
-    authorize(...READ_ROLES),
+    authorize(...MANAGER_ROLES),
     validateParams(commentIdSchema),
     validateBody(assignCommentSchema),
     logRequest({}),
@@ -3662,41 +3935,156 @@ router.patch(
       // assignee below rather than fetching the brand a second time.
       const { comment, brand } = await ensureVisibleComment(id, req.user);
       const assignmentComingFrom = `${comingFrom} - PATCH /:id/assignment`;
-      // Routing is an owner/admin act while the assignment policy is on, whatever the change would
-      // be — so this refuses up front, before an assignee is even resolved.
-      await assertCanChangeAssignment(req.user, comment.companyId, assignmentComingFrom);
-
-      const { assigneeType, assigneeId } = req.body as {
-        assigneeType: 'query_manager' | 'department' | null;
-        assigneeId?: string;
-      };
-
-      // Clearing the assignment needs no lookup.
-      if (assigneeType === null) {
-        const cleared = await assignComment(id, null);
-        return successResponse(res, { data: cleared, message: 'Comment unassigned' });
+      // Routing lives on the thread root, whichever comment of the thread was named (as claim).
+      const root = await getThreadRoot(comment);
+      if (!root || root.parentCommentId) {
+        throw new NotFoundError('This thread has no root to assign', assignmentComingFrom);
+      }
+      // A closed thread's assignment no longer changes.
+      if (root.status === 'resolved') {
+        throw new ConflictError(THREAD_WRAPPED_UP, assignmentComingFrom);
       }
 
+      const { assigneeType, assigneeId } = req.body as {
+        assigneeType: AssigneeType | null;
+        assigneeId?: string;
+      };
       // The assignee must be one the brand grants access to, so a comment can't be routed to someone
       // who can't even see its brand. Shared with the session route and with GET /sessions/assignees,
-      // so the list and the check can't drift apart.
+      // so the list and the check can't drift apart. Clearing needs no lookup.
+      const assignee: ICommentAssignee | null =
+        assigneeType === null
+          ? null
+          : await resolveBrandAssignee(
+              brand,
+              assigneeType,
+              assigneeId!,
+              getTenantScope(req.user),
+              assignmentComingFrom
+            );
+
+      const updated = await assignComment(String(root._id), assignee, {}, { openOnly: true });
+      // Wrapped up since it was read.
+      if (!updated) throw new ConflictError(THREAD_WRAPPED_UP, assignmentComingFrom);
+      successResponse(res, {
+        data: updated,
+        message: assigneeType === null ? 'Comment unassigned' : 'Comment assigned',
+      });
+    }
+  )
+```
+
+## POST /api/v1/comments/:id/claim
+
+**Source:** `server/src/modules/comment/api.ts:448`
+
+**Access:** Authenticated query_manager only; visible brand and an eligible open query required.
+
+**Prerequisites:** Company, brand visibility and eligible organizational membership.
+
+**Business logic:** Resolve the visible latest session or comment root. Reject resolved work. Already held by the caller returns Already assigned to you. Resolve the caller as a brand-eligible assignee and atomically match unassigned, own department or own team pool before setting a personal assignment. A concurrent loser receives 409.
+
+**Implementation entry points:** `server/src/modules/comment/api.ts`
+
+### Request example
+
+```sh
+curl -i -X POST "${BASE_URL}/api/v1/comments/670000000000000000000008/claim" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "Assigned to you",
+  "data": {
+    "_id": "670000000000000000000008",
+    "brandId": "670000000000000000000004",
+    "companyId": "670000000000000000000001",
+    "platform": "facebook",
+    "commentId": "page_comment_id",
+    "platformPostId": "page_post_id",
+    "text": "Thank you for contacting us.",
+    "status": "pending",
+    "sentiment": "NEUTRAL",
+    "tags": [],
+    "assignee": {
+      "kind": "query_manager",
+      "id": "670000000000000000000002",
+      "name": "Amina Rahman"
+    }
+  }
+}
+```
+
+- No request body. Only query_manager can call this endpoint; managers use assignment routes.
+- Claim preserves hold/unresolved status and does not resume SLA. Already assigned to you is HTTP 200 for an open query.
+- Pool membership is read from the current User record; another person or team cannot be claimed. A stale brand-access token still affects visibility.
+
+### Validation declarations
+
+**Params: commentIdSchema** — `server/src/modules/comment/validation.ts`
+
+```typescript
+export const commentIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+- HTTP 409: This thread is already wrapped up
+
+### Handler code
+
+```typescript
+router.post(
+    '/:id/claim',
+    authenticate,
+    authorize(ROLES.QUERY_MANAGER),
+    validateParams(commentIdSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const claimComingFrom = `${comingFrom} - POST /:id/claim`;
+      const user = req.user as Express.User;
+      const { comment, brand } = await ensureVisibleComment(String(req.params.id ?? ''), user);
+      const root = await getThreadRoot(comment);
+      // No root, or a reply whose chain breaks before the root (its parent was never ingested).
+      if (!root || root.parentCommentId) {
+        throw new NotFoundError('This thread has no root to assign', claimComingFrom);
+      }
+      if (root.status === 'resolved') {
+        throw new ConflictError(THREAD_WRAPPED_UP, claimComingFrom);
+      }
+      if (root.assignee?.kind === 'query_manager' && String(root.assignee.id) === user.id) {
+        return successResponse(res, { data: root, message: 'Already assigned to you' });
+      }
       const assignee: ICommentAssignee = await resolveBrandAssignee(
         brand,
-        assigneeType,
-        assigneeId!,
-        getTenantScope(req.user),
-        assignmentComingFrom
+        'query_manager',
+        user.id,
+        getTenantScope(user),
+        claimComingFrom
       );
-
-      const updated = await assignComment(id, assignee);
-      successResponse(res, { data: updated, message: 'Comment assigned' });
+      const claimed = await claimComment(root._id, assignee, await claimableFilter(user));
+      if (!claimed) {
+        // Taken meanwhile, or wrapped up meanwhile.
+        const current = await getCommentById(String(root._id));
+        throw new ConflictError(
+          current?.status === 'resolved' ? THREAD_WRAPPED_UP : 'Someone else has this thread',
+          claimComingFrom
+        );
+      }
+      successResponse(res, { data: claimed, message: 'Assigned to you' });
     }
   )
 ```
 
 ## PATCH /api/v1/comments/:id/wrap-up
 
-**Source:** `server/src/modules/comment/api.ts:429`
+**Source:** `server/src/modules/comment/api.ts:494`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3741,6 +4129,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/comments/670000000000000000000008/wrap-up" 
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
 - Optional reason is trimmed and limited to 500 characters. Only a real status transition appends a log; re-saving the same status does not replace its reason.
 - hold, unresolved and resolved stop resolution time. First-response time is independent of these pauses.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -3811,7 +4200,7 @@ router.patch(
 
 ## POST /api/v1/comments/:id/hide
 
-**Source:** `server/src/modules/comment/api.ts:466`
+**Source:** `server/src/modules/comment/api.ts:531`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3855,6 +4244,7 @@ curl -i -X POST "${BASE_URL}/api/v1/comments/670000000000000000000008/hide" \
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -3908,7 +4298,7 @@ router.post(
 
 ## POST /api/v1/comments/:id/like
 
-**Source:** `server/src/modules/comment/api.ts:493`
+**Source:** `server/src/modules/comment/api.ts:558`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3953,6 +4343,7 @@ curl -i -X POST "${BASE_URL}/api/v1/comments/670000000000000000000008/like" \
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - Like/unlike supports Facebook only.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -4007,7 +4398,7 @@ router.post(
 
 ## DELETE /api/v1/comments/:id
 
-**Source:** `server/src/modules/comment/api.ts:520`
+**Source:** `server/src/modules/comment/api.ts:585`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -4037,6 +4428,7 @@ curl -i -X DELETE "${BASE_URL}/api/v1/comments/670000000000000000000008" \
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -4075,13 +4467,13 @@ router.delete(
 
 ## GET /api/v1/companies/me
 
-**Source:** `server/src/modules/company/api.ts:93`
+**Source:** `server/src/modules/company/api.ts:92`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension).
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -4133,152 +4525,15 @@ router.get('/me', authenticate, logRequest({}), async (req: Request, res: Respon
   })
 ```
 
-## GET /api/v1/companies/me/settings
-
-**Source:** `server/src/modules/company/api.ts:109`
-
-**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension).
-
-**Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
-
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
-
-**Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
-
-### Request example
-
-```sh
-curl -i -X GET "${BASE_URL}/api/v1/companies/me/settings" \
-  -b cookies.txt -c cookies.txt
-```
-
-### Example response — HTTP 200
-
-```json
-{
-  "success": true,
-  "message": "success",
-  "data": {
-    "onlyAssignedCanAct": false
-  }
-}
-```
-
-- Record visibility and tenant checks still apply; a valid role alone does not grant access.
-
-### Validation declarations
-
-See handler and service validation.
-
-### Error examples
-
-Shared authentication, validation and service errors apply.
-
-### Handler code
-
-```typescript
-router.get('/me/settings', authenticate, logRequest({}), async (req: Request, res: Response) => {
-    const comingFrom = `module/company/api.ts - GET /me/settings`;
-    const companyId = req.user?.companyId;
-    if (!companyId) {
-      throw new NotFoundError(`${model} not found`, comingFrom);
-    }
-    const settings = await getSettings(companyId);
-    // A company predating the field has no `settings` at all; report the defaults rather than null
-    // so the client never has to special-case it.
-    successResponse(res, {
-      data: { onlyAssignedCanAct: settings?.onlyAssignedCanAct === true },
-    });
-  })
-```
-
-## PATCH /api/v1/companies/me/settings
-
-**Source:** `server/src/modules/company/api.ts:128`
-
-**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: company_owner, company_admin.
-
-**Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
-
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
-
-**Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
-
-### Request example
-
-```sh
-curl -i -X PATCH "${BASE_URL}/api/v1/companies/me/settings" \
-  -b cookies.txt -c cookies.txt \
-  -H "Content-Type: application/json" \
-  --data '{"onlyAssignedCanAct":true}'
-```
-
-### Example response — HTTP 200
-
-```json
-{
-  "success": true,
-  "message": "Settings updated successfully",
-  "data": {
-    "onlyAssignedCanAct": true
-  }
-}
-```
-
-- Record visibility and tenant checks still apply; a valid role alone does not grant access.
-
-### Validation declarations
-
-**Body: updateCompanySettingsSchema** — `server/src/modules/company/validation.ts`
-
-```typescript
-export const updateCompanySettingsSchema = z.strictObject({
-  onlyAssignedCanAct: z.boolean(),
-});
-```
-
-### Error examples
-
-Shared authentication, validation and service errors apply.
-
-### Handler code
-
-```typescript
-router.patch(
-    '/me/settings',
-    authenticate,
-    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),
-    validateBody(updateCompanySettingsSchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const comingFrom = `module/company/api.ts - PATCH /me/settings`;
-      const companyId = req.user?.companyId;
-      if (!companyId) {
-        throw new NotFoundError(`${model} not found`, comingFrom);
-      }
-      const { onlyAssignedCanAct } = req.body as ICompanySettings;
-
-      const settings = await updateSettings(companyId, { onlyAssignedCanAct });
-      if (!settings) {
-        throw new NotFoundError(`${model} not found`, comingFrom);
-      }
-      successResponse(res, {
-        data: { onlyAssignedCanAct: settings.onlyAssignedCanAct === true },
-        message: 'Settings updated successfully',
-      });
-    }
-  )
-```
-
 ## GET /api/v1/companies
 
-**Source:** `server/src/modules/company/api.ts:156`
+**Source:** `server/src/modules/company/api.ts:107`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -4351,13 +4606,13 @@ router.get(
 
 ## POST /api/v1/companies
 
-**Source:** `server/src/modules/company/api.ts:172`
+**Source:** `server/src/modules/company/api.ts:123`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -4446,13 +4701,13 @@ router.post(
 
 ## GET /api/v1/companies/:id
 
-**Source:** `server/src/modules/company/api.ts:204`
+**Source:** `server/src/modules/company/api.ts:155`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -4508,13 +4763,13 @@ router.get(
 
 ## PATCH /api/v1/companies/:id
 
-**Source:** `server/src/modules/company/api.ts:223`
+**Source:** `server/src/modules/company/api.ts:174`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -4604,13 +4859,13 @@ router.patch(
 
 ## DELETE /api/v1/companies/:id
 
-**Source:** `server/src/modules/company/api.ts:260`
+**Source:** `server/src/modules/company/api.ts:211`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.
 
 **Prerequisites:** Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.
 
-**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Company settings control assigned-only action policy; suspension is checked separately from role permission.
+**Business logic:** A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.
 
 **Implementation entry points:** `server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts`
 
@@ -4674,7 +4929,7 @@ router.delete(
 
 ## GET /api/v1/conversations
 
-**Source:** `server/src/modules/conversation/api.ts:336`
+**Source:** `server/src/modules/conversation/api.ts:343`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -4723,6 +4978,8 @@ curl -i -X GET "${BASE_URL}/api/v1/conversations?brandId=67000000000000000000000
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Single-item final-page example. Continue with nextCursor when hasNext is true; the token is omitted on the final page.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- mine=true includes personal work and own department/team pools. Pool membership is read from User, while brand visibility still follows token claims until refresh.
 
 ### Validation declarations
 
@@ -4769,12 +5026,9 @@ router.get(
       if (!brand) {
         throw new NotFoundError('Brand not found', `module/conversation/api.ts - GET /`);
       }
-      // "Assigned to me" → the caller's own user id and department id (a session is assigned to a
-      // query_manager by User id, or to a department by Department id). Sourced from the token.
+      // "Assigned to me" → held by the caller, or pooled on their department or team.
       const assigneeIds =
-        req.query.mine === 'true'
-          ? [req.user?.id, req.user?.departmentId].filter((v): v is string => Boolean(v))
-          : undefined;
+        req.query.mine === 'true' ? await assignedToMeIds(req.user as Express.User) : undefined;
       // Tag filter, matched against the conversation's denormalized `tags` (its latest session's).
       // Filtering by a parent tag means "and everything under it" — picking `complaint` returns
       // `complaint/billing` threads too, exactly as in the comment list.
@@ -4790,7 +5044,7 @@ router.get(
 
 ## GET /api/v1/conversations/:id/messages
 
-**Source:** `server/src/modules/conversation/api.ts:370`
+**Source:** `server/src/modules/conversation/api.ts:374`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -4828,6 +5082,7 @@ curl -i -X GET "${BASE_URL}/api/v1/conversations/670000000000000000000005/messag
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -4867,7 +5122,7 @@ router.get(
 
 ## GET /api/v1/conversations/:id/sessions
 
-**Source:** `server/src/modules/conversation/api.ts:393`
+**Source:** `server/src/modules/conversation/api.ts:397`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -4930,6 +5185,7 @@ curl -i -X GET "${BASE_URL}/api/v1/conversations/670000000000000000000005/sessio
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Single-item final-page example. Continue with nextCursor when hasNext is true; the token is omitted on the final page.
 - Nonempty data items are {session, messages, notes} groups, not bare sessions.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -4977,7 +5233,7 @@ router.get(
 
 ## GET /api/v1/conversations/:id/stats
 
-**Source:** `server/src/modules/conversation/api.ts:417`
+**Source:** `server/src/modules/conversation/api.ts:421`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5008,6 +5264,7 @@ curl -i -X GET "${BASE_URL}/api/v1/conversations/670000000000000000000005/stats"
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5047,7 +5304,7 @@ router.get(
 
 ## GET /api/v1/conversations/:id/customer
 
-**Source:** `server/src/modules/conversation/api.ts:439`
+**Source:** `server/src/modules/conversation/api.ts:443`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5079,6 +5336,7 @@ curl -i -X GET "${BASE_URL}/api/v1/conversations/670000000000000000000005/custom
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - data can be null when no CRM customer record exists yet.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5118,7 +5376,7 @@ router.get(
 
 ## PATCH /api/v1/conversations/:id/customer
 
-**Source:** `server/src/modules/conversation/api.ts:462`
+**Source:** `server/src/modules/conversation/api.ts:466`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5152,6 +5410,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/conversations/670000000000000000000005/cust
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5206,9 +5465,219 @@ router.patch(
   )
 ```
 
+## POST /api/v1/conversations/:id/claim
+
+**Source:** `server/src/modules/conversation/api.ts:495`
+
+**Access:** Authenticated query_manager only; visible brand and an eligible open query required.
+
+**Prerequisites:** Company, brand visibility and eligible organizational membership.
+
+**Business logic:** Resolve the visible latest session or comment root. Reject resolved work. Already held by the caller returns Already assigned to you. Resolve the caller as a brand-eligible assignee and atomically match unassigned, own department or own team pool before setting a personal assignment. A concurrent loser receives 409.
+
+**Implementation entry points:** `server/src/modules/conversation/api.ts`
+
+### Request example
+
+```sh
+curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/claim" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "Assigned to you",
+  "data": {
+    "_id": "670000000000000000000006",
+    "conversationId": "670000000000000000000005",
+    "brandId": "670000000000000000000004",
+    "companyId": "670000000000000000000001",
+    "platform": "facebook",
+    "status": "pending",
+    "sentiment": "NEUTRAL",
+    "sequence": 1,
+    "startedAt": "2026-10-15T09:00:00.000Z",
+    "lastActivityAt": "2026-10-15T09:00:00.000Z",
+    "tags": [],
+    "messageCount": 1,
+    "assignee": {
+      "kind": "query_manager",
+      "id": "670000000000000000000002",
+      "name": "Amina Rahman"
+    }
+  }
+}
+```
+
+- No request body. Only query_manager can call this endpoint; managers use assignment routes.
+- Claim preserves hold/unresolved status and does not resume SLA. Already assigned to you is HTTP 200 for an open query.
+- Pool membership is read from the current User record; another person or team cannot be claimed. A stale brand-access token still affects visibility.
+
+### Validation declarations
+
+**Params: conversationIdSchema** — `server/src/modules/conversation/validation.ts`
+
+```typescript
+export const conversationIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+- HTTP 409: This conversation is already wrapped up
+
+### Handler code
+
+```typescript
+router.post(
+    '/:id/claim',
+    authenticate,
+    authorize(ROLES.QUERY_MANAGER),
+    validateParams(conversationIdSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const claimComingFrom = `${comingFrom} - POST /:id/claim`;
+      const user = req.user as Express.User;
+      const { conversation, brand } = await loadVisibleConversation(
+        String(req.params.id ?? ''),
+        user,
+        claimComingFrom
+      );
+      const session = await getLatestSession(conversation._id);
+      if (!session)
+        throw new NotFoundError('This conversation has no session yet', claimComingFrom);
+      const claimed = await claimForCaller(session, brand, user, claimComingFrom);
+      successResponse(res, {
+        data: claimed.session,
+        message: claimed.already ? 'Already assigned to you' : 'Assigned to you',
+      });
+    }
+  )
+```
+
+## PATCH /api/v1/conversations/:id/assignment
+
+**Source:** `server/src/modules/conversation/api.ts:526`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+
+**Prerequisites:** Company, brand visibility and eligible organizational membership.
+
+**Business logic:** Owners/admins route a non-resolved session or comment root after brand visibility and target validation. Conversation routes resolve the latest session; comment reply IDs resolve the thread root. A conditional open-only write prevents routing a query resolved concurrently. Update the conversation mirror where relevant and emit assignment:changed.
+
+**Implementation entry points:** `server/src/modules/conversation/api.ts`
+
+### Request example
+
+```sh
+curl -i -X PATCH "${BASE_URL}/api/v1/conversations/670000000000000000000005/assignment" \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  --data '{"assigneeType":"team","assigneeId":"670000000000000000000020"}'
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "Conversation assigned",
+  "data": {
+    "_id": "670000000000000000000006",
+    "conversationId": "670000000000000000000005",
+    "brandId": "670000000000000000000004",
+    "companyId": "670000000000000000000001",
+    "platform": "facebook",
+    "status": "pending",
+    "sentiment": "NEUTRAL",
+    "sequence": 1,
+    "startedAt": "2026-10-15T09:00:00.000Z",
+    "lastActivityAt": "2026-10-15T09:00:00.000Z",
+    "tags": [],
+    "messageCount": 1,
+    "assignee": {
+      "kind": "team",
+      "id": "670000000000000000000020",
+      "name": "Night shift"
+    }
+  }
+}
+```
+
+- assigneeType accepts query_manager, team, department or null (clear). The target must be eligible for this brand; inactive teams/departments take no new work.
+- Resolved work rejects assignment changes with 409. Routing and claiming preserve status, including hold.
+
+### Validation declarations
+
+**Params: conversationIdSchema** — `server/src/modules/conversation/validation.ts`
+
+```typescript
+export const conversationIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+**Body: assignSessionSchema** — `server/src/modules/session/validation.ts`
+
+```typescript
+export const assignSessionSchema = z
+  .strictObject({
+    assigneeType: z.enum(ASSIGNEE_TYPES).nullable(),
+    assigneeId: idSchema.optional(),
+  })
+  .refine(v => v.assigneeType === null || v.assigneeId !== undefined, {
+    message: 'assigneeId is required unless clearing the assignment (assigneeType: null)',
+  });
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.patch(
+    '/:id/assignment',
+    authenticate,
+    authorize(...MANAGER_ROLES),
+    validateParams(conversationIdSchema),
+    validateBody(assignSessionSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const assignmentComingFrom = `${comingFrom} - PATCH /:id/assignment`;
+      const { conversation, brand } = await loadVisibleConversation(
+        String(req.params.id ?? ''),
+        req.user,
+        assignmentComingFrom
+      );
+      const session = await getLatestSession(conversation._id);
+      if (!session) {
+        throw new NotFoundError('This conversation has no session yet', assignmentComingFrom);
+      }
+      const choice = req.body as AssigneeChoice;
+      const updated = await routeSession(
+        session,
+        brand,
+        choice,
+        req.user as Express.User,
+        assignmentComingFrom
+      );
+      successResponse(res, {
+        data: updated,
+        message: choice.assigneeType === null ? 'Conversation unassigned' : 'Conversation assigned',
+      });
+    }
+  )
+```
+
 ## POST /api/v1/conversations/:id/messages
 
-**Source:** `server/src/modules/conversation/api.ts:490`
+**Source:** `server/src/modules/conversation/api.ts:563`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5248,6 +5717,7 @@ curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/messa
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - Calls the provider before local persistence; an error does not prove the provider did not accept the send. Inspect state before retrying.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5312,7 +5782,7 @@ router.post(
 
 ## POST /api/v1/conversations/:id/attachments
 
-**Source:** `server/src/modules/conversation/api.ts:530`
+**Source:** `server/src/modules/conversation/api.ts:603`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5372,6 +5842,7 @@ curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/attac
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - Calls the provider before local persistence; an error does not prove the provider did not accept the send. Inspect state before retrying.
 - File field: files. Let curl/browser set the multipart boundary.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5465,7 +5936,7 @@ router.post(
 
 ## POST /api/v1/conversations/:id/messages/:messageId/reaction
 
-**Source:** `server/src/modules/conversation/api.ts:606`
+**Source:** `server/src/modules/conversation/api.ts:679`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5504,6 +5975,7 @@ curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/messa
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Provider support is channel-specific; messageId is the Mongo message ID, not the provider mid.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5548,7 +6020,7 @@ router.post(
 
 ## DELETE /api/v1/conversations/:id/messages/:messageId/reaction
 
-**Source:** `server/src/modules/conversation/api.ts:620`
+**Source:** `server/src/modules/conversation/api.ts:693`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5585,6 +6057,7 @@ curl -i -X DELETE "${BASE_URL}/api/v1/conversations/670000000000000000000005/mes
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Provider support is channel-specific; messageId is the Mongo message ID, not the provider mid.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5664,6 +6137,7 @@ curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/messa
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - May return Media already available without fetching. Fetchable WhatsApp media IDs expire after seven days.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5794,6 +6268,7 @@ curl -i -X GET "${BASE_URL}/api/v1/conversations/670000000000000000000005/whatsa
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -5896,6 +6371,7 @@ curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/whats
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - Calls the provider before local persistence; an error does not prove the provider did not accept the send. Inspect state before retrying.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -6002,11 +6478,11 @@ router.post(
 
 ## GET /api/v1/departments
 
-**Source:** `server/src/modules/department/api.ts:28`
+**Source:** `server/src/modules/department/api.ts:29`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -6081,11 +6557,11 @@ router.get(
 
 ## POST /api/v1/departments
 
-**Source:** `server/src/modules/department/api.ts:43`
+**Source:** `server/src/modules/department/api.ts:44`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -6160,11 +6636,11 @@ router.post(
 
 ## GET /api/v1/departments/:id
 
-**Source:** `server/src/modules/department/api.ts:65`
+**Source:** `server/src/modules/department/api.ts:66`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -6222,11 +6698,11 @@ router.get(
 
 ## PATCH /api/v1/departments/:id
 
-**Source:** `server/src/modules/department/api.ts:82`
+**Source:** `server/src/modules/department/api.ts:83`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -6302,11 +6778,11 @@ router.patch(
 
 ## DELETE /api/v1/departments/:id
 
-**Source:** `server/src/modules/department/api.ts:108`
+**Source:** `server/src/modules/department/api.ts:109`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -6335,6 +6811,7 @@ curl -i -X DELETE "${BASE_URL}/api/v1/departments/670000000000000000000003" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Departments containing any teams, including inactive teams, cannot be deleted (409).
 
 ### Validation declarations
 
@@ -6348,7 +6825,7 @@ export const deleteDepartmentSchema = z.object({
 
 ### Error examples
 
-Shared authentication, validation and service errors apply.
+- HTTP 409: This department has teams: deactivate it instead of deleting
 
 ### Handler code
 
@@ -6360,6 +6837,14 @@ router.delete(
     validateParams(deleteDepartmentSchema),
     logRequest({}),
     async (req: Request, res: Response) => {
+      // Teams point at their department and members derive theirs from the team, so deleting one
+      // with teams would orphan them. Deactivate the department instead.
+      if (await hasTeams(String(req.params.id ?? ''))) {
+        throw new ConflictError(
+          'This department has teams: deactivate it instead of deleting',
+          `module/department/api.ts - /:id`
+        );
+      }
       const item = await deleteById(String(req.params.id ?? ''), getTenantScope(req.user));
       if (!item) {
         throw new NotFoundError(`${model} not found`, `module/department/api.ts - /:id`);
@@ -6729,7 +7214,7 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/fixed-replies
 
 ### Validation declarations
 
-**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+**Params: brandParamSchema** — `server/src/modules/fixed-reply/validation.ts`
 
 ```typescript
 export const brandParamSchema = z.object({
@@ -6799,7 +7284,7 @@ curl -i -X POST "${BASE_URL}/api/v1/brands/670000000000000000000004/fixed-replie
 
 ### Validation declarations
 
-**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+**Params: brandParamSchema** — `server/src/modules/fixed-reply/validation.ts`
 
 ```typescript
 export const brandParamSchema = z.object({
@@ -7503,15 +7988,124 @@ router.get(
   )
 ```
 
+## GET /api/v1/brands/:brandId/overview/holds
+
+**Source:** `server/src/modules/overview/api.ts:167`
+
+**Access:** Access-token cookie or Bearer token; active company required for tenant roles. Only super_admin, company_owner and company_admin; brand visibility still applies. Query managers receive 403.
+
+**Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
+
+**Business logic:** Resolve a visible brand; validate the paired date range; read session/root histories and historical business hours; pair hold entries with the next transition; keep overlapping holds, sort newest first and cap at 1,000. Return complete hold durations, with open holds measured to now.
+
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=2026-10-17&to=2026-10-17&source=sessions" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "source": "session",
+      "id": "670000000000000000000006",
+      "conversationId": "670000000000000000000005",
+      "heldBy": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman"
+      },
+      "reason": "Waiting for warehouse confirmation",
+      "startedAt": "2026-10-17T04:10:00.000Z",
+      "endedAt": "2026-10-17T04:40:00.000Z",
+      "endedBy": {
+        "cause": "reply",
+        "by": {
+          "id": "670000000000000000000002",
+          "name": "Amina Rahman"
+        }
+      },
+      "durationMs": 1800000,
+      "businessMs": 1800000
+    }
+  ]
+}
+```
+
+- Omit source to include sessions and comments. source accepts sessions or comments, not singular names.
+- Both from/to or neither; defaults to last 30 days. Inclusive Asia/Dhaka dates, at most one year. platform/page/limit are not accepted.
+- Returns at most 1,000 overlapping holds, newest first, without pagination or a truncation flag. Durations cover the entire hold, not just its overlap with the requested range.
+- Active holds have endedAt and endedBy null; durations run to read time. Business hours are those at the query clock start.
+- No separate hold collection: deleting a thread or merging away a session removes its stored holds.
+
+### Validation declarations
+
+**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const brandParamSchema = z.object({
+  brandId: idSchema,
+});
+```
+
+**Query: holdsQuerySchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const holdsQuerySchema = withRangeChecks(
+  z.strictObject({
+    from: rangeFields.from,
+    to: rangeFields.to,
+    source: z.enum(HOLD_SOURCES).optional(),
+  })
+);
+```
+
+### Error examples
+
+- HTTP 403: You do not have permission to access this resource
+
+### Handler code
+
+```typescript
+router.get(
+    '/holds',
+    authenticate,
+    authorize(...overviewRoles),
+    validateParams(brandParamSchema),
+    validateQuery(holdsQuerySchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+      const query = req.query as { from?: string; to?: string; source?: HoldSource };
+      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+      const data = await listHolds({
+        brandId: brand.id,
+        companyId: brand.companyId,
+        source: query.source,
+        ...range,
+      });
+      successResponse(res, { data });
+    }
+  )
+```
+
 ## GET /api/v1/query-managers
 
-**Source:** `server/src/modules/query-manager/api.ts:57`
+**Source:** `server/src/modules/query-manager/api.ts:46`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Company, active department, active team and manager role. Create the department and team before the query manager.
 
-**Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
+**Business logic:** Query managers are Users with role query_manager. Create requires teamId; resolveMembership validates an active team in an active department of the same company and writes teamId plus derived departmentId together. Re-sending an unchanged team skips revalidation, so existing members of inactive teams remain editable. List accepts teamId and departmentId filters.
 
 **Implementation entry points:** `server/src/modules/user/service.ts; modules/department/service.ts; modules/query-manager/service.ts; auth/tenant.ts`
 
@@ -7560,6 +8154,7 @@ curl -i -X GET "${BASE_URL}/api/v1/query-managers?limit=20" \
 ```typescript
 export const listQueryManagersSchema = listQuerySchema.extend({
   departmentId: idSchema.optional(),
+  teamId: idSchema.optional(),
 });
 ```
 
@@ -7585,13 +8180,13 @@ router.get(
 
 ## POST /api/v1/query-managers
 
-**Source:** `server/src/modules/query-manager/api.ts:72`
+**Source:** `server/src/modules/query-manager/api.ts:61`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Company, active department, active team and manager role. Create the department and team before the query manager.
 
-**Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
+**Business logic:** Query managers are Users with role query_manager. Create requires teamId; resolveMembership validates an active team in an active department of the same company and writes teamId plus derived departmentId together. Re-sending an unchanged team skips revalidation, so existing members of inactive teams remain editable. List accepts teamId and departmentId filters.
 
 **Implementation entry points:** `server/src/modules/user/service.ts; modules/department/service.ts; modules/query-manager/service.ts; auth/tenant.ts`
 
@@ -7603,7 +8198,7 @@ curl -i -X POST "${BASE_URL}/api/v1/query-managers" \
   -F "name=Amina Rahman" \
   -F "email=amina@example.com" \
   -F "password=ExamplePassword1!" \
-  -F "departmentId=670000000000000000000003" \
+  -F "teamId=670000000000000000000020" \
   -F "avatar=@./photo.png"
 ```
 
@@ -7618,7 +8213,9 @@ curl -i -X POST "${BASE_URL}/api/v1/query-managers" \
     "name": "Amina Rahman",
     "email": "amina@example.com",
     "role": "query_manager",
-    "companyId": "670000000000000000000001"
+    "companyId": "670000000000000000000001",
+    "teamId": "670000000000000000000020",
+    "departmentId": "670000000000000000000003"
   }
 }
 ```
@@ -7636,8 +8233,9 @@ export const createQueryManagerSchema = z.strictObject({
   name: z.string().min(1, 'Name is required'),
   email: z.email('Invalid email format').min(1, 'Email is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  // The department the query manager belongs to (must exist within the company).
-  departmentId: idSchema,
+  // The team the query manager belongs to (active, within the company). Their department is the
+  // team's, so it isn't accepted here.
+  teamId: idSchema,
   // Only honoured for super_admin; company_owner/company_admin are forced to their own company.
   companyId: idSchema.optional(),
 });
@@ -7660,7 +8258,7 @@ router.post(
     validateBody(createQueryManagerSchema),
     logRequest({}),
     async (req: Request, res: Response) => {
-      const { name, email, password, departmentId } = req.body;
+      const { name, email, password, teamId } = req.body;
 
       // super_admin targets any company via the body; company roles are forced to their own.
       const companyId =
@@ -7669,13 +8267,17 @@ router.post(
         throw new BadRequestError('companyId is required', `module/query-manager/api.ts - /`);
       }
 
-      await assertDepartmentInCompany(departmentId, companyId);
+      const membership = await resolveMembership(
+        teamId,
+        companyId,
+        `module/query-manager/api.ts - /`
+      );
 
       // Avatar is optional — only persist a key when a file was uploaded.
       const avatar = await saveAvatar(req.file);
 
       try {
-        const item = await create({ name, email, password, companyId, departmentId, avatar });
+        const item = await create({ name, email, password, companyId, ...membership, avatar });
         successResponse(res, { data: item, message: 'Query manager created successfully' });
       } catch (error) {
         // Avoid an orphaned file if the insert fails (e.g. duplicate email).
@@ -7688,13 +8290,13 @@ router.post(
 
 ## GET /api/v1/query-managers/:id
 
-**Source:** `server/src/modules/query-manager/api.ts:110`
+**Source:** `server/src/modules/query-manager/api.ts:103`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Company, active department, active team and manager role. Create the department and team before the query manager.
 
-**Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
+**Business logic:** Query managers are Users with role query_manager. Create requires teamId; resolveMembership validates an active team in an active department of the same company and writes teamId plus derived departmentId together. Re-sending an unchanged team skips revalidation, so existing members of inactive teams remain editable. List accepts teamId and departmentId filters.
 
 **Implementation entry points:** `server/src/modules/user/service.ts; modules/department/service.ts; modules/query-manager/service.ts; auth/tenant.ts`
 
@@ -7716,7 +8318,9 @@ curl -i -X GET "${BASE_URL}/api/v1/query-managers/670000000000000000000002" \
     "name": "Amina Rahman",
     "email": "amina@example.com",
     "role": "query_manager",
-    "companyId": "670000000000000000000001"
+    "companyId": "670000000000000000000001",
+    "teamId": "670000000000000000000020",
+    "departmentId": "670000000000000000000003"
   }
 }
 ```
@@ -7751,13 +8355,13 @@ router.get(
 
 ## PATCH /api/v1/query-managers/:id
 
-**Source:** `server/src/modules/query-manager/api.ts:127`
+**Source:** `server/src/modules/query-manager/api.ts:120`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Company, active department, active team and manager role. Create the department and team before the query manager.
 
-**Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
+**Business logic:** Query managers are Users with role query_manager. Create requires teamId; resolveMembership validates an active team in an active department of the same company and writes teamId plus derived departmentId together. Re-sending an unchanged team skips revalidation, so existing members of inactive teams remain editable. List accepts teamId and departmentId filters.
 
 **Implementation entry points:** `server/src/modules/user/service.ts; modules/department/service.ts; modules/query-manager/service.ts; auth/tenant.ts`
 
@@ -7767,7 +8371,8 @@ router.get(
 curl -i -X PATCH "${BASE_URL}/api/v1/query-managers/670000000000000000000002" \
   -b cookies.txt -c cookies.txt \
   -F "name=Amina Rahman Updated" \
-  -F "avatar=@./photo.png"
+  -F "avatar=@./photo.png" \
+  -F "teamId=670000000000000000000020"
 ```
 
 ### Example response — HTTP 200
@@ -7781,7 +8386,9 @@ curl -i -X PATCH "${BASE_URL}/api/v1/query-managers/670000000000000000000002" \
     "name": "Amina Rahman Updated",
     "email": "amina@example.com",
     "role": "query_manager",
-    "companyId": "670000000000000000000001"
+    "companyId": "670000000000000000000001",
+    "teamId": "670000000000000000000020",
+    "departmentId": "670000000000000000000003"
   }
 }
 ```
@@ -7798,7 +8405,7 @@ export const updateQueryManagerSchema = z.strictObject({
   name: z.string().min(1, 'Name is required').optional(),
   email: z.email('Invalid email format').optional(),
   password: z.string().min(8, 'Password must be at least 8 characters').optional(),
-  departmentId: idSchema.optional(),
+  teamId: idSchema.optional(),
 });
 ```
 
@@ -7817,7 +8424,7 @@ router.patch(
     validateBody(updateQueryManagerSchema),
     logRequest({}),
     async (req: Request, res: Response) => {
-      const { name, email, password, departmentId } = req.body;
+      const { name, email, password, teamId } = req.body;
       if (!hasUpdatePayload(req.body, req.file)) {
         throw new BadRequestError('Invalid request body', `module/query-manager/api.ts - /:id`);
       }
@@ -7828,19 +8435,20 @@ router.patch(
         throw new NotFoundError(`${model} not found`, `module/query-manager/api.ts - /:id`);
       }
 
-      // A reassigned department must live in the same company as the query manager.
-      if (departmentId) {
-        await assertDepartmentInCompany(departmentId, existing.companyId?.toString());
-      }
+      // A new team must be joinable, within the manager's own company. Re-sending the current team
+      // (the edit form always sends it) is a no-op, so someone whose team was deactivated since can
+      // still have their name or password changed.
+      const membership: Membership | undefined =
+        teamId && teamId !== existing.teamId?.toString()
+          ? await resolveMembership(
+              teamId,
+              existing.companyId,
+              `module/query-manager/api.ts - /:id`
+            )
+          : undefined;
 
       const newAvatar = await saveAvatar(req.file);
-      const update: {
-        name?: string;
-        email?: string;
-        password?: string;
-        departmentId?: string;
-        avatar?: string;
-      } = { name, email, password, departmentId, avatar: newAvatar };
+      const update = { name, email, password, ...membership, avatar: newAvatar };
 
       try {
         const item = await updateById(String(req.params.id ?? ''), update, scope);
@@ -7863,13 +8471,13 @@ router.patch(
 
 ## DELETE /api/v1/query-managers/:id
 
-**Source:** `server/src/modules/query-manager/api.ts:181`
+**Source:** `server/src/modules/query-manager/api.ts:175`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Company, active department, active team and manager role. Create the department and team before the query manager.
 
-**Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
+**Business logic:** Query managers are Users with role query_manager. Create requires teamId; resolveMembership validates an active team in an active department of the same company and writes teamId plus derived departmentId together. Re-sending an unchanged team skips revalidation, so existing members of inactive teams remain editable. List accepts teamId and departmentId filters.
 
 **Implementation entry points:** `server/src/modules/user/service.ts; modules/department/service.ts; modules/query-manager/service.ts; auth/tenant.ts`
 
@@ -7891,7 +8499,9 @@ curl -i -X DELETE "${BASE_URL}/api/v1/query-managers/670000000000000000000002" \
     "name": "Amina Rahman",
     "email": "amina@example.com",
     "role": "query_manager",
-    "companyId": "670000000000000000000001"
+    "companyId": "670000000000000000000001",
+    "teamId": "670000000000000000000020",
+    "departmentId": "670000000000000000000003"
   }
 }
 ```
@@ -7934,7 +8544,7 @@ router.delete(
 
 ## GET /api/v1/sessions
 
-**Source:** `server/src/modules/session/api.ts:85`
+**Source:** `server/src/modules/session/api.ts:84`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -7982,6 +8592,7 @@ curl -i -X GET "${BASE_URL}/api/v1/sessions?conversationId=670000000000000000000
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Single-item final-page example. Continue with nextCursor when hasNext is true; the token is omitted on the final page.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -8018,7 +8629,7 @@ router.get(
 
 ## GET /api/v1/sessions/assignees
 
-**Source:** `server/src/modules/session/api.ts:106`
+**Source:** `server/src/modules/session/api.ts:105`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8043,12 +8654,21 @@ curl -i -X GET "${BASE_URL}/api/v1/sessions/assignees?brandId=670000000000000000
   "message": "success",
   "data": {
     "departments": [],
-    "queryManagers": []
+    "queryManagers": [],
+    "teams": [
+      {
+        "id": "670000000000000000000020",
+        "name": "Night shift",
+        "departmentName": "Support"
+      }
+    ]
   }
 }
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- Includes departments, teams and queryManagers. Team entries include departmentName; inactive teams or departments take no new assignments.
 
 ### Validation declarations
 
@@ -8088,7 +8708,7 @@ router.get(
 
 ## GET /api/v1/sessions/:id
 
-**Source:** `server/src/modules/session/api.ts:127`
+**Source:** `server/src/modules/session/api.ts:126`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8129,6 +8749,7 @@ curl -i -X GET "${BASE_URL}/api/v1/sessions/670000000000000000000006" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -8162,7 +8783,7 @@ router.get(
 
 ## PATCH /api/v1/sessions/:id/status
 
-**Source:** `server/src/modules/session/api.ts:142`
+**Source:** `server/src/modules/session/api.ts:141`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8209,6 +8830,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/sessions/670000000000000000000006/status" \
 - Alternative body: {"mergeWithPrevious":true}. That branch merges into the previous session and returns it with message Session merged.
 - Optional reason is trimmed and limited to 500 characters. Only a real status transition appends a log; re-saving the same status does not replace its reason.
 - hold, unresolved and resolved stop resolution time. First-response time is independent of these pauses.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -8270,9 +8892,94 @@ router.patch(
   )
 ```
 
+## GET /api/v1/sessions/:id/status-log
+
+**Source:** `server/src/modules/session/api.ts:173`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
+
+**Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
+
+**Business logic:** After manager-role and record-visibility checks, explicitly read the hidden statusLog and resolve actor names. Comment replies resolve to their thread root. Return oldest first; unknown actors/reasons are null and deleted users retain their ID with name null.
+
+**Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/sessions/670000000000000000000006/status-log" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "status": "hold",
+      "at": "2026-10-17T04:10:00.000Z",
+      "cause": "agent",
+      "by": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman"
+      },
+      "reason": "Waiting for warehouse confirmation"
+    },
+    {
+      "status": "pending",
+      "at": "2026-10-17T04:40:00.000Z",
+      "cause": "reply",
+      "by": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman"
+      },
+      "reason": null
+    }
+  ]
+}
+```
+
+- History is oldest first; no history returns an empty array.
+- by is null for an unknown actor; a deleted user retains id with name null. Missing reason is null.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+
+### Validation declarations
+
+**Params: sessionIdSchema** — `server/src/modules/session/validation.ts`
+
+```typescript
+export const sessionIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+- HTTP 403: You do not have permission to access this resource
+
+### Handler code
+
+```typescript
+router.get(
+    '/:id/status-log',
+    authenticate,
+    authorize(...MANAGER_ROLES),
+    validateParams(sessionIdSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const id = String(req.params.id ?? '');
+      await ensureVisibleSession(id, req.user);
+      successResponse(res, { data: await namedStatusLog(await readStatusLog(SessionModel, id)) });
+    }
+  )
+```
+
 ## PATCH /api/v1/sessions/:id/sentiment
 
-**Source:** `server/src/modules/session/api.ts:190`
+**Source:** `server/src/modules/session/api.ts:189`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8316,6 +9023,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/sessions/670000000000000000000006/sentiment
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -8365,7 +9073,7 @@ router.patch(
 
 ## PATCH /api/v1/sessions/:id/wrap-up
 
-**Source:** `server/src/modules/session/api.ts:215`
+**Source:** `server/src/modules/session/api.ts:214`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8413,6 +9121,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/sessions/670000000000000000000006/wrap-up" 
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - Optional reason is trimmed and limited to 500 characters. Only a real status transition appends a log; re-saving the same status does not replace its reason.
 - hold, unresolved and resolved stop resolution time. First-response time is independent of these pauses.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -8480,11 +9189,11 @@ router.patch(
 
 **Source:** `server/src/modules/session/api.ts:249`
 
-**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Owners/admins route a non-resolved session or comment root after brand visibility and target validation. Conversation routes resolve the latest session; comment reply IDs resolve the thread root. A conditional open-only write prevents routing a query resolved concurrently. Update the conversation mirror where relevant and emit assignment:changed.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -8526,8 +9235,9 @@ curl -i -X PATCH "${BASE_URL}/api/v1/sessions/670000000000000000000006/assignmen
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
-- Assignment changes have a separate company-policy gate; assigned-only mode restricts agent reassignment.
 - Use {"assigneeType":null} to clear; response message becomes Session unassigned.
+- assigneeType accepts query_manager, team, department or null (clear). The target must be eligible for this brand; inactive teams/departments take no new work.
+- Resolved work rejects assignment changes with 409. Routing and claiming preserve status, including hold.
 
 ### Validation declarations
 
@@ -8562,7 +9272,7 @@ Shared authentication, validation and service errors apply.
 router.patch(
     '/:id/assignment',
     authenticate,
-    authorize(...READ_ROLES),
+    authorize(...MANAGER_ROLES),
     validateParams(sessionIdSchema),
     validateBody(assignSessionSchema),
     logRequest({}),
@@ -8571,41 +9281,25 @@ router.patch(
       // ensureVisibleSession already resolved (and access-checked) the brand — reuse it to validate
       // the assignee below rather than fetching the brand a second time.
       const { session, brand } = await ensureVisibleSession(id, req.user);
-      const assignmentComingFrom = `${comingFrom} - PATCH /:id/assignment`;
-      // Routing is an owner/admin act while the assignment policy is on, whatever the change would
-      // be — so this refuses up front, before an assignee is even resolved.
-      await assertCanChangeAssignment(req.user, session.companyId, assignmentComingFrom);
-
-      const { assigneeType, assigneeId } = req.body as {
-        assigneeType: 'query_manager' | 'department' | null;
-        assigneeId?: string;
-      };
-
-      // Clearing the assignment needs no lookup.
-      if (assigneeType === null) {
-        const updated = await assignSession(id, null);
-        return successResponse(res, { data: updated, message: 'Session unassigned' });
-      }
-
-      // The assignee must be one the brand grants access to, so a session can't be routed to
-      // someone who can't even see its brand. Same helper the picker above lists from.
-      const assignee: ISessionAssignee = await resolveBrandAssignee(
+      const choice = req.body as AssigneeChoice;
+      const updated = await routeSession(
+        session,
         brand,
-        assigneeType,
-        assigneeId!,
-        getTenantScope(req.user),
-        assignmentComingFrom
+        choice,
+        req.user as Express.User,
+        `${comingFrom} - PATCH /:id/assignment`
       );
-
-      const updated = await assignSession(id, assignee);
-      successResponse(res, { data: updated, message: 'Session assigned' });
+      successResponse(res, {
+        data: updated,
+        message: choice.assigneeType === null ? 'Session unassigned' : 'Session assigned',
+      });
     }
   )
 ```
 
 ## PUT /api/v1/sessions/:id/tags
 
-**Source:** `server/src/modules/session/api.ts:297`
+**Source:** `server/src/modules/session/api.ts:281`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8649,6 +9343,7 @@ curl -i -X PUT "${BASE_URL}/api/v1/sessions/670000000000000000000006/tags" \
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -8700,7 +9395,7 @@ router.put(
 
 ## GET /api/v1/sessions/:id/notes
 
-**Source:** `server/src/modules/session/api.ts:320`
+**Source:** `server/src/modules/session/api.ts:304`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8737,6 +9432,7 @@ curl -i -X GET "${BASE_URL}/api/v1/sessions/670000000000000000000006/notes" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -8771,7 +9467,7 @@ router.get(
 
 ## POST /api/v1/sessions/:id/notes
 
-**Source:** `server/src/modules/session/api.ts:336`
+**Source:** `server/src/modules/session/api.ts:320`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8809,6 +9505,7 @@ curl -i -X POST "${BASE_URL}/api/v1/sessions/670000000000000000000006/notes" \
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
+- Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
 
 ### Validation declarations
 
@@ -9169,11 +9866,11 @@ router.get(
 
 ## GET /api/v1/users
 
-**Source:** `server/src/modules/user/api.ts:101`
+**Source:** `server/src/modules/user/api.ts:94`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -9216,6 +9913,7 @@ curl -i -X GET "${BASE_URL}/api/v1/users?limit=20" \
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Single-item final-page example. Offset pagination uses page and limit; this example requests the first page.
+- Generic user bodies no longer accept departmentId. Changes into or out of query_manager role are rejected; use Query managers for team membership.
 
 ### Validation declarations
 
@@ -9249,11 +9947,11 @@ router.get(
 
 ## POST /api/v1/users
 
-**Source:** `server/src/modules/user/api.ts:116`
+**Source:** `server/src/modules/user/api.ts:109`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -9265,7 +9963,7 @@ router.get(
 curl -i -X POST "${BASE_URL}/api/v1/users" \
   -b cookies.txt -c cookies.txt \
   -H "Content-Type: application/json" \
-  --data '{"name":"Amina Rahman","email":"amina@example.com","password":"ExamplePassword1!","role":"query_manager","departmentId":"670000000000000000000003"}'
+  --data '{"name":"Amina Rahman","email":"amina@example.com","password":"ExamplePassword1!","role":"company_admin"}'
 ```
 
 ### Example response — HTTP 200
@@ -9278,15 +9976,16 @@ curl -i -X POST "${BASE_URL}/api/v1/users" \
     "_id": "670000000000000000000002",
     "name": "Amina Rahman",
     "email": "amina@example.com",
-    "role": "query_manager",
-    "companyId": "670000000000000000000001",
-    "departmentId": "670000000000000000000003"
+    "role": "company_admin",
+    "companyId": "670000000000000000000001"
   }
 }
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - For a super_admin creating a tenant resource, also supply companyId where the schema permits it. Tenant callers use their own company; role assignment is additionally restricted.
+- This example requires company_owner or super_admin. Create query managers through /query-managers with teamId. Company-admin calls to POST /users resolve to query_manager and are rejected with 400.
+- Generic user bodies no longer accept departmentId. Changes into or out of query_manager role are rejected; use Query managers for team membership.
 
 ### Validation declarations
 
@@ -9300,7 +9999,6 @@ export const createUserSchema = z.strictObject({
   role: z.enum(ROLE_VALUES).optional(),
   // Only honoured for super_admin; for company_admin the server forces its own company.
   companyId: idSchema.optional(),
-  departmentId: idSchema.optional(),
 });
 ```
 
@@ -9319,7 +10017,7 @@ router.post(
     validateBody(createUserSchema),
     logRequest({}),
     async (req: Request, res: Response) => {
-      const { name, email, password, departmentId } = req.body;
+      const { name, email, password } = req.body;
       if (!name || !email || !password) {
         throw new BadRequestError(
           'Please provide name, email, password, and role',
@@ -9329,6 +10027,9 @@ router.post(
 
       const isSuperAdmin = req.user?.role === ROLES.SUPER_ADMIN;
       const role = resolveCreateRole(req.user?.role, req.body.role);
+      if (role === ROLES.QUERY_MANAGER) {
+        throw new BadRequestError(QUERY_MANAGERS_ELSEWHERE, `module/user/api.ts - /`);
+      }
       const companyId = isSuperAdmin ? req.body.companyId : req.user?.companyId;
 
       // Every role except super_admin must belong to a company.
@@ -9336,15 +10037,12 @@ router.post(
         throw new BadRequestError('companyId is required', `module/user/api.ts - /`);
       }
 
-      if (departmentId) await assertDepartmentInCompany(departmentId, companyId);
-
       const item = await create({
         name,
         email,
         password,
         role,
         companyId: role === ROLES.SUPER_ADMIN ? undefined : companyId,
-        departmentId,
       });
       successResponse(res, { data: item });
     }
@@ -9353,11 +10051,11 @@ router.post(
 
 ## GET /api/v1/users/me
 
-**Source:** `server/src/modules/user/api.ts:157`
+**Source:** `server/src/modules/user/api.ts:150`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension).
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -9387,6 +10085,7 @@ curl -i -X GET "${BASE_URL}/api/v1/users/me" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Generic user bodies no longer accept departmentId. Changes into or out of query_manager role are rejected; use Query managers for team membership.
 
 ### Validation declarations
 
@@ -9410,11 +10109,11 @@ router.get('/me', authenticate, logRequest({}), async (req: Request, res: Respon
 
 ## GET /api/v1/users/:id
 
-**Source:** `server/src/modules/user/api.ts:171`
+**Source:** `server/src/modules/user/api.ts:164`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -9444,6 +10143,7 @@ curl -i -X GET "${BASE_URL}/api/v1/users/670000000000000000000002" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Generic user bodies no longer accept departmentId. Changes into or out of query_manager role are rejected; use Query managers for team membership.
 
 ### Validation declarations
 
@@ -9480,11 +10180,11 @@ router.get(
 
 ## PATCH /api/v1/users/me
 
-**Source:** `server/src/modules/user/api.ts:189`
+**Source:** `server/src/modules/user/api.ts:182`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension).
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -9516,6 +10216,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/users/me" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Generic user bodies no longer accept departmentId. Changes into or out of query_manager role are rejected; use Query managers for team membership.
 
 ### Validation declarations
 
@@ -9562,11 +10263,11 @@ router.patch(
 
 ## PATCH /api/v1/users/me/change-password
 
-**Source:** `server/src/modules/user/api.ts:217`
+**Source:** `server/src/modules/user/api.ts:210`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension).
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -9598,6 +10299,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/users/me/change-password" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Generic user bodies no longer accept departmentId. Changes into or out of query_manager role are rejected; use Query managers for team membership.
 
 ### Validation declarations
 
@@ -9660,11 +10362,11 @@ router.patch(
 
 ## PATCH /api/v1/users/:id
 
-**Source:** `server/src/modules/user/api.ts:254`
+**Source:** `server/src/modules/user/api.ts:247`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -9696,6 +10398,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/users/670000000000000000000002" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Generic user bodies no longer accept departmentId. Changes into or out of query_manager role are rejected; use Query managers for team membership.
 
 ### Validation declarations
 
@@ -9706,7 +10409,6 @@ export const updateUserSchema = z.strictObject({
   name: z.string().optional(),
   email: z.email('Invalid email format').optional(),
   role: z.enum(ROLE_VALUES).optional(),
-  departmentId: idSchema.optional(),
 });
 ```
 
@@ -9724,8 +10426,8 @@ router.patch(
     validateBody(updateUserSchema),
     logRequest({}),
     async (req: Request, res: Response) => {
-      const { name, email, role, departmentId } = req.body;
-      if (!name && !email && !role && !departmentId) {
+      const { name, email, role } = req.body;
+      if (!name && !email && !role) {
         throw new BadRequestError('Invalid request body', `module/user/api.ts - /:id`);
       }
 
@@ -9738,14 +10440,12 @@ router.patch(
       }
       assertCanActOnUser(req.user?.role, user.role);
 
-      // A reassigned department must live in the same company as the user being updated.
-      if (departmentId) await assertDepartmentInCompany(departmentId, user.companyId?.toString());
+      // No role change into or out of query manager: in, they'd have no team; out, they'd keep one.
+      if (role && role !== user.role && [role, user.role].includes(ROLES.QUERY_MANAGER)) {
+        throw new BadRequestError(QUERY_MANAGERS_ELSEWHERE, `module/user/api.ts - /:id`);
+      }
 
-      const item = await updateById(
-        String(req.params.id ?? ''),
-        { name, email, role, departmentId },
-        scope
-      );
+      const item = await updateById(String(req.params.id ?? ''), { name, email, role }, scope);
       if (!item) {
         throw new NotFoundError(`${model} not found`, `module/user/api.ts - /:id`);
       }
@@ -9756,11 +10456,11 @@ router.patch(
 
 ## DELETE /api/v1/users/:id
 
-**Source:** `server/src/modules/user/api.ts:293`
+**Source:** `server/src/modules/user/api.ts:284`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Company and authenticated role. A department can exist before agents; an agent department assignment needs a department in the same company.
+**Prerequisites:** Authenticated permitted role and company scope. Create Department before Team, then use Query managers for agents with a required team.
 
 **Business logic:** Query managers are Users filtered by role, not another collection. Tenant filters limit reads and writes. Password creation runs the save hook; direct password updates explicitly hash. Department membership later grants one of the brand-access and assignment paths.
 
@@ -9790,6 +10490,7 @@ curl -i -X DELETE "${BASE_URL}/api/v1/users/670000000000000000000002" \
 ```
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Generic user bodies no longer accept departmentId. Changes into or out of query_manager role are rejected; use Query managers for team membership.
 
 ### Validation declarations
 
@@ -10177,22 +10878,22 @@ expressApp.get('/health/queue', async (_req: Request, res: Response) => {
   })
 ```
 
-## GET /api/v1/sessions/:id/status-log
+## GET /api/v1/teams
 
-**Source:** `server/src/modules/session/api.ts:174`
+**Source:** `server/src/modules/team/api.ts:37`
 
-**Access:** Access-token cookie or Bearer token; active company required for tenant roles. Only super_admin, company_owner and company_admin; brand visibility still applies. Query managers receive 403.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
 
-**Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
+**Prerequisites:** Existing company and department; creation/joining requires an active department. Team administration requires a manager role.
 
-**Business logic:** After manager-role and record-visibility checks, explicitly read the hidden statusLog and resolve actor names. Comment replies resolve to their thread root. Return oldest first; unknown actors/reasons are null and deleted users retain their ID with name null.
+**Business logic:** Tenant-scoped Team CRUD with no DELETE. Derive companyId from a visible department. Names are unique per department using English strength-2 collation; duplicate writes become 409. Department is immutable; rename or deactivate instead of moving/deleting.
 
-**Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
+**Implementation entry points:** `server/src/modules/team/api.ts`
 
 ### Request example
 
 ```sh
-curl -i "${BASE_URL}/api/v1/sessions/670000000000000000000006/status-log" \
+curl -i -X GET "${BASE_URL}/api/v1/teams" \
   -b cookies.txt -c cookies.txt
 ```
 
@@ -10204,80 +10905,79 @@ curl -i "${BASE_URL}/api/v1/sessions/670000000000000000000006/status-log" \
   "message": "success",
   "data": [
     {
-      "status": "hold",
-      "at": "2026-10-17T04:10:00.000Z",
-      "cause": "agent",
-      "by": {
-        "id": "670000000000000000000002",
-        "name": "Amina Rahman"
-      },
-      "reason": "Waiting for warehouse confirmation"
-    },
-    {
-      "status": "pending",
-      "at": "2026-10-17T04:40:00.000Z",
-      "cause": "reply",
-      "by": {
-        "id": "670000000000000000000002",
-        "name": "Amina Rahman"
-      },
-      "reason": null
+      "_id": "670000000000000000000020",
+      "name": "Night shift",
+      "status": "active",
+      "departmentId": "670000000000000000000003",
+      "companyId": "670000000000000000000001"
     }
-  ]
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "totalCount": 1,
+    "totalPages": 1,
+    "hasNext": false,
+    "hasPrev": false,
+    "startIndex": 1,
+    "endIndex": 1
+  }
 }
 ```
 
-- History is oldest first; no history returns an empty array.
-- by is null for an unknown actor; a deleted user retains id with name null. Missing reason is null.
+- Creation and activation reject an inactive department (400). PATCH rejects departmentId as an unknown field; an empty patch is 400.
+- Deactivation prevents new assignments/memberships but preserves existing records and claimable pools. No DELETE route exists.
 
 ### Validation declarations
 
-**Params: sessionIdSchema** — `server/src/modules/session/validation.ts`
+**Query: listTeamsSchema** — `server/src/modules/team/validation.ts`
 
 ```typescript
-export const sessionIdSchema = z.object({
-  id: idSchema,
+export const listTeamsSchema = listQuerySchema.extend({
+  departmentId: idSchema.optional(),
+  status: z.enum(TEAM_STATUS).optional(),
 });
 ```
 
 ### Error examples
 
-- HTTP 403: You do not have permission to access this resource
+Shared authentication, validation and service errors apply.
 
 ### Handler code
 
 ```typescript
 router.get(
-    '/:id/status-log',
+    '/',
     authenticate,
-    authorize(...MANAGER_ROLES),
-    validateParams(sessionIdSchema),
+    authorize(...MANAGE_ROLES),
+    validateQuery(listTeamsSchema),
     logRequest({}),
     async (req: Request, res: Response) => {
-      const id = String(req.params.id ?? '');
-      await ensureVisibleSession(id, req.user);
-      successResponse(res, { data: await namedStatusLog(await readStatusLog(SessionModel, id)) });
+      const data = await search(req.query, getTenantScope(req.user));
+      paginatedSuccessResponse(res, { data });
     }
   )
 ```
 
-## GET /api/v1/comments/:id/status-log
+## POST /api/v1/teams
 
-**Source:** `server/src/modules/comment/api.ts:304`
+**Source:** `server/src/modules/team/api.ts:52`
 
-**Access:** Access-token cookie or Bearer token; active company required for tenant roles. Only super_admin, company_owner and company_admin; brand visibility still applies. Query managers receive 403.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
 
-**Prerequisites:** Brand/channel and ingested comment tree. Uses the shared access, tag, status and SLA concepts; no Conversation or Session document is required.
+**Prerequisites:** Existing company and department; creation/joining requires an active department. Team administration requires a manager role.
 
-**Business logic:** After manager-role and record-visibility checks, explicitly read the hidden statusLog and resolve actor names. Comment replies resolve to their thread root. Return oldest first; unknown actors/reasons are null and deleted users retain their ID with name null.
+**Business logic:** Tenant-scoped Team CRUD with no DELETE. Derive companyId from a visible department. Names are unique per department using English strength-2 collation; duplicate writes become 409. Department is immutable; rename or deactivate instead of moving/deleting.
 
-**Implementation entry points:** `server/src/modules/comment/api.ts; comment/service.ts; comment/sla.ts; modules/session/status-log.ts`
+**Implementation entry points:** `server/src/modules/team/api.ts`
 
 ### Request example
 
 ```sh
-curl -i "${BASE_URL}/api/v1/comments/670000000000000000000008/status-log" \
-  -b cookies.txt -c cookies.txt
+curl -i -X POST "${BASE_URL}/api/v1/teams" \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  --data '{"name":"Night shift","departmentId":"670000000000000000000003"}'
 ```
 
 ### Example response — HTTP 200
@@ -10285,176 +10985,237 @@ curl -i "${BASE_URL}/api/v1/comments/670000000000000000000008/status-log" \
 ```json
 {
   "success": true,
-  "message": "success",
-  "data": [
-    {
-      "status": "hold",
-      "at": "2026-10-17T04:10:00.000Z",
-      "cause": "agent",
-      "by": {
-        "id": "670000000000000000000002",
-        "name": "Amina Rahman"
-      },
-      "reason": "Waiting for warehouse confirmation"
-    },
-    {
-      "status": "pending",
-      "at": "2026-10-17T04:40:00.000Z",
-      "cause": "reply",
-      "by": {
-        "id": "670000000000000000000002",
-        "name": "Amina Rahman"
-      },
-      "reason": null
-    }
-  ]
+  "message": "Team created successfully",
+  "data": {
+    "_id": "670000000000000000000020",
+    "name": "Night shift",
+    "status": "active",
+    "departmentId": "670000000000000000000003",
+    "companyId": "670000000000000000000001"
+  }
 }
 ```
 
-- History is oldest first; no history returns an empty array.
-- by is null for an unknown actor; a deleted user retains id with name null. Missing reason is null.
-- A reply ID resolves to the thread root before reading history.
+- Creation and activation reject an inactive department (400). PATCH rejects departmentId as an unknown field; an empty patch is 400.
+- Deactivation prevents new assignments/memberships but preserves existing records and claimable pools. No DELETE route exists.
 
 ### Validation declarations
 
-**Params: commentIdSchema** — `server/src/modules/comment/validation.ts`
+**Body: createTeamSchema** — `server/src/modules/team/validation.ts`
 
 ```typescript
-export const commentIdSchema = z.object({
-  id: idSchema,
+export const createTeamSchema = z.strictObject({
+  name: z.string().trim().min(1, 'Name is required').max(100),
+  departmentId: idSchema,
+  status: z.enum(TEAM_STATUS).optional(),
 });
 ```
 
 ### Error examples
 
-- HTTP 403: You do not have permission to access this resource
+- HTTP 409: A team with this name already exists in this department
 
 ### Handler code
 
 ```typescript
-router.get(
-    '/:id/status-log',
+router.post(
+    '/',
     authenticate,
-    authorize(...MANAGER_ROLES),
-    validateParams(commentIdSchema),
+    authorize(...MANAGE_ROLES),
+    validateBody(createTeamSchema),
     logRequest({}),
     async (req: Request, res: Response) => {
-      const id = String(req.params.id ?? '');
-      await ensureVisibleComment(id, req.user);
-      // A reply's id reads its thread's root, which carries the status.
-      const comment = await getCommentById(id);
-      const root = comment && (await getThreadRoot(comment));
-      const log = root ? await readStatusLog(CommentModel, root._id) : [];
-      successResponse(res, { data: await namedStatusLog(log) });
-    }
-  )
-```
-
-## GET /api/v1/brands/:brandId/overview/holds
-
-**Source:** `server/src/modules/overview/api.ts:167`
-
-**Access:** Access-token cookie or Bearer token; active company required for tenant roles. Only super_admin, company_owner and company_admin; brand visibility still applies. Query managers receive 403.
-
-**Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
-
-**Business logic:** Resolve a visible brand; validate the paired date range; read session/root histories and historical business hours; pair hold entries with the next transition; keep overlapping holds, sort newest first and cap at 1,000. Return complete hold durations, with open holds measured to now.
-
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`
-
-### Request example
-
-```sh
-curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=2026-10-17&to=2026-10-17&source=sessions" \
-  -b cookies.txt -c cookies.txt
-```
-
-### Example response — HTTP 200
-
-```json
-{
-  "success": true,
-  "message": "success",
-  "data": [
-    {
-      "source": "session",
-      "id": "670000000000000000000006",
-      "conversationId": "670000000000000000000005",
-      "heldBy": {
-        "id": "670000000000000000000002",
-        "name": "Amina Rahman"
-      },
-      "reason": "Waiting for warehouse confirmation",
-      "startedAt": "2026-10-17T04:10:00.000Z",
-      "endedAt": "2026-10-17T04:40:00.000Z",
-      "endedBy": {
-        "cause": "reply",
-        "by": {
-          "id": "670000000000000000000002",
-          "name": "Amina Rahman"
-        }
-      },
-      "durationMs": 1800000,
-      "businessMs": 1800000
-    }
-  ]
-}
-```
-
-- Omit source to include sessions and comments. source accepts sessions or comments, not singular names.
-- Both from/to or neither; defaults to last 30 days. Inclusive Asia/Dhaka dates, at most one year. platform/page/limit are not accepted.
-- Returns at most 1,000 overlapping holds, newest first, without pagination or a truncation flag. Durations cover the entire hold, not just its overlap with the requested range.
-- Active holds have endedAt and endedBy null; durations run to read time. Business hours are those at the query clock start.
-- No separate hold collection: deleting a thread or merging away a session removes its stored holds.
-
-### Validation declarations
-
-**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
-
-```typescript
-export const brandParamSchema = z.object({
-  brandId: idSchema,
-});
-```
-
-**Query: holdsQuerySchema** — `server/src/modules/overview/validation.ts`
-
-```typescript
-export const holdsQuerySchema = withRangeChecks(
-  z.strictObject({
-    from: rangeFields.from,
-    to: rangeFields.to,
-    source: z.enum(HOLD_SOURCES).optional(),
-  })
-);
-```
-
-### Error examples
-
-- HTTP 403: You do not have permission to access this resource
-
-### Handler code
-
-```typescript
-router.get(
-    '/holds',
-    authenticate,
-    authorize(...overviewRoles),
-    validateParams(brandParamSchema),
-    validateQuery(holdsQuerySchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
-      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
-      const query = req.query as { from?: string; to?: string; source?: HoldSource };
-      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
-      const data = await listHolds({
-        brandId: brand.id,
-        companyId: brand.companyId,
-        source: query.source,
-        ...range,
+      const { name, departmentId, status } = req.body as CreateTeamInput;
+      // The department is read within the caller's tenant scope, so another company's department
+      // is a plain miss. The team takes its company from the department, never from the body.
+      const department = await getDepartmentById(departmentId, getTenantScope(req.user));
+      if (!department) {
+        throw new BadRequestError('Department not found', `${comingFrom} - POST /`);
+      }
+      if (department.status !== 'active') {
+        throw new BadRequestError('That department is inactive', `${comingFrom} - POST /`);
+      }
+      const item = await create({
+        name,
+        status,
+        departmentId: department._id as Types.ObjectId,
+        companyId: department.companyId,
       });
-      successResponse(res, { data });
+      successResponse(res, { data: item, message: 'Team created successfully' });
+    }
+  )
+```
+
+## GET /api/v1/teams/:id
+
+**Source:** `server/src/modules/team/api.ts:82`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+
+**Prerequisites:** Existing company and department; creation/joining requires an active department. Team administration requires a manager role.
+
+**Business logic:** Tenant-scoped Team CRUD with no DELETE. Derive companyId from a visible department. Names are unique per department using English strength-2 collation; duplicate writes become 409. Department is immutable; rename or deactivate instead of moving/deleting.
+
+**Implementation entry points:** `server/src/modules/team/api.ts`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/teams/670000000000000000000020" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "_id": "670000000000000000000020",
+    "name": "Night shift",
+    "status": "active",
+    "departmentId": "670000000000000000000003",
+    "companyId": "670000000000000000000001"
+  }
+}
+```
+
+- Creation and activation reject an inactive department (400). PATCH rejects departmentId as an unknown field; an empty patch is 400.
+- Deactivation prevents new assignments/memberships but preserves existing records and claimable pools. No DELETE route exists.
+
+### Validation declarations
+
+**Params: teamIdParamsSchema** — `server/src/modules/team/validation.ts`
+
+```typescript
+export const teamIdParamsSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+    '/:id',
+    authenticate,
+    authorize(...MANAGE_ROLES),
+    validateParams(teamIdParamsSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const item = await getById(String(req.params.id), getTenantScope(req.user));
+      if (!item) {
+        throw new NotFoundError(`${model} not found`, `${comingFrom} - GET /:id`);
+      }
+      successResponse(res, { data: item });
+    }
+  )
+```
+
+## PATCH /api/v1/teams/:id
+
+**Source:** `server/src/modules/team/api.ts:100`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+
+**Prerequisites:** Existing company and department; creation/joining requires an active department. Team administration requires a manager role.
+
+**Business logic:** Tenant-scoped Team CRUD with no DELETE. Derive companyId from a visible department. Names are unique per department using English strength-2 collation; duplicate writes become 409. Department is immutable; rename or deactivate instead of moving/deleting.
+
+**Implementation entry points:** `server/src/modules/team/api.ts`
+
+### Request example
+
+```sh
+curl -i -X PATCH "${BASE_URL}/api/v1/teams/670000000000000000000020" \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  --data '{"name":"Evening shift"}'
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "Team updated successfully",
+  "data": {
+    "_id": "670000000000000000000020",
+    "name": "Evening shift",
+    "status": "active",
+    "departmentId": "670000000000000000000003",
+    "companyId": "670000000000000000000001"
+  }
+}
+```
+
+- Creation and activation reject an inactive department (400). PATCH rejects departmentId as an unknown field; an empty patch is 400.
+- Deactivation prevents new assignments/memberships but preserves existing records and claimable pools. No DELETE route exists.
+
+### Validation declarations
+
+**Params: teamIdParamsSchema** — `server/src/modules/team/validation.ts`
+
+```typescript
+export const teamIdParamsSchema = z.object({
+  id: idSchema,
+});
+```
+
+**Body: updateTeamSchema** — `server/src/modules/team/validation.ts`
+
+```typescript
+export const updateTeamSchema = z.strictObject({
+  name: z.string().trim().min(1, 'Name is required').max(100).optional(),
+  status: z.enum(TEAM_STATUS).optional(),
+});
+```
+
+### Error examples
+
+- HTTP 409: A team with this name already exists in this department
+
+### Handler code
+
+```typescript
+router.patch(
+    '/:id',
+    authenticate,
+    authorize(...MANAGE_ROLES),
+    validateParams(teamIdParamsSchema),
+    validateBody(updateTeamSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const { name, status } = req.body as UpdateTeamInput;
+      if (!name && !status) {
+        throw new BadRequestError('Nothing to update', `${comingFrom} - PATCH /:id`);
+      }
+      // Same rule as create: no active team under an inactive department.
+      if (status === 'active') {
+        const scope = getTenantScope(req.user);
+        const team = await getById(String(req.params.id), scope);
+        if (!team) {
+          throw new NotFoundError(`${model} not found`, `${comingFrom} - PATCH /:id`);
+        }
+        const department = await getDepartmentById(String(team.departmentId), scope);
+        if (department?.status !== 'active') {
+          throw new BadRequestError('That department is inactive', `${comingFrom} - PATCH /:id`);
+        }
+      }
+      const item = await updateById(
+        String(req.params.id),
+        { ...(name && { name }), ...(status && { status }) },
+        getTenantScope(req.user)
+      );
+      if (!item) {
+        throw new NotFoundError(`${model} not found`, `${comingFrom} - PATCH /:id`);
+      }
+      successResponse(res, { data: item, message: 'Team updated successfully' });
     }
   )
 ```
