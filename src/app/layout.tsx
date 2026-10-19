@@ -8,6 +8,7 @@ import { appName } from '@/lib/shared';
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
   title: { template: `%s | ${appName}`, default: appName },
+  robots: { index: false, follow: false },
 };
 
 // Latin glyphs come from Inter; Bangla glyphs fall through to Hind Siliguri.

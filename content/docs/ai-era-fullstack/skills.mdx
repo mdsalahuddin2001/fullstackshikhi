@@ -1,0 +1,109 @@
+---
+title: The skills worth building
+description: What to learn, how to practice it, and how to tell whether you understand it.
+---
+
+## 1. Engineering fundamentals and debugging
+
+**Learn:** JavaScript execution and asynchronous behavior, TypeScript types and runtime validation, HTTP, browser networking, cookies and sessions, DNS/TLS basics, Linux processes, Git, and practical data structures. Understand where a request spends time: browser, network, server, database, or dependency.
+
+**Practice:** take a slow page and follow one action from click to database query. Record your hypothesis, collect a browser trace and server timings, change one variable, and compare results. Then fix a stale-response bug where an earlier search finishes after a later search.
+
+Use this debugging loop: reproduce → minimize → hypothesize → measure → change → verify. Ask AI for competing hypotheses, but make evidence determine which one survives.
+
+**Checkpoint:** explain the cause, show a reproducible failure, and show why the fix addresses that cause. “AI changed it and it works” is not sufficient evidence.
+
+## 2. Product thinking and domain modeling
+
+**Learn:** user interviews, workflow mapping, success metrics, explicit non-goals, acceptance criteria, state transitions, and business invariants. An invariant is a rule that must remain true, such as “a closed ticket cannot have an active assignment.”
+
+**Practice:** observe a support agent handling ten tickets. Record delays, workarounds, and confusing decisions. Choose one problem, write a one-page brief, and show a rough prototype before building the full feature. With no real users available, use a peer as a proxy and label the resulting assumptions.
+
+For every feature, answer: Who has the problem? How often? What does it cost them? What would improve? What could go wrong? What is the smallest useful version?
+
+**Checkpoint:** explain why you rejected two plausible features and connect the chosen feature to an observable user outcome. Distinguish an observed result from an assumption or proxy metric.
+
+## 3. Data modeling and correctness
+
+**Learn:** SQL, constraints, relationships, transactions, isolation, indexes, query plans, migrations, timestamps, money representation, and tenant boundaries. An ORM should help you work with a database you understand.
+
+**Practice:** let two workers attempt to claim the same ticket simultaneously. Define the required outcome before implementing a solution. Repeat the race, check stored state, then repeat a successful request to investigate duplicate effects. Test a migration against representative old data and rehearse recovery in a disposable environment.
+
+**Checkpoint:** demonstrate that invalid state is rejected, including under concurrency, and explain which guarantee comes from the database and which comes from application logic.
+
+Study the [relational design](/docs/postgresql-handbook/design), [concurrency](/docs/postgresql-handbook/concurrency), and [performance](/docs/postgresql-handbook/performance) lessons. Use the [PostgreSQL transaction tutorial](https://www.postgresql.org/docs/18/tutorial-transactions.html) to reinforce the core transaction model.
+
+## 4. Frontend quality and accessibility
+
+**Learn:** semantic HTML, responsive CSS, keyboard navigation, focus management, accessible forms, rendering behavior, state ownership, loading/error/empty states, and performance measurement. A polished screenshot proves little about whether someone can finish a task.
+
+**Practice:** build the ticket list and assignment flow. Use only the keyboard, then a screen reader. Test narrow screens, long names, slow requests, expired sessions, repeated clicks, and failed saves. Observe someone completing the workflow without coaching.
+
+**Checkpoint:** a user can complete the main task and recover from failure; you can demonstrate keyboard access and explain a measured performance bottleneck. Automated accessibility checks complement manual testing.
+
+Follow the [MDN accessibility learning module](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Accessibility), applying each lesson to the same workflow rather than building unrelated demos.
+
+## 5. Security and trust boundaries
+
+**Learn:** authentication versus authorization, server-side access checks, tenant isolation, input validation, injection, XSS, CSRF, secret handling, dependency hygiene, and sensitive-data logging. Authentication identifies an actor; authorization decides whether that actor may perform a particular action on a particular resource.
+
+**Practice:** create two organizations and several roles. Attempt to access another organization's tickets by changing identifiers. Repeat through search, exports, attachments, and background jobs. Document who can read and change each resource, and test rejection as carefully as success.
+
+**Checkpoint:** explain where access is enforced and show tests for unauthorized paths. Hiding a button is not an access-control guarantee.
+
+Use the [OWASP Application Security Verification Standard project](https://github.com/owasp/www-project-application-security-verification-standard) to choose relevant checks. A completed learning exercise is not a claim of security certification.
+
+## 6. Architecture and production ownership
+
+**Learn:** module boundaries, coupling, synchronous versus background work, retries, idempotency, timeouts, caching, deployment pipelines, observability, backups, recovery, and capacity/cost tradeoffs. Idempotency means repeating an operation does not repeat its intended business effect.
+
+**Practice:** start with one deployable application and a database. Introduce background work only for a demonstrated reason. Simulate a slow dependency, failed worker, and unavailable database in a local or staging environment. Decide which user actions should fail, wait, or remain available.
+
+Write a runbook that covers symptoms, useful dashboards, mitigation, recovery, and verification. Restore a backup into a separate database and check its data. A backup you have never restored is an untested recovery assumption.
+
+**Checkpoint:** trace a failing user action, identify the failing boundary, recover safely, and explain the limitations of your design. Measure p95 latency—the time within which 95% of observed requests finish—alongside errors and workload conditions.
+
+Use the [OpenTelemetry signal concepts](https://opentelemetry.io/docs/concepts/signals/) to learn how logs, metrics, and traces support investigation. Continue with the [production](/docs/postgresql-handbook/production) and [operations debugging](/docs/postgresql-handbook/operations-debugging) chapters.
+
+## 7. AI-assisted engineering and verification
+
+**Learn:** task decomposition, useful context selection, explicit constraints, tool permissions, diff review, and independent verification. Treat generated implementations and generated tests as proposals that may share the same mistaken assumption.
+
+**Practice this workflow:**
+
+1. Write the desired behavior, failure cases, and acceptance criteria yourself.
+2. Provide relevant files, environment details, existing conventions, and boundaries.
+3. Request a small change whose result you can inspect.
+4. Read the diff and check unfamiliar APIs against the project's actual version.
+5. Run relevant checks; add adversarial cases from the requirements, not just the implementation.
+6. Explain the result and record anything you still cannot verify.
+
+For example, specify that a failed save preserves the user's draft and allows retry. Verify this by deliberately causing a failure, even if AI-generated tests already pass.
+
+Compare comparable tasks with and without assistance. Record total time including review, corrections, and later rework. The useful question is whether your workflow improves completed work at acceptable quality.
+
+**Checkpoint:** identify an incorrect generated suggestion, explain why it is incorrect, and demonstrate the corrected behavior. Use approved tools and appropriate data access; do not paste customer secrets into prompts.
+
+## 8. Applied AI product engineering
+
+**Learn:** model limitations, structured outputs, retrieval, embeddings, tool calling, evaluation datasets, prompt injection, latency, cost, and human review. Retrieval-augmented generation supplies relevant documents to a model; it does not guarantee that the answer follows those documents.
+
+**Practice:** add suggested reply drafts to the support product after the underlying workflow works. Compare against a non-AI baseline such as search plus reply templates. Keep sending under human control for this learning project.
+
+Create 30–50 reviewed examples covering answerable, ambiguous, unsupported, stale-document, cross-tenant, and adversarial cases. This is a starter evaluation set, not enough to establish production safety. Keep a held-out subset that you do not use while tuning.
+
+Score factual support, relevance, permission correctness, appropriate abstention, latency, and cost per accepted draft. Review failures by category. Enforce document access before content reaches the model; do not rely on a prompt to prevent unauthorized retrieval. Treat retrieved instructions as untrusted content, and authorize any tool action outside the model.
+
+**Checkpoint:** show when the feature improves on the baseline, when it should decline to answer, and what happens if the model is unavailable. Record the model/version, prompt, dataset, and settings so comparisons are interpretable.
+
+You do not need to begin with model training. Study deeper ML mathematics, training, and fine-tuning if your target role requires them or measured failures justify that investment.
+
+## 9. Communication and team effectiveness
+
+**Learn:** concise technical writing, useful code review, decision records, estimation with uncertainty, incident communication, mentoring, and negotiation about scope.
+
+**Practice:** write one short decision record per major change: problem, constraints, options, choice, tradeoffs, and revisit conditions. During a simulated incident, separate known facts from hypotheses and state the next investigation step. Ask a peer to run your project using only its documentation.
+
+**Checkpoint:** another developer can operate or change the feature without a private explanation from you. You can explain the same decision to an engineer and to a nontechnical stakeholder using the details each needs.
+
+For international work, practice clear written and spoken English through real artifacts: a five-minute demo, a review comment, and a weekly update. Clarity and accuracy matter more than accent or elaborate vocabulary.

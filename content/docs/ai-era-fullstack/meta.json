@@ -1,0 +1,7 @@
+{
+  "title": "Fullstack in the AI Era",
+  "description": "Durable skills and a practical learning roadmap",
+  "icon": "Compass",
+  "root": true,
+  "pages": ["index", "skills", "roadmap"]
+}

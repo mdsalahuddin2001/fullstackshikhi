@@ -1,4 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
+import { Compass } from 'lucide-react';
 import { PostgresLogo } from '@/components/brand-logos';
 import { ListenyzenLogo } from '@/components/listenyzen/logo';
 
@@ -22,6 +23,13 @@ export interface Topic {
 }
 
 export const topics: Topic[] = [
+  {
+    slug: 'ai-era-fullstack',
+    title: 'Fullstack in the AI Era',
+    description: 'Build durable career skills: engineering judgment, AI fluency, production ownership, and a practical 24-week roadmap.',
+    logo: Compass,
+    tags: ['Career guide', 'Skill map', '24-week roadmap'],
+  },
   {
     slug: 'postgresql-handbook',
     title: 'PostgreSQL Handbook',

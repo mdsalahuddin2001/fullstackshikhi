@@ -1,0 +1,101 @@
+---
+title: A 24-week learning and portfolio roadmap
+description: Build one useful system, deliberately test its limits, and keep evidence of what you learned.
+---
+
+## Pick a sustainable pace
+
+Plan for **6–8 hours per week** if you already build basic applications. This is roughly 144–192 hours of structured practice, not a promise of mastery. At three hours per week, stretch the schedule. Repeat a stage when you cannot demonstrate its exit checkpoint.
+
+If you are newer, first practice HTML/CSS, JavaScript, Git, HTTP, one backend framework, SQL, and deployment until you can build a small end-to-end application. If you are experienced, demonstrate the checkpoints and move directly to your weakest area.
+
+## One capstone: a support workspace
+
+Build a deliberately small support application with organizations, users, tickets, assignment, status changes, and a searchable history. Use synthetic data. Choose one familiar frontend, one backend, and PostgreSQL; additional infrastructure must earn its place.
+
+Start with one workflow: an agent sees an unassigned ticket, claims it, and resolves it. Add complexity progressively. Reuse this domain throughout the roadmap so you spend time improving judgment rather than repeatedly setting up new projects.
+
+Study the [Listenyzen workflows](/docs/listenyzen/workflows) and [data model](/docs/listenyzen/data-model) for domain questions. Your learning project can be much smaller than the existing system.
+
+## The schedule
+
+| Weeks | Focus and work | Evidence required before advancing |
+| --- | --- | --- |
+| 1–2 | Assess your skills, observe a workflow, write a brief and non-goals | A problem statement, baseline or explicit assumptions, and acceptance criteria |
+| 3–4 | Build one complete ticket workflow; trace browser-to-database behavior | A working vertical slice and a written request-path explanation |
+| 5–6 | Improve schema, constraints, transactions, and migrations | Rejected invalid states and a reproducible concurrent-claim exercise |
+| 7–8 | Improve forms, keyboard access, failure states, and responsiveness | A user task observation and fixes for the problems it reveals |
+| 9–10 | Enforce roles and organization boundaries | An access matrix and tests for cross-organization reads and writes |
+| 11–12 | Practice debugging and query performance with representative data | A root-cause report and comparable before/after measurements |
+| 13–14 | Add CI, deploy to a learning environment, and instrument key actions | A repeatable deployment and evidence that a failed request can be traced |
+| 15–16 | Rehearse dependency failure, retry behavior, and backup restore | A recovery runbook, restored data checks, and a short incident report |
+| 17–18 | Compare AI-assisted workflows on bounded engineering tasks | A record of time, review effort, corrections, and defects |
+| 19–20 | Build a reply-template baseline and a small AI draft feature | A versioned evaluation set, permission checks, and a working fallback |
+| 21–22 | Evaluate AI failures, cost, and usefulness with reviewers | A held-out comparison and a documented ship, revise, or stop decision |
+| 23–24 | Improve one weak area and prepare a demonstration | A reproducible project, two case studies, and a clear explanation of limitations |
+
+Use AI from the first week where it helps. Weeks 17–18 are dedicated to measuring and improving your workflow, not your first permission to use it. Treat security and testing as ongoing work; their focused stages deepen earlier checks.
+
+## A weekly learning loop
+
+Allocate about 90 minutes to reading, three hours to building, 90 minutes to verification and failure experiments, and one hour to writing or explaining. Adjust this seven-hour template around your available time.
+
+For each concept:
+
+1. Read a small section of primary documentation and write a prediction.
+2. Build or change something that makes the concept observable.
+3. Break an assumption: introduce concurrency, missing data, denied access, or a timeout.
+4. Explain the observed behavior and preserve the evidence.
+5. Revisit it later without copying your earlier solution.
+
+Maintain one session a week where you diagnose or explain a problem without asking AI for the answer first. Use AI afterward to challenge your reasoning. The objective is to retain the ability to judge its output.
+
+## Measure your progress
+
+Score each of the nine [skill areas](/docs/ai-era-fullstack/skills) using this rubric:
+
+| Score | Observable ability |
+| --- | --- |
+| 0 | I cannot yet explain the concept |
+| 1 | I can follow a tutorial and explain its happy path |
+| 2 | I can complete a bounded task with documentation and explain my decisions |
+| 3 | I can diagnose failure, defend tradeoffs, and leave reproducible evidence |
+| 4 | I can guide others through unfamiliar cases and improve the team's practice |
+
+For every score, attach an artifact and a date. Reassess monthly. These scores are planning aids, not a validated hiring assessment. Aim first for level 2 across the foundations and level 3 in your chosen specialty; real production experience will expose gaps a capstone cannot.
+
+Useful measures include successful user task completion, escaped defects, time to diagnose a seeded failure, recovery time in drills, request latency under a stated load, and AI cost per accepted suggestion. State sample size and conditions. Do not generalize a laptop benchmark into a production capacity claim.
+
+## Make your work convincing
+
+Prepare three artifacts:
+
+1. **A product demonstration:** explain the user problem, show the workflow, show a failure and recovery, and identify the remaining limitations.
+2. **A correctness or reliability case study:** describe the bug, competing hypotheses, evidence, fix, and regression protection. Include reproducible steps and honest before/after results.
+3. **An AI evaluation report:** explain the baseline, dataset, scoring criteria, held-out results, costs, and why you would ship, revise, or stop the feature.
+
+A useful case-study outline is: context → constraint → options → decision → evidence → limitations → next step. Clearly label simulations and personal projects. Never invent customer impact or performance numbers.
+
+For interviews, practice answering: “What failed?”, “How did you know?”, “What tradeoff did you make?”, and “What would change at ten times the workload?” The repository supports the story; your explanation demonstrates ownership.
+
+## Adapt the path to your goal
+
+| Goal | Spend more time on |
+| --- | --- |
+| First fullstack job | Complete workflows, fundamentals, readable code, debugging, and relevant interview practice |
+| Senior engineer | Ambiguous requirements, migrations, production incidents, mentoring, and decision quality |
+| Freelance or independent product work | Discovery, scoping, onboarding, maintenance, pricing assumptions, and user feedback |
+| Applied AI role | Retrieval quality, evaluations, data permissions, model failure analysis, and cost/latency tradeoffs |
+
+After this roadmap, choose a real project with real feedback if possible. Operational constraints, collaboration, and changing requirements provide learning that a polished demo cannot reproduce fully.
+
+## Your first seven days
+
+- **Day 1:** score your skills and choose one specialty.
+- **Day 2:** identify a user workflow and record its pain points.
+- **Day 3:** write acceptance criteria and three ways the workflow could fail.
+- **Days 4–5:** build the smallest complete version using your current stack.
+- **Day 6:** test one failure deliberately and explain the cause.
+- **Day 7:** record a five-minute demo and choose next week's highest-value improvement.
+
+If you only have time for three priorities this month, choose **debugging and fundamentals, data correctness, and one useful end-to-end workflow**. Practice AI assistance and clear explanations inside that work.
