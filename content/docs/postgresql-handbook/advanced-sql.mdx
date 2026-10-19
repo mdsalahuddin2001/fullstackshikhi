@@ -1,0 +1,148 @@
+---
+title: Advanced SQL without mystery
+description: Windows, recursion, JSONB, cursors, reusable queries, and database-side behavior.
+---
+
+## Windows annotate; aggregates collapse
+
+```sql
+SELECT id, name, category_id, price,
+ row_number() OVER (PARTITION BY category_id ORDER BY price DESC, id) AS position,
+ rank() OVER (ORDER BY price DESC) AS price_rank,
+ dense_rank() OVER (ORDER BY price DESC) AS dense_price_rank,
+ lag(price) OVER (ORDER BY price, id) AS previous_price,
+ lead(price) OVER (ORDER BY price, id) AS next_price
+FROM products ORDER BY category_id, position;
+```
+
+A window keeps the original rows. `PARTITION BY` creates independent groups for that calculation. `ROW_NUMBER` assigns distinct positions. `RANK` leaves gaps after ties; `DENSE_RANK` does not. `LAG` and `LEAD` access a preceding or following row in the window order. The window's order does not replace the final output `ORDER BY`.
+
+For a running total, make the frame explicit:
+
+```sql
+SELECT id, price,
+ sum(price) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
+FROM products ORDER BY id;
+```
+
+Expected running values: 1200, 1800, 2600, 2800. Default frames can include tied peers; explicitly choosing rows avoids accidental surprises.
+
+## Walk a hierarchy
+
+```sql
+WITH RECURSIVE tree AS (
+ SELECT id, name, parent_id, 0 AS depth, ARRAY[id] AS path
+ FROM categories WHERE parent_id IS NULL
+ UNION ALL
+ SELECT c.id, c.name, c.parent_id, t.depth + 1, t.path || c.id
+ FROM categories c JOIN tree t ON c.parent_id = t.id
+ WHERE NOT c.id = ANY(t.path)
+)
+SELECT name, depth FROM tree ORDER BY path;
+```
+
+The first term seeds roots; the recursive term expands children. The path prevents revisiting a node within a walk. Foreign keys alone do not prevent cycles, and root-based traversal will not discover a disconnected cycle. Validate hierarchy changes if acyclicity is a business rule.
+
+## Sets and JSONB
+
+`UNION` combines compatible results and removes duplicates; `UNION ALL` retains them. `INTERSECT` finds overlap; `EXCEPT` finds rows in the first result absent from the second.
+
+```sql
+SELECT city FROM customers WHERE city IS NOT NULL
+EXCEPT
+SELECT 'Dhaka';
+
+SELECT name, attributes->>'color' AS color FROM products
+WHERE attributes @> '{"wireless":true}'::jsonb;
+```
+
+The first returns Chattogram; the second Mouse / black. `->` extracts JSON, `->>` extracts text, and `@>` tests containment. JSONB flexibility does not replace core foreign keys or required-column rules.
+
+## Upsert and cursor pagination
+
+```sql
+BEGIN;
+INSERT INTO customers(name,email,city)
+VALUES ('Amina','amina@example.test','Sylhet')
+ON CONFLICT (email) DO UPDATE SET city = EXCLUDED.city
+RETURNING id, name, city;
+ROLLBACK;
+```
+
+The unique email constraint defines the conflict target. An upsert makes this insertion/update decision atomic; it does not make every surrounding workflow safe automatically.
+
+For ascending products ordered by `(price, id)`, a cursor is the last seen pair:
+
+```sql
+SELECT id,name,price FROM products ORDER BY price,id LIMIT 2;
+-- Last row: Mouse, price 600, id 2
+SELECT id,name,price FROM products
+WHERE (price,id) > (600,2) ORDER BY price,id LIMIT 2;
+```
+
+Expected second page: SQL Book, Keyboard. Keep the same filters and ordering on every page, serialize numeric precision correctly, and validate cursors. Mutable sort keys can move rows across pages; a cursor alone does not provide a fixed snapshot.
+
+## Views and materialized views
+
+A view stores a query definition; ordinary reads evaluate it. A materialized view stores query results and needs refreshes.
+
+```sql
+CREATE TEMP VIEW paid_order_totals AS
+SELECT o.id, sum(i.quantity*i.unit_price) AS total
+FROM orders o JOIN order_items i ON i.order_id=o.id
+WHERE o.status='paid' GROUP BY o.id;
+SELECT * FROM paid_order_totals ORDER BY id;
+```
+
+Expected totals: order 1 → 2400, order 2 → 800, order 4 → 1600. For an expensive shared report, `CREATE MATERIALIZED VIEW handbook.report AS ...` persists a snapshot; `REFRESH MATERIALIZED VIEW handbook.report` updates it. Concurrent refresh needs an eligible unique index. Define acceptable staleness before choosing this design.
+
+## Functions and triggers
+
+A function packages database-side behavior. A trigger invokes a function when a table event occurs. Keep triggers small and documented because their effects are less visible to application readers.
+
+```sql
+CREATE TEMP TABLE draft_notes (id integer PRIMARY KEY, body text, updated_at timestamptz);
+CREATE FUNCTION pg_temp.stamp_note() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ NEW.updated_at := clock_timestamp();
+ RETURN NEW;
+END;
+$$;
+CREATE TRIGGER stamp_note BEFORE INSERT OR UPDATE ON draft_notes
+FOR EACH ROW EXECUTE FUNCTION pg_temp.stamp_note();
+INSERT INTO draft_notes(id,body) VALUES (1,'First draft') RETURNING *;
+```
+
+This session-local example stamps writes. A constraint is better than a trigger when a declarative rule already expresses the invariant. Avoid remote network work inside a transaction trigger.
+
+## Challenge · Top item in every category
+
+Return one highest-priced product per category, resolving ties with the smallest ID. Then explain what changes if the requirement is “include all tied winners.”
+
+<details>
+<summary>Hint</summary>
+
+Rank inside a CTE, then filter outside it. Window results are not directly available to the same query's `WHERE`.
+
+</details>
+
+<details>
+<summary>Worked solution</summary>
+
+```sql
+WITH ranked AS (
+ SELECT *, row_number() OVER (
+  PARTITION BY category_id ORDER BY price DESC,id
+ ) AS position FROM products
+)
+SELECT category_id,name,price FROM ranked
+WHERE position=1 ORDER BY category_id;
+```
+
+Winners: Keyboard, SQL Book, Mouse. For all tied winners use `rank()` ordered only by `price DESC`, then filter rank 1. Adding ID to that ranking order would break price ties and change the meaning.
+
+</details>
+
+**Stretch with solution:** find categories with no products using `NOT EXISTS (SELECT 1 FROM products p WHERE p.category_id=c.id)` against `categories c`. The seed returns none. Insert an empty category inside a rollback transaction to prove the query can detect one.
+
+**Exit checkpoint:** distinguish grouping from windows, explain the recursive base case, and paginate without relying on row position.

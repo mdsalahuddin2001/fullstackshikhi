@@ -1,0 +1,107 @@
+---
+title: Join facts into useful reports
+description: Preserve missing rows, avoid double counting, and explain every report total.
+---
+
+## A join creates combinations
+
+A join does not “look up a field” in the abstract. It produces matching row combinations. One order with two items becomes two joined rows. Summing an order-level amount after joining it to those items would count it twice.
+
+```sql
+SELECT o.id, c.name, p.name AS product, i.quantity,
+       i.quantity * i.unit_price AS line_total
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+JOIN order_items i ON i.order_id = o.id
+JOIN products p ON p.id = i.product_id
+WHERE o.status = 'paid'
+ORDER BY o.id, p.id;
+```
+
+Expected line totals: 1200, 1200, 800, 1600. They sum to 4800. Revenue is based on item snapshots and paid orders, not current product prices or pending orders.
+
+| Join | What survives | Use |
+| --- | --- | --- |
+| `INNER JOIN` | Matching pairs | Orders with their items |
+| `LEFT JOIN` | All left rows, NULL for missing right values | Customers even without orders |
+| `RIGHT JOIN` | All right rows | Usually rewrite as a left join for readability |
+| `FULL OUTER JOIN` | Both sides, matched where possible | Reconcile two imported lists |
+| `CROSS JOIN` | Every combination | Build a size × color matrix |
+| Self join | Same table under different aliases | Category with its parent |
+
+## Keep zero-order customers
+
+```sql
+SELECT c.name, count(o.id) AS paid_orders
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id AND o.status = 'paid'
+GROUP BY c.id, c.name ORDER BY c.id;
+```
+
+Expected counts: Amina 1, Rafi 1, Nila 1, Sami 0. Filtering `o.status` in `WHERE` would remove Sami because the unmatched right side is NULL. `COUNT(*)` would count the placeholder row; `COUNT(o.id)` does not.
+
+## Ask existence questions directly
+
+```sql
+SELECT c.name FROM customers c
+WHERE NOT EXISTS (
+ SELECT 1 FROM orders o WHERE o.customer_id = c.id
+) ORDER BY c.name;
+```
+
+This correlated subquery refers to the outer customer. It returns Sami. `EXISTS` asks whether any qualifying row exists, without multiplying the customer's result by the number of orders. A scalar subquery must return at most one row; use an aggregate or a uniqueness guarantee when that is your intent.
+
+## Challenge · Customer revenue leaderboard
+
+Return every customer and their paid revenue, including zero. Sort highest revenue first, then customer ID. Predict the result before running.
+
+<details>
+<summary>Hint</summary>
+
+First compute one revenue row per customer in a CTE. Then left join that summary to customers. This separates the report's grain from the raw item rows.
+
+</details>
+
+<details>
+<summary>Worked solution</summary>
+
+```sql
+WITH paid_revenue AS (
+ SELECT o.customer_id, sum(i.quantity * i.unit_price) AS revenue
+ FROM orders o JOIN order_items i ON i.order_id = o.id
+ WHERE o.status = 'paid' GROUP BY o.customer_id
+)
+SELECT c.id, c.name, COALESCE(r.revenue, 0) AS revenue
+FROM customers c LEFT JOIN paid_revenue r ON r.customer_id = c.id
+ORDER BY revenue DESC, c.id;
+```
+
+Amina → 2400, Nila → 1600, Rafi → 800, Sami → 0. The CTE names an intermediate result; it is not automatically a performance optimization.
+
+</details>
+
+## Challenge · Monthly revenue and best sellers
+
+Report paid revenue by UTC month and units sold by product. Keep pending orders out.
+
+<details>
+<summary>Worked solution</summary>
+
+```sql
+SELECT date_trunc('month', o.created_at AT TIME ZONE 'UTC') AS month,
+       sum(i.quantity * i.unit_price) AS revenue
+FROM orders o JOIN order_items i ON i.order_id = o.id
+WHERE o.status = 'paid' GROUP BY 1 ORDER BY 1;
+
+SELECT p.name, sum(i.quantity) AS units
+FROM products p JOIN order_items i ON i.product_id = p.id
+JOIN orders o ON o.id = i.order_id
+WHERE o.status = 'paid' GROUP BY p.id, p.name
+ORDER BY units DESC, p.id;
+```
+
+January → 3200; February → 1600. Best sellers: SQL Book → 3, Mouse → 2, Keyboard → 1. USB Cable is absent because this report uses inner joins; use a left join to a pre-aggregated paid-sales result if zero-sales products must appear.
+
+</details>
+
+**Exit checkpoint:** explain the grain (what one row represents) before and after each join. If a total changes unexpectedly, inspect the intermediate rows before adding `DISTINCT` as a patch.

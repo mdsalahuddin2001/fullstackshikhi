@@ -1,0 +1,146 @@
+---
+title: Ship a runnable reservation API
+description: A complete PostgreSQL-backed lab with idempotency, an outbox, HTTP integration tests, and a local container deployment.
+---
+
+## What you will build
+
+Download the [complete reservation API lab](/labs/postgresql/reservation-api.zip). It includes source, a versioned migration, dependency lockfile, OpenAPI contract, integration tests, Dockerfile, and Compose configuration. This project is independent of the documentation site's dependencies and database.
+
+The service uses Node.js's HTTP server and `pg`, so the database behavior stays visible. The same service transaction can sit behind an Express handler or a Next.js Route Handler; the HTTP framework does not change its connection and commit requirements.
+
+**Prerequisites:** complete the concurrency and backend chapters; install Node.js 22+ and PostgreSQL 17+, or Docker with Compose. Use a separate practice database. This is a **single-actor learning API** with one configured bearer token; it does not implement user accounts, membership authorization, payments, or an event publisher.
+
+## Understand the contract first
+
+The [OpenAPI contract](/labs/postgresql/reservation-api/openapi.json) is the API's interface reference and can be imported into Postman. No workspace connection or publication is needed to run the local lab.
+
+| Request | Meaning |
+| --- | --- |
+| `GET /health` | Checks database connectivity; 200 means ready |
+| `POST /reservations` | Reserves a positive quantity of a product |
+| `Authorization: Bearer ...` | Maps the configured lab token to the server's single learner actor |
+| `Idempotency-Key: checkout-1` | Identifies this operation for that actor |
+| JSON body | Exactly `productId` and `quantity`; positive integer ID, quantity 1–1000 |
+
+| Outcome | Status | Database effect |
+| --- | --- | --- |
+| New success | 201 | Stock, reservation, request result, and outbox event commit together |
+| Same key and same input | 200 | Replay existing result, no new mutation |
+| Same key with different input | 409 | No new mutation |
+| Missing product | 404 | Rollback |
+| Insufficient stock | 409 | Rollback |
+| Bad token | 401 | No mutation |
+| Invalid JSON/input/key | 400 | No mutation |
+| Body too large / non-JSON | 413 / 415 | No mutation |
+| Database lock/statement timeout or retryable transaction error | 503 | Retry later with the same key |
+| Unexpected failure | 500 | Generic response; do not assume a lost commit acknowledgement means failure |
+
+Success keys are retained indefinitely in this lab. Failed transactions do not retain them. Retrying a formerly insufficient-stock request may later succeed if inventory changes. That policy is explicit, not an accidental implementation detail.
+
+## Run with local Node and PostgreSQL
+
+Unzip the project and open a terminal in its directory. Choose your actual host, port, and database credentials; the URI below matches the earlier Docker database lab on port 55432.
+
+```bash
+npm ci
+export DATABASE_URL='postgresql://postgres:handbook-local@localhost:55432/reservation_lab'
+export LAB_API_TOKEN='local-learning-token'
+createdb -h localhost -p 55432 -U postgres reservation_lab
+npm run migrate
+npm start
+```
+
+`createdb` may prompt for your local password. If you have no host PostgreSQL tools, use `docker exec pg-handbook createdb -U postgres reservation_lab` instead. Migrations run once by version under an advisory transaction lock; rerunning `npm run migrate` skips the recorded version. Do not edit a migration after applying it—add a new numbered migration and update the runner for the next exercise.
+
+In another terminal:
+
+```bash
+curl -i http://localhost:3100/health
+curl -i http://localhost:3100/reservations \
+ -H 'Authorization: Bearer local-learning-token' \
+ -H 'Idempotency-Key: checkout-1' \
+ -H 'Content-Type: application/json' \
+ --data '{"productId":1,"quantity":2}'
+```
+
+The first reservation returns 201 and a UUID. Repeat the exact request: expect 200, the same UUID, and `Idempotency-Replayed: true`. Change quantity while retaining the key: expect 409. The first success changes product 1 stock from 10 to 8; retries must not reduce it further.
+
+## Trace the transaction
+
+```mermaid
+flowchart TD
+ A[Validate token, key, and body] --> B[Begin on one pool client]
+ B --> C[Claim actor and request key]
+ C -->|Already committed| D[Compare input and replay result]
+ C -->|New claim| E[Lock product and check stock]
+ E --> F[Update stock and insert reservation]
+ F --> G[Insert outbox and store response]
+ G --> H[Commit, then respond]
+ E -->|Missing or insufficient| R[Rollback]
+ F -->|Failure| R
+ G -->|Failure| R
+```
+
+Inspect `app.mjs` with this diagram beside it. The product lock serializes competing reservations. The scoped unique key serializes duplicate operations. A short lock timeout bounds contention. The code releases the client on every path and discards it if rollback itself fails.
+
+The outbox row is an atomic record of intent. It has **not** been sent anywhere. Build a worker only after studying [reliable workflows](/docs/postgresql-handbook/reliable-workflows), including leases and consumer deduplication.
+
+## Run real integration tests
+
+The tests use HTTP requests and a real PostgreSQL database. They reset only the lab tables, but still require a dedicated database whose name ends in `_test`.
+
+```bash
+createdb -h localhost -p 55432 -U postgres reservation_lab_test
+export DATABASE_URL='postgresql://postgres:handbook-local@localhost:55432/reservation_lab_test'
+npm run migrate
+npm test
+```
+
+Tests start their own server on a temporary port. They verify success, concurrent duplicates, conflicting key reuse, last-unit contention, authentication/validation failures, malformed JSON, readiness, and rollback after a real database constraint causes the outbox insert to fail.
+
+Do not point the test command at a shared development or production database. Its database-name guard is a useful additional check, not a substitute for choosing isolated credentials.
+
+## Deploy locally with Compose
+
+```bash
+docker compose up --build -d
+docker compose logs migrate api
+curl -i http://localhost:3100/health
+```
+
+Compose starts PostgreSQL, waits for readiness, runs the migration, then starts the API. It binds the API port to localhost and keeps PostgreSQL on the Compose network. Stop an already running local API first if port 3100 is occupied. `docker compose down` stops the stack while retaining the named database volume; the seeded stock therefore persists between runs.
+
+This configuration intentionally uses disposable local credentials and the database administrator for convenience. A real deployment must separate migration ownership from application privileges, provide verified TLS/secret configuration, configure identity and authorization, bound requests and connections, retain backups, and run restore drills. Replace these lab defaults before exposing the API beyond your machine. No cloud resources are created by this handbook.
+
+## Challenge · Add reservation lookup
+
+Add `GET /reservations/:id`. Define 200, malformed-ID 400, and not-found 404 behavior first. Never return another actor's reservation. Write an HTTP test before implementing the query.
+
+<details>
+<summary>Reference solution</summary>
+
+Validate the UUID string, derive the actor from the verified authentication context, and query with both conditions:
+
+```sql
+SELECT id,product_id,quantity,created_at
+FROM reservation_lab.reservations
+WHERE id=$1::uuid AND actor_id=$2;
+```
+
+Return 404 for both an absent ID and an ID the actor cannot see. Test success, malformed UUID, unknown UUID, and a reservation seeded for another actor. Avoid trusting `actor_id` supplied in a request body or header. The lab's one-token identity model must be extended before it can demonstrate real multi-user authentication.
+
+</details>
+
+## Challenge · Commit succeeds, client gives up
+
+Imagine the server commits and the network drops before the client reads the response. What key should the client use on retry, and what assertions prove safety?
+
+<details>
+<summary>Worked solution</summary>
+
+Retry the identical payload with the original key. Assert the returned reservation ID matches the stored result, stock was decremented once, and exactly one reservation and one outbox event exist. A new key expresses a new operation and can legitimately reserve more stock. The concurrent duplicate test exercises the uniqueness guarantee; a network interruption test would additionally verify the client's retry behavior.
+
+</details>
+
+**Exit checkpoint:** run the integration suite, trace each write to its invariant, replay a request manually, and explain what remains to turn this single-actor lab into a deployed multi-user service.

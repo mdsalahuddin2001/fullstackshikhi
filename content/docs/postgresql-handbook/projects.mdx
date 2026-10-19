@@ -1,0 +1,134 @@
+---
+title: Three capstones to prove your skills
+description: Build a school registrar, reliable checkout, and an isolated support inbox—with acceptance criteria and reference solutions.
+---
+
+## How to use a capstone
+
+Build from the brief before opening the reference solution. Keep an ER diagram, versioned SQL, a seed, reproducible checks, and a short decision log. A project passes when you can demonstrate its invariants and explain its trade-offs, not when a page merely renders.
+
+## Project 1: School registrar
+
+**Timebox:** two or three study sessions after relational design.
+
+Build students, courses, and enrollments with optional grades. Show each student's course count and average recorded grade, including students with no courses. Add an enrollment and record a grade.
+
+**Acceptance criteria:** duplicate enrollment fails; missing references fail; grades outside 0–100 fail; ungraded work does not become zero; students with no courses remain visible.
+
+<details>
+<summary>Reference solution and verification</summary>
+
+Use the temporary schema in [relational design](/docs/postgresql-handbook/design) for practice, then convert it to a versioned permanent schema in a dedicated project database.
+
+```sql
+SELECT s.id,s.name,count(e.course_id) AS course_count,
+       round(avg(e.grade),2) AS average_grade
+FROM students s LEFT JOIN enrollments e ON e.student_id=s.id
+GROUP BY s.id,s.name ORDER BY s.id;
+```
+
+With one ungraded enrollment for Amina, count is 1 and average is NULL. Insert another student with no enrollment; count is 0 and average remains NULL. Updating the first grade to 90 makes Amina's average 90. A missing grade is not a failed assessment.
+
+Try every rejection case from the design chapter, then inspect rows afterward. This proves constraints, not just happy-path UI validation.
+
+</details>
+
+**Stretch:** support repeated course offerings by term. Move enrollments to a course-offering identity and make `(student_id, offering_id)` unique. Explain why `(student_id, course_id)` is now too restrictive.
+
+## Project 2: Reliable checkout
+
+**Timebox:** four or five sessions after transactions and backend integration.
+
+For the shop dataset, buy one product at a time. Atomically reserve stock, create a pending order, and store the agreed unit price. Do not mark an order paid just because it exists. Keep payment confirmation separate from the database-only checkout lab.
+
+**Acceptance criteria:** stock never becomes negative; invalid quantities fail; a missing customer fails; order and item creation roll back if any step fails; concurrent purchases of the last unit yield only one order; historical totals survive catalog price changes.
+
+<details>
+<summary>Reference database solution</summary>
+
+This function is a complete single-item database exercise. Call it inside a transaction you roll back to preserve the seed. The HTTP service still needs authentication, authorization, idempotency, and error mapping as described in the backend chapter.
+
+```sql
+CREATE FUNCTION handbook.checkout_one(p_customer integer,p_product integer,p_quantity integer)
+RETURNS integer LANGUAGE plpgsql AS $$
+DECLARE agreed_price numeric(12,2); new_order integer;
+BEGIN
+ IF p_quantity IS NULL OR p_quantity <= 0 THEN
+  RAISE EXCEPTION 'Quantity must be positive';
+ END IF;
+ UPDATE handbook.products SET stock=stock-p_quantity
+ WHERE id=p_product AND stock>=p_quantity
+ RETURNING price INTO agreed_price;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Unavailable product or stock'; END IF;
+ INSERT INTO handbook.orders(customer_id,status)
+ VALUES (p_customer,'pending') RETURNING id INTO new_order;
+ INSERT INTO handbook.order_items(order_id,product_id,quantity,unit_price)
+ VALUES (new_order,p_product,p_quantity,agreed_price);
+ RETURN new_order;
+END;
+$$;
+
+BEGIN;
+SELECT handbook.checkout_one(1,1,2);
+SELECT stock FROM handbook.products WHERE id=1; -- 8
+SELECT o.id,o.status,i.quantity,i.unit_price
+FROM handbook.orders o JOIN handbook.order_items i ON i.order_id=o.id
+WHERE o.id>4 ORDER BY o.id;
+ROLLBACK;
+```
+
+A function call participates in the caller's transaction. An uncaught error rolls back the statement's effects; a failing foreign key after the stock update must not leave reserved stock behind. Identity numbers may have gaps after rollback, so never assert the next order ID is exactly 5.
+
+To test rollback, call `checkout_one(999,1,1)` in a transaction, observe the foreign-key failure, roll back, and verify stock remains 10.
+
+To test concurrency in a disposable copy, set product 4 stock to 1 and commit. In session A begin a transaction and call `checkout_one(1,4,1)` without committing. In session B begin and call the same function. B waits. Commit A; B then raises the unavailable-stock error. Roll back B. Assert stock 0 and exactly one new order item for product 4.
+
+</details>
+
+**Stretch:** a cart with multiple products must acquire locks in a consistent product-ID order. Add a durable idempotency record scoped to the customer, and reject reuse of a key with a different request. Document how you recover after commit succeeds but the HTTP response is lost.
+
+## Project 3: Tenant-aware support
+
+**Timebox:** four or five sessions after scaling and isolation.
+
+Use organizations, tickets, and comments. Build a tenant-scoped inbox sorted by `(created_at DESC, id DESC)` with cursor pagination. Include a status filter. Every read and write must derive the tenant from an authenticated membership.
+
+**Acceptance criteria:** cross-tenant reads return no data; unauthorized writes fail; comments cannot link to another tenant's ticket; pagination has a stable tie-breaker; a large-dataset plan supports your chosen index; restore works in a fresh database.
+
+<details>
+<summary>Reference query and design</summary>
+
+Start with the composite keys from [scaling and isolation](/docs/postgresql-handbook/scaling). Add this index and use a parameterized inbox query:
+
+```sql
+CREATE INDEX tickets_tenant_status_recent
+ON tenant_lab.tickets(tenant_id,status,created_at DESC,id DESC);
+
+-- In application code, bind all five parameters.
+-- $1 tenant; $2 status; $3 timestamp cursor; $4 ID cursor; $5 bounded page size.
+SELECT id,subject,status,created_at FROM tenant_lab.tickets
+WHERE tenant_id=$1 AND status=$2
+ AND (created_at,id) < ($3::timestamptz,$4::integer)
+ORDER BY created_at DESC,id DESC LIMIT $5;
+```
+
+For the first page, use a separate query omitting the cursor predicate. Keep tenant and status fixed between pages. Validate the cursor shape and bound page size. Changing a ticket's creation timestamp would affect pagination, so keep it immutable.
+
+Enable matching RLS policies on every tenant-owned table before granting application access. Prove comments reject a `(tenant_id,ticket_id)` pair that does not exist even if that ticket ID exists in another tenant. Test using the application role and HTTP authorization layer, not just an administrator session.
+
+If users frequently query all statuses, the index above may not satisfy the requested recent ordering efficiently; measure whether a separate `(tenant_id,created_at DESC,id DESC)` index is warranted.
+
+</details>
+
+## Your final review
+
+| Dimension | Passing evidence |
+| --- | --- |
+| Correctness | Results and rejected writes match documented rules |
+| Concurrency | Two-session test shows the intended outcome |
+| Performance | Saved plans explain work before/after tuning |
+| Security | Non-owner role and cross-tenant tests pass |
+| Recovery | Fresh restore passes data and application checks |
+| Understanding | You can rebuild the core query and explain each clause |
+
+Score each dimension 0 (not attempted), 1 (works with help), or 2 (demonstrated independently). Aim for 2 everywhere; the score is a study aid, not certification. Revisit weak areas and repeat with changed data so you are testing understanding rather than memorizing the seed.

@@ -1,0 +1,128 @@
+---
+title: Speak SQL fluently
+description: Read, filter, aggregate, and change data with predictable results.
+---
+
+## Think about the question before the syntax
+
+“What in-stock products cost at most 800?” identifies a table, a condition, and a result shape. SQL describes the desired result; the planner chooses how to obtain it.
+
+```sql
+SELECT id, name, price
+FROM products
+WHERE stock > 0 AND price <= 800
+ORDER BY price ASC, id ASC;
+```
+
+Expected: Mouse (600), SQL Book (800). The ID breaks ties so results remain deterministic.
+
+For reasoning, picture `FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT`. This is a conceptual model, not a promise about physical execution order. `WHERE` filters individual rows; `HAVING` filters groups.
+
+## Your query toolbox
+
+```sql
+SELECT DISTINCT city FROM customers WHERE city IS NOT NULL ORDER BY city;
+SELECT name FROM products WHERE name ILIKE '%book%';
+SELECT name FROM products WHERE id IN (1, 3);
+SELECT name FROM products WHERE price BETWEEN 600 AND 1200 ORDER BY id;
+SELECT name, CASE WHEN stock = 0 THEN 'sold out' ELSE 'available' END AS availability
+FROM products ORDER BY id;
+SELECT lower(customers.email), length(customers.name), round(products.price / 3, 2)
+FROM customers CROSS JOIN products WHERE customers.id = 1 AND products.id = 1;
+```
+
+`BETWEEN` includes both endpoints. `LIKE` is case-sensitive, `ILIKE` case-insensitive; `%` matches any sequence and `_` one character. Parenthesize mixed `AND`/`OR` conditions. `NOT IN` can surprise you when its list contains NULL; use `NOT EXISTS` for absence checks over nullable data.
+
+For timestamp ranges, use a half-open interval: `created_at >= '2026-01-01' AND created_at < '2026-02-01'`. This avoids guessing the last fractional second of a month. Set your report time zone explicitly.
+
+## Grouping without losing meaning
+
+```sql
+SELECT category_id, count(*) AS products,
+       min(price) AS cheapest, max(price) AS priciest,
+       round(avg(price), 2) AS average_price, sum(stock) AS units
+FROM products
+GROUP BY category_id
+HAVING count(*) >= 2
+ORDER BY category_id;
+```
+
+Only category 3 qualifies: two products, minimum 200, maximum 600, average 400, five units. A non-aggregated selected column generally needs to identify the group (usually by appearing in `GROUP BY`). Aggregation deliberately collapses rows.
+
+## Change rows and inspect what happened
+
+```sql
+BEGIN;
+INSERT INTO products(category_id, name, price, stock)
+VALUES (2, 'Database Workbook', 500, 3)
+RETURNING id, name;
+
+UPDATE products SET price = price + 50
+WHERE name = 'Database Workbook' RETURNING id, price;
+
+DELETE FROM products WHERE name = 'Database Workbook' RETURNING id;
+ROLLBACK;
+```
+
+`RETURNING` avoids a separate read and tells you what the statement changed. Always inspect the intended `WHERE` condition before a bulk mutation. A successful update of zero rows is not a database error; your application must decide whether that means “not found” or “conflict.”
+
+DDL changes structure. Practice on a temporary table:
+
+```sql
+CREATE TEMP TABLE scratch_notes (id integer, body text);
+ALTER TABLE scratch_notes ADD COLUMN pinned boolean NOT NULL DEFAULT false;
+INSERT INTO scratch_notes VALUES (1, 'Practice', true);
+TRUNCATE scratch_notes;
+DROP TABLE scratch_notes;
+```
+
+`DELETE` supports a row predicate. `TRUNCATE` empties whole tables with stronger locking and different trigger behavior. `DROP` removes the object itself. They are not interchangeable cleanup shortcuts.
+
+## Challenge · Stockroom report
+
+Return categories whose in-stock inventory value exceeds 10000. Value is `price * stock`; show category ID and total value. Sort highest value first. Then return the second page of products with two rows per page, ordered by price and ID.
+
+<details>
+<summary>Hint</summary>
+
+Filter stock before grouping. Use `SUM` in `HAVING`. A page offset is `(page - 1) * page_size`.
+
+</details>
+
+<details>
+<summary>Worked solution</summary>
+
+```sql
+SELECT category_id, sum(price * stock) AS inventory_value
+FROM products WHERE stock > 0
+GROUP BY category_id
+HAVING sum(price * stock) > 10000
+ORDER BY inventory_value DESC, category_id;
+
+SELECT id, name, price FROM products
+ORDER BY price, id LIMIT 2 OFFSET 2;
+```
+
+Expected report: category 2 → 16000, category 1 → 12000. Second page: SQL Book (800), Keyboard (1200). Offset is easy for small datasets, but later chapters show why deep or changing result sets need a cursor.
+
+</details>
+
+## Challenge · Generate 100 products
+
+Create a temporary catalog with IDs 1–100, names `Product 1` through `Product 100`, and price equal to ten times the ID. Find IDs 11–20 using a price filter, sorted descending.
+
+<details>
+<summary>Worked solution</summary>
+
+```sql
+CREATE TEMP TABLE catalog AS
+SELECT n AS id, 'Product ' || n AS name, n * 10 AS price
+FROM generate_series(1,100) AS n;
+SELECT * FROM catalog WHERE price BETWEEN 110 AND 200 ORDER BY price DESC;
+```
+
+Ten rows should appear, starting at ID 20 and ending at 11. Temporary tables live only in the current session, so this does not change the shop seed.
+
+</details>
+
+**Exit checkpoint:** explain `WHERE` versus `HAVING`, NULL counts, stable sorting, and why an update needs a business-level result check.

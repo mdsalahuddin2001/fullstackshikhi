@@ -1,3 +1,4 @@
+import { HandbookProgress } from './handbook-progress';
 import { ApiReference } from './listenyzen/api-reference';
 import { CodeLens } from './listenyzen/code-lens';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
@@ -15,6 +16,7 @@ import { SystemWalkthrough, RequestFlow, EntityExplorer, AccessSimulator, Sessio
 export function getMDXComponents(components?: MDXComponents) {
   return {
     ...defaultMdxComponents,
+    HandbookProgress,
     CodeLens,
     ApiReference,
     img: (props) => <ImageZoom {...(props as ComponentProps<typeof ImageZoom>)} />,

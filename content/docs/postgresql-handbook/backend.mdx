@@ -1,0 +1,120 @@
+---
+title: Connect PostgreSQL to an application
+description: Pools, parameters, validation boundaries, and transactions that stay on one connection.
+---
+
+## Keep responsibilities visible
+
+An HTTP handler translates the request and response. A service implements a business operation. A repository performs database access. These may be small functions in one module at first; the purpose is clear ownership, not folders for their own sake.
+
+Validate untrusted inputs at the boundary, authorize the operation, then rely on database constraints for durable invariants. Zod can describe the input shape; it cannot establish that a user owns an account or that stock is still available after another request changes it.
+
+## A runnable Node.js lab
+
+Create a separate practice directory, then run `npm init -y` and `npm install pg`. Download [lookup.mjs](/labs/postgresql/lookup.mjs), or save the example below with that name. Set `DATABASE_URL` in your shell to the dedicated learning database, for example `postgresql://postgres:handbook-local@localhost:55432/handbook_lab` for the Docker setup.
+
+```js
+import pg from 'pg';
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
+try {
+ const email = process.argv[2] ?? 'amina@example.test';
+ const result = await pool.query(
+  'SELECT id,name FROM handbook.customers WHERE email=$1', [email]
+ );
+ console.table(result.rows);
+} finally {
+ await pool.end();
+}
+```
+
+Run `node lookup.mjs amina@example.test`; expect Amina. Run with an unknown email; expect zero rows. Values are sent separately from SQL. Never interpolate user input into query text. Parameters cannot stand in for table names or sort directions; map those through a fixed allowlist.
+
+A pool reuses connections. In a long-running application, create a pool per process and close it on shutdown, not after every request. For a one-off script, `pool.end()` lets it exit cleanly. Budget the total across all instances: 20 instances × 10 connections already requests 200 server connections.
+
+## A complete transfer function for the lab
+
+Download [transfer.mjs](/labs/postgresql/transfer.mjs) beside the first script, or save the example below with that name. It uses integer minor units represented here as whole-number balances for simplicity; real money models need explicit currency and precision handling.
+
+```js
+import pg from 'pg';
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
+
+async function transfer(from, to, amount) {
+ if (![from,to,amount].every(Number.isSafeInteger) || amount <= 0 || from === to) {
+  throw new Error('Invalid transfer');
+ }
+ const client = await pool.connect();
+ try {
+  await client.query('BEGIN');
+  const locked = await client.query(
+   'SELECT id FROM handbook.accounts WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
+   [[from,to]]
+  );
+  if (locked.rowCount !== 2) throw new Error('Account not found');
+  const debit = await client.query(
+   'UPDATE handbook.accounts SET balance=balance-$1 WHERE id=$2 AND balance >= $1 RETURNING id',
+   [amount,from]
+  );
+  if (debit.rowCount !== 1) throw new Error('Insufficient balance');
+  const credit = await client.query(
+   'UPDATE handbook.accounts SET balance=balance+$1 WHERE id=$2 RETURNING id',
+   [amount,to]
+  );
+  if (credit.rowCount !== 1) throw new Error('Account not found');
+  await client.query('COMMIT');
+ } catch (error) {
+  await client.query('ROLLBACK');
+  throw error;
+ } finally {
+  client.release();
+ }
+}
+
+try {
+ await transfer(1,2,100);
+ console.table((await pool.query('SELECT * FROM handbook.accounts ORDER BY id')).rows);
+} finally {
+ await pool.end();
+}
+```
+
+Running this **commits** the transfer: on a fresh seed expect 900 and 600. To restore the starting balances in the isolated lab, transfer 100 back from 2 to 1. Do not reset balances in a real application.
+
+Every statement in a transaction uses the **same checked-out client**. Separate `pool.query` calls could land on different connections. This rule is documented in [node-postgres transactions](https://node-postgres.com/features/transactions). This lab deliberately excludes retries, authorization, idempotency, and ledger entries; add them before adapting it into a real transfer endpoint.
+
+## HTTP contracts before handlers
+
+For a practice inventory reservation operation, define behavior first:
+
+| Case | Expected outcome |
+| --- | --- |
+| Positive integer quantity and existing in-stock product | 201 with reservation ID and quantity |
+| Malformed or non-positive quantity | 400, no database mutation |
+| Missing authentication | 401 |
+| Authenticated user lacks permission | 403 |
+| Product absent | 404 |
+| Insufficient stock | 409, no partial reservation |
+| Unexpected database failure | 500 with generic response; detailed server log |
+
+Express handlers can call the same service and map typed errors to these responses. In Next.js, define a Route Handler in `app/api/reservations/route.ts` and export `POST`; keep the pool in a server-only module. Server Actions are another server entry point: validate and authorize them just as carefully. Never expose `DATABASE_URL` through a `NEXT_PUBLIC_` variable. Consult the installed Next.js documentation before using version-sensitive APIs.
+
+A reservation needs its own durable row and transaction with the stock update. A retry-safe API also needs an idempotency key scoped to the caller, a uniqueness rule, payload consistency checks, and a stored result. A client timeout does not prove the transaction failed.
+
+## Challenge · Prove rollback and release
+
+Change the destination ID to 999. Then force an exception after the debit and before the credit. Observe balances afterward. Finally try input such as `amina@example.test' OR true --` in the lookup script.
+
+<details>
+<summary>Worked checks</summary>
+
+A missing account fails before the debit. A forced exception after the debit must roll back it, leaving both balances unchanged. The `finally` block releases the client on success and failure. The injection-shaped email is a literal string and returns no match; it does not alter the WHERE clause.
+
+Add a temporary `throw new Error('Simulated failure')` immediately after the debit check to prove rollback, then remove it. Record starting balances before each experiment so previously committed transfers do not confuse the result.
+
+</details>
+
+**Exit checkpoint:** explain validation versus authorization versus constraints, and why a transaction cannot hop between pooled connections.
+
+## Continue with a complete application
+
+Build the [runnable reservation API](/docs/postgresql-handbook/api-project) to combine HTTP validation, transactional stock changes, idempotent retries, an outbox, migrations, and real integration tests.

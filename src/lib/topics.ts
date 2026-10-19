@@ -23,6 +23,14 @@ export interface Topic {
 
 export const topics: Topic[] = [
   {
+    slug: 'postgresql-handbook',
+    title: 'PostgreSQL Handbook',
+    description: 'From first query to production: a 12-week path with SQL labs, challenges, worked solutions, and three capstones.',
+    logo: PostgresLogo,
+    brand: { light: '#27645d', lightForeground: '#ffffff', dark: '#73c9b7', darkForeground: '#151a22' },
+    tags: ['Handbook', 'Hands-on labs', 'Challenges'],
+  },
+  {
     slug: 'listenyzen',
     title: 'Listenyzen Backend',
     description: 'Your English field guide to the codebase: architecture, schemas, access rules and the workflows behind the inbox.',

@@ -1,0 +1,101 @@
+---
+title: Debug slow and stuck production requests
+description: Separate pool waits, lock waits, slow plans, and maintenance pressure with bounded experiments.
+---
+
+## Start with where time is spent
+
+A request can wait for an application pool slot, establish a connection, wait on a lock, execute a query, transfer rows, or process results. A fast SQL plan does not explain a request that spent five seconds waiting for a free connection.
+
+Record request duration, pool checkout time, query duration, and result size separately. Use application names to identify clients. Avoid logging credentials, raw tokens, or unnecessary sensitive query parameters.
+
+| Symptom | First evidence | Likely next action |
+| --- | --- | --- |
+| Pool wait grows, database seems idle | Pool active/idle/waiting counts | Find unreleased clients or slow work holding them |
+| Query has lock wait | `pg_blocking_pids`, transaction age | Identify blocking transaction and its owner |
+| Query executes with high I/O | Plan, buffers, rows, indexes | Reduce work and inspect storage pressure |
+| Many idle-in-transaction sessions | `xact_start`, client identity | Fix missing commit/rollback and long transaction scopes |
+| Dead tuples rise, vacuum cannot catch up | Table stats and old snapshots | Investigate long transactions and maintenance capacity |
+| Database connection limit reached | Instance × pool budget | Bound pools and preserve administration headroom |
+
+## A reproducible lock timeout
+
+Use two sessions against the existing handbook seed, with `SET search_path TO handbook` in each.
+
+Session A:
+
+```sql
+BEGIN;
+UPDATE products SET stock=stock WHERE id=1;
+-- Leave this transaction open while running Session B.
+```
+
+Session B:
+
+```sql
+BEGIN;
+SET LOCAL lock_timeout='1s';
+SET LOCAL statement_timeout='3s';
+UPDATE products SET stock=stock-1 WHERE id=1;
+-- Expected: lock timeout; then explicitly recover.
+ROLLBACK;
+```
+
+Finish session A with `ROLLBACK`. Stock remains unchanged. A lock timeout bounds waiting for a lock; a statement timeout bounds overall statement execution. A pool checkout timeout is configured in the application, outside SQL. After a transaction error, rollback before returning the client to the pool. See [client connection defaults](https://www.postgresql.org/docs/18/runtime-config-client.html).
+
+Do not retry every timeout immediately: an unbounded retry storm increases load. Use limited attempts, jitter, a request deadline, and a defined policy for uncertain commit outcomes.
+
+## Find the blocking chain
+
+```sql
+SELECT pid,application_name,state,wait_event_type,wait_event,
+ now()-xact_start AS transaction_age,
+ pg_blocking_pids(pid) AS blockers
+FROM pg_stat_activity
+WHERE datname=current_database() ORDER BY xact_start NULLS LAST;
+```
+
+Run this from a third connection while B waits; increase the timeout if needed for observation. Permissions affect which details are visible. Identify the blocking session's purpose before canceling anything. Query cancellation and session termination have different effects; termination disconnects the client and aborts its transaction. Neither fixes a code path that will immediately repeat the problem.
+
+## Vacuum, bloat, and old snapshots
+
+Updates create new tuple versions. Cleanup needs to know that no relevant snapshot still needs the old ones. Long-running transactions and some replication-related retention can obstruct cleanup or increase retained WAL.
+
+```sql
+SELECT schemaname,relname,n_live_tup,n_dead_tup,
+ last_autovacuum,last_autoanalyze,autovacuum_count
+FROM pg_stat_user_tables
+ORDER BY n_dead_tup DESC;
+```
+
+These are estimates and historical observations, not a definitive bloat measurement. A table with free space may reuse it on later writes. Ordinary vacuum is not a promise to return disk space to the OS. `VACUUM FULL` rewrites and takes strong locks; schedule it only after measuring the need and alternatives. Do not disable autovacuum as a general performance fix.
+
+## Connection budget exercise
+
+Suppose the server allows 100 connections. Reserve 20 for administration, jobs, and migrations. Eight application instances can initially budget at most ten each. During a rolling deployment, sixteen simultaneous instances at ten each would exceed the budget. Autoscaling and deployment overlap belong in the calculation.
+
+A pool is a queue with a concurrency limit. Increasing it can move the queue into PostgreSQL and worsen contention. PgBouncer can help, but transaction pooling changes session assumptions; verify the behavior you depend on with your version and mode.
+
+## Challenge · Explain two misleading fixes
+
+A teammate proposes doubling every app pool because requests queue, then disabling autovacuum because it consumes I/O. What observations would justify or reject those changes?
+
+<details>
+<summary>Worked solution</summary>
+
+Check whether clients are leaked, whether transactions hold connections during remote calls, how many instances overlap, and whether PostgreSQL has spare CPU/I/O capacity. More connections cannot fix a leaked client and may worsen an overloaded database. For autovacuum, inspect dead tuples, long snapshots, vacuum progress, and table churn. Tune scheduling or per-table thresholds when evidence supports it; suppressing cleanup can increase bloat and transaction-ID risks.
+
+</details>
+
+## Challenge · Write a five-line incident note
+
+Record symptom, evidence, hypothesis, reversible action, and success criterion for the lock lab.
+
+<details>
+<summary>Worked solution</summary>
+
+Symptom: stock update waits. Evidence: B waits on a lock and reports A as blocker. Hypothesis: A's open transaction retains the row lock. Action: finish the known disposable A transaction with rollback. Success: B can retry and finish, while seed stock remains correct after its own rollback. Production intervention needs knowledge of the real transaction's business purpose; the lab's known disposable transaction is what makes this experiment safe.
+
+</details>
+
+**Exit checkpoint:** reproduce a lock wait, distinguish it from pool exhaustion, and name the measurements you would collect before changing server configuration.

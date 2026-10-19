@@ -1,0 +1,77 @@
+---
+title: The PostgreSQL Handbook
+description: A hands-on journey from your first table to reliable production systems. Read less passively. Build more deliberately.
+---
+
+## Your mission
+
+Build the database skills to answer three questions confidently: **Is this data correct? Why is this query slow? What happens when two requests arrive together?**
+
+This handbook expands the eight stages in your [shared PostgreSQL roadmap](https://chatgpt.com/share/6ad63062-4574-83ec-bae7-dc7bd10760e1). It assumes basic JavaScript and terminal familiarity, but no SQL experience. Examples use English and a familiar Dhaka shop dataset. The [Bangla foundation lessons](/docs/postgresql) remain available alongside it.
+
+You will work through a school system, an online shop, and a tenant-aware support system. The SQL labs use PostgreSQL 17 or 18; the operational examples specify where environment setup matters. SQL runs in your local PostgreSQL, not inside this page.
+
+## The learning loop
+
+1. **Understand:** read the mental model and trace one example.
+2. **Predict:** write down the output before running the query.
+3. **Try:** spend 15–30 minutes on a challenge without opening the solution.
+4. **Check:** compare rows, constraints, and failure behavior, not just syntax.
+5. **Explain:** describe the result aloud, then change one requirement.
+
+A chapter is complete when you can solve its challenge again tomorrow without copying. Checking a box records your self-assessment; it does not grade your SQL.
+
+<HandbookProgress />
+
+## A 12-week route
+
+| Week | Read and practice | Evidence to keep |
+| --- | --- | --- |
+| 1 | [Lab setup](/docs/postgresql-handbook/lab), [foundations](/docs/postgresql-handbook/foundations) | A working database and a type-choice explanation |
+| 2 | [SQL essentials](/docs/postgresql-handbook/sql) | Filtering, CRUD, and grouped reports |
+| 3 | [Relational design](/docs/postgresql-handbook/design) | School schema and rejection tests |
+| 4 | [Joins and reporting](/docs/postgresql-handbook/joins) | Revenue report with zero-order customers |
+| 5 | [Advanced SQL](/docs/postgresql-handbook/advanced-sql) | Rankings, cursor pages, recursive tree |
+| 6 | [Transactions and concurrency](/docs/postgresql-handbook/concurrency) | Two-session race demonstration |
+| 7–8 | [Performance lab](/docs/postgresql-handbook/performance) | Before/after plans on a million rows |
+| 9 | [Backend integration](/docs/postgresql-handbook/backend) | Parameterized queries and rollback proof |
+| 10 | [ORMs and migrations](/docs/postgresql-handbook/orm-migrations) | A reviewed migration and data test |
+| 11 | [Production operations](/docs/postgresql-handbook/production) | Restore into a separate database |
+| 12 | [Scaling and isolation](/docs/postgresql-handbook/scaling), [capstones](/docs/postgresql-handbook/projects) | Tenant leakage tests and a final demo |
+
+Plan for 1–2 hours a day, five days a week. Spend roughly 40% reading and 60% experimenting. Repeat a week if you cannot explain its exit checkpoint. Twelve weeks is a study structure, not a promise of mastery.
+
+## Three milestones
+
+<Cards>
+<Card title="01 · School registrar" href="/docs/postgresql-handbook/projects#project-1-school-registrar">
+Model students, courses, enrollments, and grades. Prove that invalid records cannot enter.
+</Card>
+<Card title="02 · Reliable checkout" href="/docs/postgresql-handbook/projects#project-2-reliable-checkout">
+Reserve inventory, calculate historical totals, and survive concurrent requests.
+</Card>
+<Card title="03 · Tenant-aware support" href="/docs/postgresql-handbook/projects#project-3-tenant-aware-support">
+Keep organizations isolated and investigate a slow inbox query.
+</Card>
+</Cards>
+
+## What “everything” means here
+
+Every area of the shared roadmap has a place: SQL, modeling, concurrency, indexing, application integration, migrations, security, backups, and scaling. Core topics include executable exercises; advanced operational topics include decision exercises and runbooks. Replication, PITR, and deployment require infrastructure beyond a single local database. This is a developer handbook, not an exhaustive replacement for the PostgreSQL manual.
+
+Use the [reference and coverage map](/docs/postgresql-handbook/reference) to revisit vocabulary and find the relevant official documentation.
+
+## Go deeper after the core path
+
+Add these six practical modules as weeks 13–16, or study them alongside the relevant core chapters. This is an extension of the original 12-week foundation, not extra work squeezed into the same schedule.
+
+| Module | What you will prove |
+| --- | --- |
+| [Advanced modeling](/docs/postgresql-handbook/advanced-modeling) | Correct time boundaries, currency semantics, and overlapping-booking rejection |
+| [Reliable workflows](/docs/postgresql-handbook/reliable-workflows) | Retry-safe operations, outbox recovery, and soft-delete conflicts |
+| [Search](/docs/postgresql-handbook/search) | Full-text relevance, typo tolerance, and safe filtering |
+| [Bulk data](/docs/postgresql-handbook/bulk-data) | Classified import failures and resumable backfills |
+| [Operations debugging](/docs/postgresql-handbook/operations-debugging) | Evidence that separates pool, lock, and query waits |
+| [Runnable API project](/docs/postgresql-handbook/api-project) | A working API, real integration tests, and local deployment |
+
+The API project is available as a [downloadable source bundle](/labs/postgresql/reservation-api.zip). Its single-actor identity model and local container settings are deliberately scoped for learning; the chapter explains the remaining deployment responsibilities.

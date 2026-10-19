@@ -1,0 +1,86 @@
+---
+title: Field reference and roadmap coverage
+description: Find every topic from the shared roadmap, revisit key distinctions, and choose your next experiment.
+---
+
+## Coverage map
+
+| Roadmap area | Handbook home | Practice evidence |
+| --- | --- | --- |
+| Database, DBMS, RDBMS; SQL/NoSQL; PostgreSQL/MySQL/MongoDB | Foundations | Explain table and document choices |
+| Server/database/schema/table; installation; psql/pgAdmin | Lab setup | Connect, inspect, reconnect |
+| Types, UUID/identity, NULL | Foundations and design | Predict NULL results and choose types |
+| DDL, CRUD, predicates, functions, grouping, RETURNING | SQL essentials | Inventory report and 100-row catalog |
+| Keys, constraints, relationships, delete rules, normalization | Relational design | Registrar schema and failure cases |
+| Joins, self joins, subqueries, EXISTS, CTEs | Joins and advanced SQL | Revenue report and hierarchy |
+| Recursive CTEs, windows, sets, views, materialized views | Advanced SQL | Category winners and recursion |
+| JSONB, upsert, cursors, functions, triggers | Advanced SQL | JSON query, cursor pages, timestamp trigger |
+| ACID, MVCC, isolation, savepoints, locks, deadlocks, retries | Concurrency | Two-session lock and transfer labs |
+| Optimistic/pessimistic concurrency, advisory locks, SKIP LOCKED | Concurrency | Version check and queue claim |
+| B-tree/composite/unique/partial/expression/GIN/GiST/BRIN indexes | Performance | Million-row plan comparison |
+| EXPLAIN, statistics, VACUUM, N+1, cursor/offset, pg_stat_statements | Performance | Recorded evidence and interpretation |
+| Node pg, pooling, parameters, repository/service, validation | Backend integration | Runnable lookup and transfer scripts |
+| Express, Next.js handlers/actions, API boundaries | Backend integration | Contract and authorization checklist |
+| Drizzle, Prisma, schema/migrations, tests/seeds | ORMs and migrations | Schema translation and migration exercise |
+| Roles, least privilege, TLS, environment config, PgBouncer | Production | Reader role rejection test |
+| pg_dump/restore, PITR, WAL, monitoring, managed deployments | Production | Restore drill and recovery decision |
+| Replicas, partitioning, autovacuum, safe rollout | Scaling, production, migrations | Tenant test, partition lab, rollout plan |
+| School, e-commerce, multi-tenant SaaS | Capstones | Acceptance criteria and reference solutions |
+
+Some infrastructure topics are conceptual decision labs, not a preconfigured production deployment. To go deeper, choose a concrete environment and repeat the operational procedure there with its own recovery and security requirements.
+
+## Production-depth coverage
+
+| Area | New chapter | Evidence |
+| --- | --- | --- |
+| Time zones, money, range/exclusion constraints, case-insensitive uniqueness | [Advanced modeling](/docs/postgresql-handbook/advanced-modeling) | Boundary predictions and conflict rejection |
+| Idempotency, outbox, soft deletion, audit history | [Reliable workflows](/docs/postgresql-handbook/reliable-workflows) | Crash-window analysis and restoration conflict |
+| Full-text search and pg_trgm | [Search](/docs/postgresql-handbook/search) | Weighted search and typo matching |
+| COPY, staging, rejected rows, resumable batches | [Bulk data](/docs/postgresql-handbook/bulk-data) | Import classification and rerunnable merge |
+| Pool exhaustion, timeouts, blockers, bloat, autovacuum | [Operations debugging](/docs/postgresql-handbook/operations-debugging) | Two-session incident and connection budget |
+| Runnable HTTP service, migrations, tests, local deployment | [API project](/docs/postgresql-handbook/api-project) | Real database/HTTP integration suite |
+
+## Distinctions worth remembering
+
+| Often confused | Difference |
+| --- | --- |
+| Database vs DBMS | Organized data vs software that manages it |
+| SQL vs PostgreSQL | Language vs database product |
+| NULL vs zero/empty | Unknown/absent vs known value |
+| WHERE vs HAVING | Row filter vs group filter |
+| GROUP BY vs window | Collapses rows vs annotates rows |
+| Primary key vs identity | Uniqueness rule vs value generation |
+| Constraint vs validation | Durable rule for all writers vs boundary feedback |
+| Transaction vs serializable behavior | Atomic grouping vs concurrency guarantee |
+| Index vs cache | Access structure vs stored/reused data or results |
+| Migration vs seed | Structure transition vs data population |
+| Replica vs backup | Following changes vs recoverable historical state |
+| Authentication vs authorization | Who you are vs what you may do |
+
+## Retrieval practice
+
+Close the handbook and answer these, then use the linked chapter to check yourself:
+
+1. Why does `COUNT(city)` return 3 while `COUNT(*)` returns 4? **NULL is not counted by the column aggregate.**
+2. Why can a left join lose Sami? **A WHERE predicate on a missing right row can reject the NULL-extended row.**
+3. Why snapshot unit prices? **Past orders must retain the agreed price after catalog changes.**
+4. Why does a transaction use one pool client? **Transaction state belongs to one database session.**
+5. Why might a sequential scan be correct? **Reading a large fraction of a table can cost less than indexed access.**
+6. Why test RLS as a non-owner? **Owners and privileged roles can bypass its filtering.**
+7. Why isn't a replica enough for recovery? **It can replicate the same unwanted changes.**
+8. What proves a backup works? **A successful restore plus data and application checks within recovery targets.**
+
+Revisit after one day, one week, and one month. Change the dataset: add ties, missing relations, empty groups, and concurrent updates. These expose assumptions that a happy-path example can hide.
+
+## Primary references
+
+The handbook is based on your [shared roadmap](https://chatgpt.com/share/6ad63062-4574-83ec-bae7-dc7bd10760e1), with original explanations and exercises. Use versioned PostgreSQL documentation to check exact syntax and operational details:
+
+- [PostgreSQL tutorial](https://www.postgresql.org/docs/18/tutorial.html) and [SQL language](https://www.postgresql.org/docs/18/sql.html).
+- [Data definition](https://www.postgresql.org/docs/18/ddl.html), [queries](https://www.postgresql.org/docs/18/queries.html), and [functions](https://www.postgresql.org/docs/18/functions.html).
+- [Concurrency](https://www.postgresql.org/docs/18/mvcc.html), [indexes](https://www.postgresql.org/docs/18/indexes.html), and [EXPLAIN](https://www.postgresql.org/docs/18/using-explain.html).
+- [Backup](https://www.postgresql.org/docs/18/backup.html), [replication](https://www.postgresql.org/docs/18/high-availability.html), and [server administration](https://www.postgresql.org/docs/18/admin.html).
+- [node-postgres queries](https://node-postgres.com/features/queries) and [transactions](https://node-postgres.com/features/transactions).
+- [Drizzle documentation](https://orm.drizzle.team/docs/overview) and [Prisma documentation](https://www.prisma.io/docs).
+
+Keep a decision journal: the question, your prediction, the SQL, observed results, and what you would change next time. That record turns repeated practice into reusable engineering judgment.

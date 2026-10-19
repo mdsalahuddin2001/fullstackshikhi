@@ -1,0 +1,93 @@
+---
+title: Import and backfill without guessing
+description: COPY, staging tables, rejected records, resumable batches, and verification of large changes.
+---
+
+## Throughput is not the only success criterion
+
+An import must preserve meaning, report rejected data, and support a retry without duplicating effects. Avoid sending one INSERT per row over the network for large datasets. `COPY` streams rows efficiently; staging lets you inspect them before changing application tables.
+
+Server-side `COPY ... FROM '/path'` reads a path on the **database server** and has elevated file-access requirements. psql's `\copy` reads a path on the **client** and streams it over the connection. Managed databases commonly favor client-side transfer. See [COPY](https://www.postgresql.org/docs/18/sql-copy.html).
+
+## Stage text first, classify second
+
+Run this complete block in psql; `\copy` and its input terminator are psql-specific. The temporary tables disappear when the session ends.
+
+```sql
+CREATE TEMP TABLE import_raw (line_no integer GENERATED ALWAYS AS IDENTITY, sku text, price_text text);
+\copy import_raw(sku,price_text) FROM STDIN WITH (FORMAT csv, HEADER true)
+sku,price
+P-1,1200.00
+P-2,broken
+P-3,-50
+P-1,1300.00
+P-4,250.00
+\.
+CREATE TEMP VIEW classified_import AS
+SELECT *,
+ CASE
+  WHEN sku IS NULL OR btrim(sku)='' THEN 'missing SKU'
+  WHEN price_text IS NULL OR price_text !~ '^[0-9]{1,8}([.][0-9]{1,2})?$' THEN 'invalid price'
+  WHEN count(*) OVER (PARTITION BY sku)>1 THEN 'duplicate SKU in file'
+  ELSE NULL
+ END AS rejection
+FROM import_raw;
+SELECT line_no,sku,rejection FROM classified_import ORDER BY line_no;
+```
+
+Expected: both P-1 rows are duplicates; P-2 and P-3 have invalid prices; P-4 is accepted. The bounded numeric pattern also makes the later cast safe for `numeric(10,2)`. A real importer may accept more numeric formats, but must validate bounds and scale explicitly. Malformed CSV structure can fail before staging; keep the original file and report that separately from domain rejection.
+
+## Merge with a documented conflict policy
+
+```sql
+CREATE TEMP TABLE inventory_import (sku text PRIMARY KEY, price numeric(10,2) NOT NULL CHECK(price>=0));
+INSERT INTO inventory_import(sku,price)
+SELECT sku,price_text::numeric(10,2) FROM classified_import WHERE rejection IS NULL
+ON CONFLICT(sku) DO UPDATE SET price=EXCLUDED.price;
+SELECT * FROM inventory_import ORDER BY sku;
+```
+
+Expected P-4 → 250.00. Repeating this merge leaves one row. The policy is “accepted incoming price replaces current price”; that is not always appropriate for stale files. Persist an import ID, source checksum, row counts, and rejected records when building a real pipeline. An upsert does not prevent an older import from overwriting a newer value unless you enforce freshness.
+
+## Backfill in bounded, resumable batches
+
+A giant update can produce long locks, WAL growth, replica lag, and dead tuples. Work in batches with a predicate that identifies unfinished rows:
+
+```sql
+CREATE TEMP TABLE profiles (id integer PRIMARY KEY, name text NOT NULL, display_name text);
+INSERT INTO profiles SELECT n,'Learner '||n,NULL FROM generate_series(1,25) n;
+WITH batch AS (
+ SELECT id FROM profiles WHERE display_name IS NULL
+ ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 10
+)
+UPDATE profiles p SET display_name=p.name FROM batch WHERE p.id=batch.id;
+SELECT count(*) AS remaining FROM profiles WHERE display_name IS NULL;
+```
+
+Expected remaining: 15. Repeat twice to reach zero; another run changes zero rows. Each production batch should commit separately, with bounded retries and monitoring. Multiple workers can use `SKIP LOCKED`, but one worker returning zero rows does not prove global completion while another holds locks. Verify the final invariant after workers settle.
+
+Deploy application writes that populate the new field before declaring completion. Otherwise new NULLs can arrive as quickly as you backfill. Keep the old read path until validation passes, then enforce the final constraint.
+
+## Challenge · A crash and a conflicting file
+
+The importer crashes after the merge commits but before writing “completed” to an external dashboard. A retry receives the same file. Separately, a newer file changed P-4 to 300 before an older file was retried. Which guarantees does the shown upsert provide, and what is missing?
+
+<details>
+<summary>Worked solution</summary>
+
+Replaying the same accepted SKU and price does not create a second row. But replaying old data can overwrite the newer price. Track the source version or an authoritative effective timestamp and reject stale updates, or record each import's completion transactionally and replay its result. Keep a stable source/import identifier; a filename alone is often insufficient. Database atomicity cannot atomically update an unrelated dashboard—use an outbox if that notification matters.
+
+</details>
+
+## Challenge · Check a backfill beyond row count
+
+What else should you verify before making `display_name` required?
+
+<details>
+<summary>Worked solution</summary>
+
+Confirm no NULLs remain after concurrent writers finish, confirm new writes populate it, compare sampled values with the intended transformation, check truncation/encoding edge cases, and observe locks, WAL, and replica lag. A zero NULL count proves presence, not that the names are meaningful. Test the schema change on realistic older data and allow a rollback window before removing legacy fields.
+
+</details>
+
+**Exit checkpoint:** import the five-row sample, explain every rejection, rerun the merge, and resume the batch update after stopping halfway.

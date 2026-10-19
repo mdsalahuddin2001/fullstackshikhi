@@ -1,0 +1,104 @@
+---
+title: ORMs, migrations, and database tests
+description: Use abstractions deliberately while keeping SQL and schema changes reviewable.
+---
+
+## An ORM is a translation layer
+
+Drizzle keeps schema and query building close to SQL in TypeScript. Prisma uses its schema and generated client to expose model-oriented operations. Either still needs correct keys, joins, transactions, and indexes. Choose one for a practice application; do not introduce both to solve the same data access problem.
+
+| Task | Raw SQL | Drizzle concept | Prisma concept |
+| --- | --- | --- | --- |
+| Define structure | `CREATE TABLE` | `pgTable` schema | `model` in Prisma schema |
+| Retrieve related records | Join | SQL-like joins or relational queries | Relation selection/include |
+| Atomic operation | BEGIN/COMMIT | Transaction callback | Transaction API |
+| Change schema | Versioned SQL | Generated/reviewed migrations | Generated/reviewed migrations |
+| Specialized query | Direct SQL | SQL escape hatch | Parameterized raw query API |
+
+Read emitted SQL. A convenient relation call might run multiple queries, and loading every relation can over-fetch. Keep pagination and filters near the database.
+
+## Translate a schema, then inspect the result
+
+These are illustrative schema fragments for a separate practice app, not instructions to overwrite the existing lab tables.
+
+```ts
+// Drizzle schema fragment
+import { pgTable, integer, text } from 'drizzle-orm/pg-core';
+export const learners = pgTable('learners', {
+ id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+ email: text('email').notNull().unique(),
+ name: text('name').notNull(),
+});
+```
+
+```prisma
+// Prisma schema fragment
+model Learner {
+  id    Int    @id @default(autoincrement())
+  email String @unique
+  name  String
+}
+```
+
+They express similar intent, but may produce different object names and sequence/identity implementation. Review the generated migration instead of assuming identical DDL. Follow the setup for the version you install: [Drizzle overview](https://orm.drizzle.team/docs/overview), [Prisma documentation](https://www.prisma.io/docs). Package and CLI configuration can change independently of the database principles here.
+
+## Migrations are ordered changes, not startup guesses
+
+A migration records a schema transition. A seed loads example/reference data. A migration history records what has run. Keep development and production credentials separate; a destructive reset command belongs only in disposable databases.
+
+Practice a reversible additive change:
+
+```sql
+BEGIN;
+ALTER TABLE handbook.customers ADD COLUMN preferred_language text;
+UPDATE handbook.customers SET preferred_language='en'
+WHERE preferred_language IS NULL;
+ALTER TABLE handbook.customers ALTER COLUMN preferred_language SET DEFAULT 'en';
+ALTER TABLE handbook.customers ALTER COLUMN preferred_language SET NOT NULL;
+SELECT name,preferred_language FROM handbook.customers ORDER BY id;
+ROLLBACK;
+```
+
+On this tiny table, all four rows become `en`. On a huge table, a single backfill transaction can create lock, WAL, and bloat pressure. Use a staged production rollout instead of copying this lab blindly.
+
+## Expand, backfill, switch, contract
+
+When renaming a live field:
+
+1. Add a compatible new field and deploy code able to handle both versions.
+2. Backfill in bounded batches with a resumable predicate.
+3. Keep old/new writes consistent during overlap and verify parity.
+4. Switch reads, then stop legacy writes after old instances are gone.
+5. Remove the old field in a later migration after the rollback window.
+
+`CREATE INDEX CONCURRENTLY` reduces blocking of writes but has restrictions, including not running inside a transaction block. Your migration runner must support that mode. Failed concurrent builds can leave invalid indexes requiring inspection. “Zero downtime” is a rollout property, not a magic migration flag.
+
+## Test behavior against PostgreSQL
+
+Use an isolated test database with production-like schema migrations. Test constraints, results, and rollback behavior. SQLite or mocked query functions do not prove PostgreSQL locking or SQL semantics.
+
+| Test | Assertion |
+| --- | --- |
+| Duplicate enrollment | Unique violation; only one enrollment remains |
+| Bad foreign key | Insert rejected |
+| Negative stock | Check violation |
+| Failed checkout after stock update | Stock and order records unchanged |
+| Concurrent purchase of last unit | Exactly one success, stock zero |
+| Migration on existing data | Rows preserved and new queries work |
+
+Rollback-per-test helps when every query uses the test's connection. If application code uses other pooled connections, that outer rollback will not undo their work; use dedicated databases/schemas or explicit fixture cleanup instead.
+
+## Challenge · A required field without losing old rows
+
+The product manager wants a required customer nickname. Old rows have none. Define a staged migration and an acceptance check. Why is immediately adding `nickname text NOT NULL` without a default unsafe?
+
+<details>
+<summary>Worked solution</summary>
+
+Add a nullable `nickname`, deploy code that writes it for new/updated customers, and backfill old rows from `name` or another approved rule. Repeat backfill until no rows are NULL; handle concurrent old writers before enforcing NOT NULL. Verify `SELECT count(*) FROM handbook.customers WHERE nickname IS NULL` is zero, and test both old/new app versions during overlap. Then enforce the constraint and remove transitional fallbacks.
+
+An immediate required column lacks values for existing rows and can fail. Inventing a placeholder might satisfy the constraint but violate the product requirement. Schema validity and semantic validity are different checks.
+
+</details>
+
+**Exit checkpoint:** review a generated migration line by line and prove it works on both an empty database and a database containing representative older records.

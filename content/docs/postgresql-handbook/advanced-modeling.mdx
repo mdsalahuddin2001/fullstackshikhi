@@ -1,0 +1,114 @@
+---
+title: Model time, money, and competing claims
+description: Time-zone boundaries, exact amounts, case-insensitive identities, and range constraints that survive concurrency.
+---
+
+## Meaning comes before the column type
+
+Prerequisites: foundations, design, and transactions. Use a fresh psql session in the learning database. These examples use temporary tables; `btree_gist` is an optional installed extension requiring appropriate privileges.
+
+A field named `date` is ambiguous: a birthday, a delivery day, and an event instant have different meanings. Likewise, an amount without a currency and rounding rule is an incomplete model.
+
+## Store an instant; retain the zone when it matters
+
+```sql
+SELECT timestamptz '2026-01-15 09:00:00 Asia/Dhaka'
+       AT TIME ZONE 'UTC' AS utc_time;
+-- 2026-01-15 03:00:00
+```
+
+For “9 AM every Monday in New York,” store local scheduling intent plus `America/New_York`; the UTC offset changes over the year. Decide explicitly what happens to nonexistent or repeated local times during daylight-saving transitions. A fixed `+06:00` offset is not a substitute for a region's time-zone rules.
+
+A local day is not always 24 hours. Translate each local boundary separately:
+
+```sql
+SELECT
+ timestamp '2026-03-08 00:00:00' AT TIME ZONE 'America/New_York' AS start_instant,
+ timestamp '2026-03-09 00:00:00' AT TIME ZONE 'America/New_York' AS end_instant,
+ (timestamp '2026-03-09 00:00:00' AT TIME ZONE 'America/New_York') -
+ (timestamp '2026-03-08 00:00:00' AT TIME ZONE 'America/New_York') AS duration;
+```
+
+Expected duration: 23 hours. Filter events with `occurred_at >= start_instant AND occurred_at < end_instant`. This half-open boundary avoids overlap between consecutive reporting days.
+
+## Exact arithmetic is only part of money correctness
+
+Two reasonable representations are integer minor units with explicit currency, or `numeric` with a defined scale. Not every currency uses two decimal places. Define conversion rates, rounding boundaries, refunds, and allocation of rounding remainders. Avoid converting an arbitrarily large bigint or exact decimal into a JavaScript number.
+
+```sql
+CREATE TEMP TABLE invoice_lines (
+ id integer PRIMARY KEY,
+ currency text NOT NULL CHECK (currency IN ('BDT','USD')),
+ quantity integer NOT NULL CHECK (quantity > 0),
+ unit_minor bigint NOT NULL CHECK (unit_minor >= 0)
+);
+INSERT INTO invoice_lines VALUES (1,'BDT',3,1999);
+SELECT currency, sum(quantity::numeric * unit_minor) AS total_minor
+FROM invoice_lines GROUP BY currency;
+```
+
+Expected BDT total: 5997 minor units. Group by currency; adding BDT and USD without conversion is meaningless. The cast avoids bigint multiplication overflow before aggregation. Keep an immutable ledger for accounting history instead of treating a mutable balance as the whole story.
+
+## Case-insensitive uniqueness is a product decision
+
+```sql
+CREATE TEMP TABLE members (
+ id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ email text NOT NULL,
+ deleted_at timestamptz
+);
+CREATE UNIQUE INDEX members_active_email
+ON members(lower(email)) WHERE deleted_at IS NULL;
+INSERT INTO members(email) VALUES ('Amina@example.test');
+```
+
+A second active `amina@example.test` conflicts. Choose a normalization policy and use it consistently on writes and lookups. `lower()` depends on collation/language behavior and is not a complete international identity policy. `citext` and suitable collations are alternatives to evaluate. A partial unique index permits reuse after soft deletion; restoring the old record may then conflict. That is a workflow decision, not an index bug.
+
+## Represent occupied time as a range
+
+A check-then-insert overlap query races under concurrent requests. Put the invariant into an exclusion constraint:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE TEMP TABLE bookings (
+ id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ room_id integer NOT NULL,
+ during tstzrange NOT NULL,
+ CHECK (NOT isempty(during) AND NOT lower_inf(during) AND NOT upper_inf(during)),
+ EXCLUDE USING gist (room_id WITH =, during WITH &&)
+);
+INSERT INTO bookings(room_id,during) VALUES
+ (1,tstzrange('2026-01-15T09:00:00Z','2026-01-15T10:00:00Z','[)')),
+ (1,tstzrange('2026-01-15T10:00:00Z','2026-01-15T11:00:00Z','[)'));
+```
+
+Adjacent bookings are valid because the end is excluded. The constraint rejects overlapping ranges for the same room, including competing writes. It does not encode opening hours or the user's permission to book. See [PostgreSQL ranges and exclusion constraints](https://www.postgresql.org/docs/18/rangetypes.html).
+
+## Challenge · Three boundaries
+
+Predict whether each succeeds: same room at 09:30–10:30; different room at 09:30–10:30; same room at 11:00–12:00. Then explain why a local-day report built with `start + interval '24 hours'` can be wrong.
+
+<details>
+<summary>Hint</summary>
+
+Both exclusion comparisons must conflict. For the time-zone question, run the March example above.
+
+</details>
+
+<details>
+<summary>Worked solution</summary>
+
+The first booking fails; the second and third succeed. Test the failure separately in autocommit mode:
+
+```sql
+INSERT INTO bookings(room_id,during) VALUES
+(1,tstzrange('2026-01-15T09:30:00Z','2026-01-15T10:30:00Z','[)'));
+```
+
+The expected SQLSTATE is `23P01` (exclusion violation). To compare two sessions, use a dedicated permanent table instead of a temporary one. One conflicting insertion waits for the other's outcome; both overlapping bookings cannot commit.
+
+On a daylight-saving boundary, the interval between local midnights can be 23 or 25 hours. Calculate the next local midnight in the named zone instead of assuming 24 elapsed hours.
+
+</details>
+
+**Exit checkpoint:** explain the difference between an instant and recurring local intent, demonstrate overlapping-booking rejection, and document your application's currency and email-normalization rules.

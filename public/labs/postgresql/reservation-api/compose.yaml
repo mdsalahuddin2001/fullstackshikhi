@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: local-lab-only
+      POSTGRES_DB: reservation_lab
+    volumes:
+      - reservation-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d reservation_lab"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  migrate:
+    build: .
+    command: ["node", "migrate.mjs"]
+    environment:
+      DATABASE_URL: postgres://postgres:local-lab-only@db:5432/reservation_lab
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    build: .
+    ports: ["127.0.0.1:3100:3100"]
+    environment:
+      DATABASE_URL: postgres://postgres:local-lab-only@db:5432/reservation_lab
+      LAB_API_TOKEN: local-learning-token
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+volumes:
+  reservation-data:

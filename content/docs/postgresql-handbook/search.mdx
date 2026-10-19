@@ -1,0 +1,88 @@
+---
+title: Build search that matches user intent
+description: Full-text search, weighted ranking, typo tolerance, and index-aware queries.
+---
+
+## Choose the question before the index
+
+An exact identifier lookup, a substring match, a linguistic search, and a misspelled name are different problems. B-tree equality helps an email lookup. `ILIKE '%term%'` asks about substrings. Full-text search works with normalized terms and language rules. Trigrams compare overlapping character fragments and can help with typos.
+
+Use a fresh learning session. Full-text search is built in; the trigram lab needs the `pg_trgm` extension and permission to install it.
+
+## Build a searchable document
+
+```sql
+CREATE TEMP TABLE articles (
+ id integer PRIMARY KEY,
+ title text NOT NULL,
+ body text NOT NULL,
+ document tsvector GENERATED ALWAYS AS (
+  setweight(to_tsvector('english',title),'A') ||
+  setweight(to_tsvector('english',body),'B')
+ ) STORED
+);
+INSERT INTO articles(id,title,body) VALUES
+ (1,'PostgreSQL indexes','Index design makes selective database queries faster.'),
+ (2,'Cooking rice','Wash rice before cooking.'),
+ (3,'Database transactions','A PostgreSQL transaction keeps related changes atomic.');
+CREATE INDEX articles_document_gin ON articles USING gin(document);
+
+SELECT id,title,ts_rank(document,websearch_to_tsquery('english','database queries')) AS rank
+FROM articles
+WHERE document @@ websearch_to_tsquery('english','database queries')
+ORDER BY rank DESC,id;
+```
+
+Expected match: article 1. Search configuration is explicit and consistent on both sides. The generated column updates when text changes; title weight A ranks title matches more strongly under the ranking function's default weights. Ranking is not a substitute for authorization or pagination. See the [full-text table and index reference](https://www.postgresql.org/docs/18/textsearch-tables.html).
+
+For actual application inputs, bind the search text as a query parameter. `websearch_to_tsquery` accepts a user-oriented search syntax, but it does not correct arbitrary spelling mistakes. An English dictionary is not an appropriate assumption for Bangla content: choose supported configurations or evaluate a language-specific strategy with real examples. The `simple` configuration preserves terms without English stemming; it is not a complete multilingual search engine.
+
+## Add typo tolerance where it helps
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE TEMP TABLE search_products(id integer PRIMARY KEY,name text NOT NULL);
+INSERT INTO search_products VALUES (1,'keyboard'),(2,'mouse'),(3,'monitor');
+CREATE INDEX search_products_name_trgm ON search_products USING gin(name gin_trgm_ops);
+SELECT id,name,similarity(name,'keybord') AS score
+FROM search_products WHERE name % 'keybord'
+ORDER BY score DESC,id;
+```
+
+Expected best match: keyboard under the default similarity threshold. `%` filters by the configured threshold. `similarity()` scores the result; simply ordering all rows by a score can still do substantial work. Index benefit depends on operator, selectivity, text length, and table size. A tiny lab table may correctly use a sequential scan. See [pg_trgm](https://www.postgresql.org/docs/18/pgtrgm.html).
+
+## Bound the workload and preserve access control
+
+Limit search length and page size. Apply tenant/access predicates in the same query. Decide how to handle empty queries and stopword-only queries. Use stable secondary ordering and measure `EXPLAIN (ANALYZE, BUFFERS)` on representative data. For ranked results that change as documents change, cursor pagination needs a defined consistency policy; storing a search snapshot may be appropriate for long-lived exports.
+
+Do not return raw HTML snippets from `ts_headline` directly into an HTML sink. Document contents may contain markup; escape untrusted content and deliberately render approved highlighting. Parameterized SQL protects query structure, not the browser's HTML interpretation.
+
+## Challenge · Diagnose three empty searches
+
+Why might `keybord`, an English stopword-only query, and a Bangla query each return nothing in an English full-text index? Which tool would you try next for each?
+
+<details>
+<summary>Worked solution</summary>
+
+`keybord` may not normalize to the stored keyboard term; use an explicit trigram fallback for names and measure false positives. Stopwords can produce an empty full-text query; define a useful UI response instead of scanning all documents. Bangla content needs a tested language configuration or search strategy, not an assumption that English stemming applies. Preserve authorization on every fallback path.
+
+</details>
+
+## Challenge · Prove the generated column stays fresh
+
+Change article 2 to discuss database queries. Rerun the search and predict which IDs match.
+
+<details>
+<summary>Worked solution</summary>
+
+```sql
+UPDATE articles SET body='Database queries need useful indexes.' WHERE id=2;
+SELECT id FROM articles
+WHERE document @@ websearch_to_tsquery('english','database queries') ORDER BY id;
+```
+
+Expected IDs: 1 and 2. Article 3 mentions database in its title but does not include the query term, so this AND-style search does not match it. The generated vector is maintained by the database; application code need not remember to update a second field.
+
+</details>
+
+**Exit checkpoint:** distinguish exact, substring, linguistic, and fuzzy search; demonstrate matching and ranking; show where authorization is applied.

@@ -1,0 +1,108 @@
+---
+title: Isolate tenants and scale deliberately
+description: Tenant keys, row-level security, partitioning, replicas, and when each tool helps.
+---
+
+## Scale the bottleneck you actually have
+
+Slow queries call for query and index investigation. Too many connections call for a connection budget and pooling. Read-heavy workloads may benefit from replicas if stale reads are acceptable. Retention-heavy time-series data may benefit from partitioning. None of these fixes an incorrect transaction.
+
+A read replica can lag. Reading immediately after a write from a replica may show the old value; route consistency-sensitive reads to the primary or use an explicit consistency strategy. Account for this before moving all reads to replicas.
+
+## Tenant identity belongs in relationships
+
+In a shared-table SaaS, every tenant-owned row needs a tenant key. An application-level filter can be accidentally omitted. Composite foreign keys prevent relationships that cross organizations, and row-level security can add defense in depth.
+
+This lab uses its own schema and role and runs as your learning database administrator:
+
+```sql
+CREATE SCHEMA tenant_lab;
+CREATE TABLE tenant_lab.organizations (id integer PRIMARY KEY, name text NOT NULL);
+CREATE TABLE tenant_lab.tickets (
+ tenant_id integer REFERENCES tenant_lab.organizations(id),
+ id integer NOT NULL,
+ subject text NOT NULL,
+ status text NOT NULL DEFAULT 'open',
+ created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY (tenant_id,id)
+);
+CREATE TABLE tenant_lab.comments (
+ tenant_id integer NOT NULL,
+ ticket_id integer NOT NULL,
+ id integer NOT NULL,
+ body text NOT NULL,
+ PRIMARY KEY (tenant_id,id),
+ FOREIGN KEY (tenant_id,ticket_id) REFERENCES tenant_lab.tickets(tenant_id,id)
+);
+INSERT INTO tenant_lab.organizations VALUES (1,'Alpha'),(2,'Beta');
+INSERT INTO tenant_lab.tickets(tenant_id,id,subject)
+VALUES (1,101,'Alpha private ticket'),(2,202,'Beta private ticket');
+CREATE ROLE handbook_tenant_app NOLOGIN;
+GRANT USAGE ON SCHEMA tenant_lab TO handbook_tenant_app;
+GRANT SELECT,INSERT,UPDATE,DELETE ON tenant_lab.tickets TO handbook_tenant_app;
+ALTER TABLE tenant_lab.tickets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_access ON tenant_lab.tickets
+USING (tenant_id = NULLIF(current_setting('app.tenant_id',true),'')::integer)
+WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id',true),'')::integer);
+```
+
+Test with the non-owner role. Superusers and roles with BYPASSRLS bypass policies; table owners normally do too. Testing only as postgres would give misleading results.
+
+```sql
+BEGIN;
+SET LOCAL ROLE handbook_tenant_app;
+SELECT set_config('app.tenant_id','1',true);
+SELECT * FROM tenant_lab.tickets ORDER BY id;
+ROLLBACK;
+```
+
+Only Alpha's ticket should appear. The transaction-local setting clears at the transaction boundary, avoiding tenant context leaking across pooled requests. The server must derive tenant identity from verified membership, not trust a client-provided tenant header. A user who can run arbitrary SQL as this role can change this custom setting; this pattern relies on a trusted application boundary and parameterized queries.
+
+The example grants access only to tickets. Before exposing comments or any other tenant table, apply equivalent access controls and policies there too. Foreign keys prevent invalid references; they do not prevent unauthorized reads.
+
+## Challenge · Prove isolation in both directions
+
+As tenant 1, try reading ticket 202, updating it, and inserting a ticket with tenant ID 2. Then start a new transaction with no tenant setting. What should happen?
+
+<details>
+<summary>Worked solution</summary>
+
+```sql
+BEGIN;
+SET LOCAL ROLE handbook_tenant_app;
+SELECT set_config('app.tenant_id','1',true);
+SELECT * FROM tenant_lab.tickets WHERE id=202; -- zero rows
+UPDATE tenant_lab.tickets SET subject='Changed' WHERE id=202; -- zero affected
+INSERT INTO tenant_lab.tickets(tenant_id,id,subject)
+VALUES (2,303,'Forbidden'); -- policy violation
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE handbook_tenant_app;
+SELECT * FROM tenant_lab.tickets; -- zero rows with no tenant context
+ROLLBACK;
+```
+
+A missing setting becomes NULL; the predicate does not pass. An invalid non-integer setting raises an error instead of revealing data. Verify Beta's subject remains unchanged as the administrator. Add the same tests to the real application's membership and authorization paths; database isolation alone does not prove endpoint authorization.
+
+</details>
+
+## Partitioning is a lifecycle tool
+
+A partitioned table routes rows into child tables by a key such as time. Pruning can skip irrelevant partitions, and dropping a retired partition can simplify retention. It adds schema and operational complexity and is not automatic sharding across machines.
+
+```sql
+CREATE TABLE tenant_lab.audit_events (
+ occurred_at timestamptz NOT NULL, id bigint NOT NULL, message text,
+ PRIMARY KEY (occurred_at,id)
+) PARTITION BY RANGE (occurred_at);
+CREATE TABLE tenant_lab.audit_events_jan PARTITION OF tenant_lab.audit_events
+FOR VALUES FROM ('2026-01-01 00:00:00+00') TO ('2026-02-01 00:00:00+00');
+INSERT INTO tenant_lab.audit_events VALUES ('2026-01-15T00:00:00Z',1,'Created');
+EXPLAIN SELECT * FROM tenant_lab.audit_events
+WHERE occurred_at >= '2026-01-10T00:00:00Z' AND occurred_at < '2026-01-20T00:00:00Z';
+```
+
+An insert outside defined ranges fails unless an appropriate/default partition exists. Automate future partition creation and monitor it. Partitioned-table uniqueness constraints must include partition keys under the ordinary supported design; global uniqueness needs extra planning.
+
+**Exit checkpoint:** justify your scaling choice with a measured bottleneck and describe the new failure mode it introduces. References: [row security](https://www.postgresql.org/docs/18/ddl-rowsecurity.html), [partitioning](https://www.postgresql.org/docs/18/ddl-partitioning.html).

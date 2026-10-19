@@ -1,0 +1,115 @@
+---
+title: Make concurrent changes safe
+description: Transactions, row locks, snapshots, retries, and experiments in two terminals.
+---
+
+## Atomic does not mean race-free
+
+A transaction groups work into one commit or rollback. **Atomicity** means no partial committed operation. **Consistency** depends on the constraints and rules you enforce. **Isolation** controls concurrent observations. **Durability** concerns committed data surviving failures under the configured guarantees.
+
+MVCC lets readers use visible row versions. It reduces read/write interference; it does not eliminate locks. Ordinary reads usually do not wait for row updates, while writers competing for the same row do.
+
+## The lost-update trap
+
+Two requests read stock 10. Both calculate 9 in JavaScript and both write 9. Two purchases consumed only one stock unit. The correct update expresses the operation in SQL:
+
+```sql
+BEGIN;
+UPDATE products SET stock = stock - 1
+WHERE id = 1 AND stock >= 1 RETURNING stock;
+ROLLBACK;
+```
+
+The condition and mutation occur together. An application must check the returned row count; zero means it did not reserve stock.
+
+## Lab · Watch a lock
+
+Open two psql sessions and set `search_path TO handbook` in both.
+
+| Step | Session A | Session B |
+| --- | --- | --- |
+| 1 | `BEGIN;` | |
+| 2 | `UPDATE products SET stock=stock-1 WHERE id=1 AND stock>=1 RETURNING stock;` | |
+| 3 | | `BEGIN; SET LOCAL lock_timeout='3s';` |
+| 4 | | Run the same update; it waits, then times out |
+| 5 | `ROLLBACK;` | `ROLLBACK;` |
+
+A sees stock 9 inside its transaction. B cannot update that row until A releases its lock. Both rollbacks leave stock 10. To observe successful waiting instead, omit B's timeout and commit A before returning to B; then B sees the next stock value. Restore the seed afterward or keep the first, rollback-only version for repeatability.
+
+## Isolation levels
+
+| Level | Working model | Application responsibility |
+| --- | --- | --- |
+| Read Committed (default) | Each statement gets a fresh committed snapshot | Protect multi-step invariants explicitly |
+| Repeatable Read | A stable transaction snapshot | Handle concurrent-update failures; write skew remains possible |
+| Serializable | Successful commits have a serial-equivalent outcome | Retry serialization failures |
+
+PostgreSQL treats Read Uncommitted as Read Committed. Repeatable Read prevents phantom reads in PostgreSQL but is not equivalent to Serializable. See the [official isolation reference](https://www.postgresql.org/docs/18/transaction-iso.html).
+
+A retry means rerunning the **entire** transaction from the start with bounded attempts and jitter. SQLSTATE `40001` denotes serialization failure; `40P01` a deadlock. Do not blindly retry business-rule failures. Keep external side effects outside retriable transactions or use a transactional outbox.
+
+## Challenge · Transfer 100 without losing money
+
+Accounts start at 1000 and 500. Transfer 100 from account 1 to 2, require both accounts to exist, prevent a negative balance, and preserve a total of 1500. Test success and failure. Do not use this learning procedure as a complete payments system: it lacks currency, authorization, ledger history, and idempotency.
+
+<details>
+<summary>Hint</summary>
+
+Lock both accounts in consistent ID order. Abort the whole operation if either update does not affect exactly one row.
+
+</details>
+
+<details>
+<summary>Worked SQL solution</summary>
+
+```sql
+BEGIN;
+DO $$
+DECLARE locked_count integer;
+BEGIN
+ PERFORM id FROM accounts WHERE id IN (1,2) ORDER BY id FOR UPDATE;
+ GET DIAGNOSTICS locked_count = ROW_COUNT;
+ IF locked_count <> 2 THEN RAISE EXCEPTION 'Missing account'; END IF;
+ UPDATE accounts SET balance=balance-100 WHERE id=1 AND balance>=100;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Insufficient balance'; END IF;
+ UPDATE accounts SET balance=balance+100 WHERE id=2;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Missing destination'; END IF;
+END $$;
+SELECT * FROM accounts ORDER BY id;
+SELECT sum(balance) FROM accounts;
+ROLLBACK;
+```
+
+Inside the transaction, balances are 900 and 600. After rollback they return to 1000 and 500. Repeat with amount 2000 in both update expressions and the balance predicate: the block raises an exception and no transfer commits. Finish with `ROLLBACK` to clear the aborted transaction. A reusable function must also validate positive amounts and distinct account IDs.
+
+</details>
+
+## More coordination tools
+
+**Savepoints** let you recover part of a transaction: `SAVEPOINT optional_step`, attempt work, then `ROLLBACK TO optional_step` after a recoverable failure. A normal `ROLLBACK` discards everything.
+
+**Optimistic concurrency** checks a version: `UPDATE accounts SET balance=900, version=version+1 WHERE id=1 AND version=0`. Affected rows zero means your snapshot is stale; reread and reconsider. **Pessimistic concurrency** locks first with `FOR UPDATE`.
+
+**Deadlocks** happen when transactions wait on each other's locks. Use a consistent lock order and keep transactions short; PostgreSQL aborts one participant when it detects a deadlock. Do not hold locks while waiting for a user or a payment provider.
+
+**Advisory locks** coordinate an application-defined resource, such as `SELECT pg_advisory_xact_lock(12345)` within a transaction. All relevant writers must follow the same convention. Transaction-scoped locks avoid leaking session locks through a pool.
+
+**SKIP LOCKED** is useful for competing queue workers. It intentionally skips work another worker locked; it is not a consistent general-purpose report.
+
+```sql
+-- Self-contained queue lab, run in a new session.
+CREATE TEMP TABLE jobs (id integer PRIMARY KEY, status text NOT NULL);
+INSERT INTO jobs VALUES (1,'ready'),(2,'ready');
+BEGIN;
+WITH candidate AS (
+ SELECT id FROM jobs WHERE status='ready' ORDER BY id
+ FOR UPDATE SKIP LOCKED LIMIT 1
+)
+UPDATE jobs SET status='running' FROM candidate
+WHERE jobs.id=candidate.id RETURNING jobs.*;
+ROLLBACK;
+```
+
+A real worker queue uses a shared table, a lease/timeout, retry limits, and idempotent processing so crashes do not strand jobs forever.
+
+**Exit checkpoint:** reproduce waiting in two terminals and explain why two individually valid updates may still violate a business rule.

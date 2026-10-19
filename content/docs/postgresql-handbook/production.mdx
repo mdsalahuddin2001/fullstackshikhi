@@ -1,0 +1,91 @@
+---
+title: Operate a database you can recover
+description: Least privilege, verified backups, connection budgets, and an incident checklist.
+---
+
+## Separate ownership from everyday access
+
+The migration identity owns or changes schema. The application identity gets only the operations it needs. A read-only reporting identity should not be able to update orders. Roles can represent users or groups of privileges; `LOGIN` determines whether a role can connect directly.
+
+In your isolated lab, as the database owner:
+
+```sql
+CREATE ROLE handbook_reader NOLOGIN;
+GRANT USAGE ON SCHEMA handbook TO handbook_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA handbook TO handbook_reader;
+BEGIN;
+SET LOCAL ROLE handbook_reader;
+SELECT count(*) FROM handbook.products;
+ROLLBACK;
+```
+
+That query should return 4. Test a forbidden write in a separate transaction:
+
+```sql
+BEGIN;
+SET LOCAL ROLE handbook_reader;
+UPDATE handbook.products SET stock=0 WHERE id=1; -- permission denied
+ROLLBACK;
+```
+
+A NOLOGIN group role can be granted to a separately provisioned login. Do not use the postgres superuser in your application. Existing-table grants do not cover future tables automatically; `ALTER DEFAULT PRIVILEGES` must be configured for the role that will create those objects. Schema `USAGE` and table access are separate permissions; sequence-backed inserts may also need appropriate sequence access.
+
+## Connections and configuration
+
+Keep connection strings in environment/secret configuration, and exclude them from logs. For remote connections, verify the server certificate using the provider's documented CA/TLS configuration. Disabling certificate validation to “make it work” removes server identity verification.
+
+Set a connection budget across application replicas, jobs, migrations, and administration. PgBouncer can multiplex connections; transaction pooling changes session assumptions, so check features such as session settings, temporary tables, prepared statements, and advisory locks for your deployed versions and mode.
+
+Start tuning from measurements. `max_connections`, memory per sort/hash operation, WAL/checkpoint settings, and autovacuum interact. More connections or more memory per operation can reduce stability under concurrency. A managed service handles some infrastructure, but you still own schema, query quality, access policy, and recovery validation.
+
+## Backup is an artifact; recovery is a proven procedure
+
+A logical backup records database objects and data in a portable form. PostgreSQL's `pg_dump` custom format pairs with `pg_restore`. Use tools compatible with the source server version.
+
+For the Docker lab, run these in your host terminal:
+
+```bash
+docker exec pg-handbook pg_dump -U postgres -d handbook_lab -Fc > handbook.dump
+docker exec pg-handbook createdb -U postgres handbook_restore
+docker exec -i pg-handbook pg_restore -U postgres -d handbook_restore \
+  --no-owner --no-privileges --exit-on-error < handbook.dump
+docker exec -i pg-handbook psql -U postgres -d handbook_restore < check.sql
+```
+
+The restore target is a **new database**, so the original stays available. If you already created `handbook_restore`, choose a new target name. `--no-owner --no-privileges` makes this lab easier to restore but deliberately omits ownership/permission reconstruction: a production recovery plan must handle roles, extensions, secrets, and privileges too. `pg_dump` is not a cluster-wide backup of every role and server setting.
+
+Record start time, end time, database size, row counts, revenue, and a successful application read. A backup file existing is not evidence that your app can recover.
+
+## WAL, PITR, and replicas
+
+Write-ahead logging records changes before the corresponding data pages need to be durable. **PITR** combines a suitable base backup with an uninterrupted WAL archive to recover to a chosen point. A daily logical dump alone cannot reconstruct arbitrary later moments.
+
+A replica copies changes and may faithfully copy accidental deletion too. It helps availability and reads; it is not an independent historical backup. Define **RPO** (acceptable data loss window) and **RTO** (acceptable recovery time), then design retention, archiving, and restore drills to meet them.
+
+## Challenge · The accidental deletion at 14:07
+
+Your latest logical dump is midnight. A customer table was accidentally deleted at 14:07. The business allows at most five minutes of data loss. Does the dump satisfy that requirement? What evidence must a PITR plan include?
+
+<details>
+<summary>Worked solution</summary>
+
+No: restoring the midnight dump could lose over fourteen hours. A PITR plan needs a verified base backup, continuous WAL coverage through the desired recovery time, accessible recovery credentials and configuration, and a tested procedure to restore into an isolated environment just before the bad transaction. Verify the recovered application state and reconcile legitimate operations after that point before cutover. Measure restore time against RTO, and confirm archive delay against RPO.
+
+</details>
+
+## Investigate before restarting
+
+```sql
+SELECT pid, state, wait_event_type, wait_event,
+       now()-query_start AS age, left(query,120) AS query
+FROM pg_stat_activity
+WHERE datname=current_database() AND pid<>pg_backend_pid()
+ORDER BY query_start;
+
+SELECT pid, pg_blocking_pids(pid) AS blockers
+FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid)) > 0;
+```
+
+Visibility depends on privileges. Look for long transactions, idle-in-transaction clients, blocking chains, connection exhaustion, slow query patterns, and disk/WAL growth. Protect query text as operational data. Do not terminate sessions at random; determine the transaction's owner and business impact first.
+
+**Exit checkpoint:** restore into a new database, run the seed checks, and explain what your backup does not contain. References: [backup and restore](https://www.postgresql.org/docs/18/backup.html), [monitoring](https://www.postgresql.org/docs/18/monitoring.html).

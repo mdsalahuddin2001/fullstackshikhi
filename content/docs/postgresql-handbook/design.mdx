@@ -1,0 +1,87 @@
+---
+title: Design data that stays correct
+description: Keys, relationships, constraints, normalization, and deliberate snapshots.
+---
+
+## Write invariants first
+
+An invariant is a statement that must remain true: stock cannot be negative; an order belongs to an existing customer; a student cannot enroll twice in the same course. Validate inputs in your application for good error messages, then enforce durable invariants in the database so every writer obeys them.
+
+| Rule | Database tool | Caveat |
+| --- | --- | --- |
+| One identity per row | `PRIMARY KEY` | Both unique and non-NULL |
+| Email cannot repeat | `UNIQUE` | Ordinary uniqueness permits multiple NULL values |
+| Price must be present | `NOT NULL` | A `CHECK` alone does not reject NULL |
+| Price cannot be negative | `CHECK (price >= 0)` | Row checks cannot enforce arbitrary cross-row totals |
+| New orders start pending | `DEFAULT 'pending'` | Defaults do not validate supplied values |
+| Customer must exist | `REFERENCES customers(id)` | Also decide how deletions behave |
+
+## Relationships are cardinality promises
+
+One-to-many: many orders refer to one customer. Many-to-many: orders contain products and products occur in many orders; `order_items` bridges the two and holds quantity and historical price. One-to-one: a profile table can use `customer_id` as both primary key and foreign key, allowing at most one profile per customer.
+
+`CASCADE` deletes dependent rows when their parent is deleted; useful for disposable child records, dangerous for historical records. `SET NULL` preserves the child but removes an optional reference; the column must allow NULL. `RESTRICT` prevents a deletion while references exist. Default `NO ACTION` also enforces referential integrity, with different deferral semantics. Choose by lifecycle, not convenience.
+
+Foreign keys do not automatically index the referencing columns. Add indexes according to join, lookup, and deletion patterns.
+
+## Normalization by example
+
+Suppose an order row contains `product1`, `product2`, and `customer_city`. You cannot represent a third product cleanly, and changing a customer's city requires updating unrelated orders.
+
+- **1NF:** use one value per defined field and rows for repeated items, rather than numbered product columns.
+- **2NF:** in a table keyed by `(order_id, product_id)`, facts should depend on the whole key. A product's current name belongs in `products`, not repeated on every item.
+- **3NF:** avoid non-key facts depending on other non-key facts. Category names belong in categories; a product refers to the category ID.
+
+Historical snapshots are deliberate exceptions: `unit_price` is the agreed price for that particular item, not a duplicated current catalog price. A shipping address snapshot can similarly preserve the delivery destination even after a customer moves. Denormalization trades simpler reads for extra consistency work; document the source of truth and refresh mechanism.
+
+## Challenge · A school registrar
+
+Create temporary students, courses, and enrollments tables. A student has a unique required email. A course has a unique code. Each enrollment has an optional grade between 0 and 100 and must reference existing records. Duplicate enrollments must fail. Removing a course that still has enrollments must fail.
+
+<details>
+<summary>Hint</summary>
+
+The enrollment identity is a pair. Use a composite primary key and foreign keys; no comma-separated list of course IDs.
+
+</details>
+
+<details>
+<summary>Worked solution</summary>
+
+```sql
+CREATE TEMP TABLE students (
+ id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ name text NOT NULL,
+ email text NOT NULL UNIQUE
+);
+CREATE TEMP TABLE courses (
+ id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ code text NOT NULL UNIQUE,
+ title text NOT NULL
+);
+CREATE TEMP TABLE enrollments (
+ student_id integer REFERENCES students(id) ON DELETE CASCADE,
+ course_id integer REFERENCES courses(id) ON DELETE RESTRICT,
+ grade numeric(5,2) CHECK (grade BETWEEN 0 AND 100),
+ PRIMARY KEY (student_id, course_id)
+);
+INSERT INTO students(name,email) VALUES ('Amina','amina@school.test');
+INSERT INTO courses(code,title) VALUES ('SQL101','SQL Foundations');
+INSERT INTO enrollments VALUES (1,1,NULL);
+SELECT * FROM enrollments;
+```
+
+Run these separately in autocommit mode; each should fail:
+
+```sql
+INSERT INTO enrollments VALUES (1,1,90); -- duplicate
+INSERT INTO enrollments VALUES (999,1,90); -- missing student
+UPDATE enrollments SET grade = 101 WHERE student_id = 1; -- invalid grade
+DELETE FROM courses WHERE id = 1; -- referenced course
+```
+
+NULL grade means “not graded yet.” The CHECK accepts that unknown result; this is intentional. Deleting a student cascades here only because the exercise treats enrollments as disposable. A real school's retention rules might require restricting deletion or archiving instead.
+
+</details>
+
+**Exit checkpoint:** draw the shop ER diagram from memory and explain every foreign key and delete action. Choose identity or UUID based on ID generation needs, not on the belief that one provides authorization.
