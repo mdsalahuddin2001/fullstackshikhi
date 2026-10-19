@@ -1,0 +1,40 @@
+{
+  "reviewedAt": "2026-10-19",
+  "sourceRevision": "65166272491ec4b9ffad8cb9ba5ef50ff5116249",
+  "fullRun": {
+    "numTotalTestSuites": 56,
+    "numPassedTestSuites": 55,
+    "numFailedTestSuites": 1,
+    "numTotalTests": 643,
+    "numPassedTests": 640,
+    "numFailedTests": 3,
+    "success": false
+  },
+  "claimRerun": {
+    "numTotalTestSuites": 1,
+    "numPassedTestSuites": 1,
+    "numFailedTestSuites": 0,
+    "numTotalTests": 35,
+    "numPassedTests": 35,
+    "numFailedTests": 0,
+    "success": true
+  },
+  "failedCases": [
+    {
+      "suite": "claim.test.ts",
+      "name": "PATCH /sessions/:id/assignment lets an owner assign anyone, and unassign",
+      "firstFailureLine": "Error: expect(received).toBe(expected) // Object.is equality"
+    },
+    {
+      "suite": "claim.test.ts",
+      "name": "PATCH /conversations/:id/assignment is closed to query managers",
+      "firstFailureLine": "Error: socket hang up"
+    },
+    {
+      "suite": "claim.test.ts",
+      "name": "POST /comments/:id/claim takes the thread root, from a reply id too",
+      "firstFailureLine": "Error: expect(received).toBe(expected) // Object.is equality"
+    }
+  ],
+  "interpretation": "Initial failures did not reproduce in the focused rerun; root cause unconfirmed. No claim of a clean full-suite run."
+}

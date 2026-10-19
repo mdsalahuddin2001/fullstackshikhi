@@ -36,3 +36,7 @@ const reference = header + '\n\n' + endpoints.map(e => {
 }).join('\n');
 for (const path of ['docs/LISTENYZEN_API_REFERENCE.md', 'public/downloads/LISTENYZEN_API_REFERENCE.md']) writeFileSync(path, reference);
 console.log(`Synchronized both Markdown downloads (${endpoints.length} endpoint contracts).`);
+
+// Keep the dated review available independently of the learning guide.
+const review = markdown('backend-review');
+for (const path of ['docs/LISTENYZEN_BACKEND_REVIEW.md', 'public/downloads/LISTENYZEN_BACKEND_REVIEW.md']) writeFileSync(path, review);
