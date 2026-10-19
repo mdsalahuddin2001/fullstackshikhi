@@ -152,6 +152,14 @@
     "path": "/api/v1/comments/:id/status-log"
   },
   {
+    "method": "GET",
+    "path": "/api/v1/comments/:id/assignment-log"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/comments/:id/wrap-up-log"
+  },
+  {
     "method": "PATCH",
     "path": "/api/v1/comments/:id"
   },
@@ -166,6 +174,10 @@
   {
     "method": "POST",
     "path": "/api/v1/comments/:id/claim"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/comments/:id/forward"
   },
   {
     "method": "PATCH",
@@ -234,6 +246,10 @@
   {
     "method": "POST",
     "path": "/api/v1/conversations/:id/claim"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/conversations/:id/forward"
   },
   {
     "method": "PATCH",
@@ -372,12 +388,24 @@
     "path": "/api/v1/sessions/:id"
   },
   {
+    "method": "GET",
+    "path": "/api/v1/sessions/:id/sla"
+  },
+  {
     "method": "PATCH",
     "path": "/api/v1/sessions/:id/status"
   },
   {
     "method": "GET",
     "path": "/api/v1/sessions/:id/status-log"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sessions/:id/assignment-log"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/sessions/:id/wrap-up-log"
   },
   {
     "method": "PATCH",
@@ -478,6 +506,10 @@
   {
     "method": "GET",
     "path": "/api/v1/teams/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/teams/:id/brands"
   },
   {
     "method": "PATCH",

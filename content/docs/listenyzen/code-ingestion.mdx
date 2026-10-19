@@ -92,14 +92,14 @@ export const assignMessageToSession = async (input: AssignInput): Promise<Assign
     // A fresh session becomes the latest — reflect its (default pending/NEUTRAL) status on the
     // conversation so a reopened thread stops reading as `resolved` in the list.
     await syncConversationFromLatestSession(input.conversationId);
-    return { id: created._id as Types.ObjectId };
+    return { id: created._id as Types.ObjectId, opened: true };
   }
 
   await SessionModel.updateOne(
     { _id: latest._id },
     { $set: { lastActivityAt: input.sentAt }, $inc: { messageCount: 1 } }
   );
-  return { id: latest._id as Types.ObjectId };
+  return { id: latest._id as Types.ObjectId, opened: false };
 };
 ```
 
@@ -111,7 +111,7 @@ The required sequence has no schema default: the creating path must derive it. I
 
 ### Branch B — continue an episode
 
-Otherwise, the service updates lastActivityAt and increments messageCount on the existing session. It returns the session’s ObjectId so Message can reference it. Ordinary outgoing follow-ups to a resolved episode remain in that episode; unresolved and hold also reuse the episode. After the message insert, `onMessageStored` may return that same episode to pending: a new customer message reopens unresolved, while a qualifying non-automatic outgoing reply ends hold.
+Otherwise, the service updates lastActivityAt and increments messageCount on the existing session. It returns an object containing the session’s ObjectId as id so Message can reference it. Ordinary outgoing follow-ups to a resolved episode remain in that episode; unresolved and hold also reuse the episode. After the message insert, `onMessageStored` may return that same episode to pending: a new customer message reopens unresolved, while a qualifying non-automatic outgoing reply ends hold.
 
 The function increments a counter before the subsequent message insert. A later insertion failure can therefore leave a counter that requires reconciliation. There is no cross-document transaction around this sequence.
 
@@ -210,3 +210,5 @@ Continue with [versioned settings and guarded SLA writes](/docs/listenyzen/code-
 ## Status transitions follow message persistence
 
 The current ingestion path calls `onMessageStored` after inserting Message. It applies the pending rules, synchronizes the conversation summary and refreshes SLA. When status changed, `reloadConversation` ensures the emitted message event contains the updated summary. See [hold and reopening code](/docs/listenyzen/code-status) for timestamp guards and the distinction between provider rejection and a later delivery failure.
+
+The excerpt retains a stale source comment about merging and sequence reuse. Session merging is no longer supported in this revision. The active rule remains latest sequence plus one. assignMessageToSession now returns `{ id, opened: true }` for a new episode and `{ id }` for a continued episode. Incoming and outgoing storage reload the conversation on status change or opened before emitting message:new, so a new episode does not retain the previous owner in its event payload.

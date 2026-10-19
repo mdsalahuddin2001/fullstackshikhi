@@ -1,0 +1,84 @@
+---
+title: "Code walkthrough: assignment & wrap-up history"
+description: "Trace embedded audit entries from routing and classification writes to manager-only history responses."
+---
+
+## Dependencies and business requirement
+
+Read [the data model](/docs/listenyzen/data-model), [ownership and forwarding](/docs/listenyzen/code-assignment), then [status changes](/docs/listenyzen/code-status). Managers need to distinguish who changed ownership, who changed classification, and who changed status. These are three separate histories on the same query.
+
+## Storage comes first
+
+Session and Comment contain assignmentLog and wrapUpLog arrays, both defaulting to empty and declared select:false. They are embedded records, not new collections. Ordinary query responses do not select these histories. Comment history belongs to the root. The shared definitions live in `server/src/modules/session/schema.ts` and are reused by Comment.
+
+| Array | Stored entry | Meaning |
+| --- | --- | --- |
+| assignmentLog | assignee (kind/id/name or null), at, cause, optional by and note | cause is routed, claimed or forwarded; assignee name is a snapshot. Null means cleared. |
+| wrapUpLog | at, optional by, changes | Each change has field and optional from/to values. Fields are sentiment, sessionType, tags and resolutionSummary; Comment has no sessionType. |
+| statusLog | status, at, cause, optional by and reason | A real status transition; distinct from a classification edit. |
+
+Tags are stored as ID arrays in wrap-up changes. The log does not duplicate the full query. Existing records are not automatically backfilled with past ownership or classification changes.
+
+## Follow the write
+
+1. Read `session/schema.ts`. assignmentUpdate combines setting/clearing the assignee with pushing an assignment entry in the same Mongo update. It trims and caps notes as well as the request validation.
+2. Follow the assignment callers in Session and Comment services. Route uses cause routed, claim uses claimed, and forward uses forwarded. Their conditional writes determine whether the entry is actually stored.
+3. Read `session/wrap-up-log.ts`. The helper compares before/after fields: trimmed empty text equals absence; tags are deduplicated and compared as sets, so reordering alone is not a change; omitted fields remain untouched.
+4. Follow editWrapUpFields and wrap-up handlers. Classification values and their entry are updated together. Wrap-up passes extra set/push operations into the shared status writer, so a same-status save can append wrap-up history without adding status history.
+
+The previous classification values are read separately before updating. These logs do not establish serializable auditing of concurrent field edits or a separate immutable audit store. No effective field change means no wrap-up entry.
+
+## Manager-only reads
+
+All paths below start with `/api/v1`. They require super_admin, company_owner or company_admin and the existing visibility checks.
+
+| Endpoint | Result |
+| --- | --- |
+| GET `/sessions/:id/assignment-log` | Named session's assignment entries, oldest first. |
+| GET `/sessions/:id/wrap-up-log` | Named session's classification changes, oldest first. |
+| GET `/comments/:id/assignment-log` | Thread root's assignment entries. |
+| GET `/comments/:id/wrap-up-log` | Thread root's classification changes. |
+
+Comment api.ts registers status, assignment and wrap-up history through ROOT_HISTORIES. A reply ID resolves to its root; no root yields an empty history array. Visibility still applies. Ordinary agents do not gain history-read access by forwarding a query.
+
+```sh
+curl "${BASE_URL}/api/v1/sessions/670000000000000000000006/assignment-log" -b cookies.txt
+```
+
+```json title="Illustrative HTTP 200"
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "assignee": { "kind": "team", "id": "670000000000000000000020", "name": "Night shift" },
+      "at": "2026-10-19T04:30:00.000Z",
+      "cause": "forwarded",
+      "by": { "id": "670000000000000000000002", "name": "Amina Rahman", "role": "query_manager" },
+      "note": "Please investigate delivery."
+    }
+  ]
+}
+```
+
+```json title="Illustrative wrap-up-log response"
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "at": "2026-10-19T04:35:00.000Z",
+      "by": { "id": "670000000000000000000002", "name": "Amina Rahman", "role": "query_manager" },
+      "changes": [{ "field": "sentiment", "from": null, "to": "positive" }]
+    }
+  ]
+}
+```
+
+History presentation resolves actors to current name and role. A deleted user retains its id with null name/role; an unknown actor is null. Assignment names remain the stored snapshot. Wrap-up tag IDs resolve to current tag names, with “Deleted tag” for a missing tag. Absent scalar values become null, absent tags become empty arrays, and absent assignment notes become null. Status and hold-log actors also include role now.
+
+## Follow the response into the interface
+
+Read `client/src/features/status-history/api.ts` and `history-timeline.tsx` for the separate history lists. Then read `client/src/features/inbox/history-version.ts` and the session details integration. The history query key includes status, statusChangedAt, assignee ID, sentiment, sessionType, tags and summary. Hooks use staleTime: 0 so opening a history again can refresh it even when values changed and then returned to their previous values. Caller gating and the backend role guard keep history manager-only.
+
+To study one complete trace, forward a held query in the code: forward button → API hook → visibility/holder checks → conditional assignment update plus log → conversation mirror/event → manager history fetch → actor/name presentation. Compare this with changing only sentiment while leaving status unchanged.

@@ -1,6 +1,6 @@
 # Listenyzen API endpoint reference
 
-Source-derived examples for all 121 mounted API operations and two health endpoints. Inspected on 2026-10-18. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
+Source-derived examples for all 129 mounted API operations and two health endpoints. Inspected on 2026-10-19. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
 
 Entity objects are compact projections: audit fields, virtuals and optional fields are omitted for readability. Envelopes, status codes and special response types follow the implementation. Optional fields, populated references and lean reads can change the returned entity fields. Read the linked source location for the complete handler.
 
@@ -24,12 +24,6 @@ Use the port configured for your backend; 5000 above is only an example. The doc
 - Standard errors use `{ "success": false, "status": "error", "message": "Brand not found" }`. Validation can include errors; nonproduction may include comingFrom. Login credential failures can return only `{ "message": "..." }`; auth rate limiting uses `{ "success": false, "message": "Too many attempts, please try again later." }` with 429.
 - Shared failures include 400 invalid input, 401 missing/expired authentication, 403 denied action and 404 missing/invisible record. Provider/network failures can become server errors. Per-route errors below are handler-local examples, not an exhaustive list of service failures.
 - No example is executed by this documentation. Mutating curl commands perform real writes if you run them.
-
-
-
-
-
-
 
 ## POST /api/v1/auth/register-company
 
@@ -3103,7 +3097,7 @@ router.delete(
 
 ## GET /api/v1/comments
 
-**Source:** `server/src/modules/comment/api.ts:158`
+**Source:** `server/src/modules/comment/api.ts:168`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3239,7 +3233,7 @@ router.get(
 
 ## GET /api/v1/comments/posts
 
-**Source:** `server/src/modules/comment/api.ts:198`
+**Source:** `server/src/modules/comment/api.ts:208`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3332,7 +3326,7 @@ router.get(
 
 ## GET /api/v1/comments/:id
 
-**Source:** `server/src/modules/comment/api.ts:239`
+**Source:** `server/src/modules/comment/api.ts:249`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3428,7 +3422,7 @@ router.get(
 
 ## POST /api/v1/comments/:id/replies
 
-**Source:** `server/src/modules/comment/api.ts:261`
+**Source:** `server/src/modules/comment/api.ts:271`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3550,7 +3544,7 @@ router.post(
 
 ## GET /api/v1/comments/:id/status-log
 
-**Source:** `server/src/modules/comment/api.ts:314`
+**Source:** `server/src/modules/comment/api.ts:334`
 
 **Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
@@ -3580,7 +3574,8 @@ curl -i "${BASE_URL}/api/v1/comments/670000000000000000000008/status-log" \
       "cause": "agent",
       "by": {
         "id": "670000000000000000000002",
-        "name": "Amina Rahman"
+        "name": "Amina Rahman",
+        "role": "company_admin"
       },
       "reason": "Waiting for warehouse confirmation"
     },
@@ -3590,7 +3585,8 @@ curl -i "${BASE_URL}/api/v1/comments/670000000000000000000008/status-log" \
       "cause": "reply",
       "by": {
         "id": "670000000000000000000002",
-        "name": "Amina Rahman"
+        "name": "Amina Rahman",
+        "role": "company_admin"
       },
       "reason": null
     }
@@ -3602,6 +3598,8 @@ curl -i "${BASE_URL}/api/v1/comments/670000000000000000000008/status-log" \
 - by is null for an unknown actor; a deleted user retains id with name null. Missing reason is null.
 - A reply ID resolves to the thread root before reading history.
 - Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- Shared history handler: status-log selects the corresponding reader in ROOT_HISTORIES; a comment reply ID resolves to its root.
+- Named actors now include role, resolved at read time with the current name. Deleted users retain id with name and role null; neither field is a historical snapshot.
 
 ### Validation declarations
 
@@ -3621,26 +3619,193 @@ export const commentIdSchema = z.object({
 
 ```typescript
 router.get(
-    '/:id/status-log',
-    authenticate,
-    authorize(...MANAGER_ROLES),
-    validateParams(commentIdSchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const id = String(req.params.id ?? '');
-      await ensureVisibleComment(id, req.user);
-      // A reply's id reads its thread's root, which carries the status.
-      const comment = await getCommentById(id);
-      const root = comment && (await getThreadRoot(comment));
-      const log = root ? await readStatusLog(CommentModel, root._id) : [];
-      successResponse(res, { data: await namedStatusLog(log) });
+      `/:id/${path}`,
+      authenticate,
+      authorize(...MANAGER_ROLES),
+      validateParams(commentIdSchema),
+      logRequest({}),
+      async (req: Request, res: Response) => {
+        const id = String(req.params.id ?? '');
+        await ensureVisibleComment(id, req.user);
+        const comment = await getCommentById(id);
+        const root = comment && (await getThreadRoot(comment));
+        successResponse(res, { data: root ? await readHistory(root._id as Types.ObjectId) : [] });
+      }
+    )
+```
+
+## GET /api/v1/comments/:id/assignment-log
+
+**Source:** `server/src/modules/comment/api.ts:334`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility still applies. Query managers receive 403.
+
+**Prerequisites:** Company, brand visibility and eligible organizational membership.
+
+**Business logic:** Explicitly read the hidden assignmentLog from the visible session or comment root, resolve actors and return oldest first. Assignee names are stored snapshots, actor name/role are current read-time labels; cleared assignments are null.
+
+**Implementation entry points:** `server/src/modules/session/status-history.ts:readAssignmentLog, namedAssignmentLog`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/comments/670000000000000000000008/assignment-log" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "assignee": {
+        "kind": "team",
+        "id": "670000000000000000000020",
+        "name": "Night shift"
+      },
+      "at": "2026-10-19T04:15:00.000Z",
+      "cause": "forwarded",
+      "by": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman",
+        "role": "query_manager"
+      },
+      "note": "Please check the warehouse delivery update"
     }
-  )
+  ]
+}
+```
+
+- Shared history handler: assignment-log selects the corresponding reader in ROOT_HISTORIES; a comment reply ID resolves to its root.
+- Causes are routed, claimed or forwarded. Missing actor/note is null. Empty history returns [].
+- This is an embedded history, not a separate collection or a reconstruction of all legacy assignments. Comment reply IDs resolve to their root.
+
+### Validation declarations
+
+**Params: commentIdSchema** — `server/src/modules/comment/validation.ts`
+
+```typescript
+export const commentIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+      `/:id/${path}`,
+      authenticate,
+      authorize(...MANAGER_ROLES),
+      validateParams(commentIdSchema),
+      logRequest({}),
+      async (req: Request, res: Response) => {
+        const id = String(req.params.id ?? '');
+        await ensureVisibleComment(id, req.user);
+        const comment = await getCommentById(id);
+        const root = comment && (await getThreadRoot(comment));
+        successResponse(res, { data: root ? await readHistory(root._id as Types.ObjectId) : [] });
+      }
+    )
+```
+
+## GET /api/v1/comments/:id/wrap-up-log
+
+**Source:** `server/src/modules/comment/api.ts:334`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility still applies. Query managers receive 403.
+
+**Prerequisites:** Company, brand visibility and eligible organizational membership.
+
+**Business logic:** Read hidden wrapUpLog and resolve actors plus current tag names. Return oldest-first entries containing before/after changes for sentiment, tags, summary and sessionType (sessions only). Status changes are read through status-log.
+
+**Implementation entry points:** `server/src/modules/session/wrap-up-log.ts; server/src/modules/session/status-history.ts:readWrapUpLog, namedWrapUpLog`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/comments/670000000000000000000008/wrap-up-log" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "at": "2026-10-19T04:20:00.000Z",
+      "by": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman",
+        "role": "query_manager"
+      },
+      "changes": [
+        {
+          "field": "sentiment",
+          "from": "NEUTRAL",
+          "to": "POSITIVE"
+        },
+        {
+          "field": "resolutionSummary",
+          "from": null,
+          "to": "Confirmed the delivery update"
+        }
+      ]
+    }
+  ]
+}
+```
+
+- Shared history handler: wrap-up-log selects the corresponding reader in ROOT_HISTORIES; a comment reply ID resolves to its root.
+- Missing scalar values become null; missing tags become []. Tag changes return current names, with Deleted tag for a missing ID.
+- Actor name and role are current labels. The history records actual edits, including standalone tag/sentiment changes, not just pressing the wrap-up button.
+
+### Validation declarations
+
+**Params: commentIdSchema** — `server/src/modules/comment/validation.ts`
+
+```typescript
+export const commentIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+      `/:id/${path}`,
+      authenticate,
+      authorize(...MANAGER_ROLES),
+      validateParams(commentIdSchema),
+      logRequest({}),
+      async (req: Request, res: Response) => {
+        const id = String(req.params.id ?? '');
+        await ensureVisibleComment(id, req.user);
+        const comment = await getCommentById(id);
+        const root = comment && (await getThreadRoot(comment));
+        successResponse(res, { data: root ? await readHistory(root._id as Types.ObjectId) : [] });
+      }
+    )
 ```
 
 ## PATCH /api/v1/comments/:id
 
-**Source:** `server/src/modules/comment/api.ts:334`
+**Source:** `server/src/modules/comment/api.ts:353`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3737,7 +3902,7 @@ router.patch(
 
       let updated: IComment | null = null;
       if (status) updated = await setCommentStatus(id, status, {}, req.user?.id, reason);
-      if (sentiment) updated = await setCommentSentiment(id, sentiment);
+      if (sentiment) updated = await setCommentSentiment(id, sentiment, {}, req.user?.id);
 
       successResponse(res, { data: updated, message: 'Comment updated' });
     }
@@ -3746,7 +3911,7 @@ router.patch(
 
 ## PUT /api/v1/comments/:id/tags
 
-**Source:** `server/src/modules/comment/api.ts:364`
+**Source:** `server/src/modules/comment/api.ts:383`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -3790,6 +3955,7 @@ curl -i -X PUT "${BASE_URL}/api/v1/comments/670000000000000000000008/tags" \
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
 - Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- Actual sentiment, type (sessions), tag or summary changes append wrapUpLog with before/after values; reordered tags and equivalent empty/absent summaries do not produce edits. Status transitions use the separate statusLog.
 
 ### Validation declarations
 
@@ -3833,7 +3999,7 @@ router.put(
       const { tagIds } = req.body as { tagIds: string[] };
       const tags = await resolveTagIds(brand._id, tagIds, `${comingFrom} - PUT /:id/tags`);
 
-      const updated = await setCommentTags(id, tags);
+      const updated = await setCommentTags(id, tags, {}, req.user?.id);
       successResponse(res, { data: updated, message: 'Comment tags updated' });
     }
   )
@@ -3841,9 +4007,9 @@ router.put(
 
 ## PATCH /api/v1/comments/:id/assignment
 
-**Source:** `server/src/modules/comment/api.ts:391`
+**Source:** `server/src/modules/comment/api.ts:410`
 
-**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
 **Prerequisites:** Brand/channel and ingested comment tree. Uses the shared access, tag, status and SLA concepts; no Conversation or Session document is required.
 
@@ -3891,6 +4057,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/comments/670000000000000000000008/assignmen
 - GET thread responses use the ClientCommentThread projection (id, author, at, post, replies). Mutation responses return stored Comment documents; do not assume identical field names.
 - assigneeType accepts query_manager, team, department or null (clear). The target must be eligible for this brand; inactive teams/departments take no new work.
 - Resolved work rejects assignment changes with 409. Routing and claiming preserve status, including hold.
+- A real assignment write appends assignmentLog in the same document update. An already-matching target produces no write/log; comments report Assignment unchanged.
 
 ### Validation declarations
 
@@ -3963,7 +4130,16 @@ router.patch(
               assignmentComingFrom
             );
 
-      const updated = await assignComment(String(root._id), assignee, {}, { openOnly: true });
+      // Routed where it already is: nothing changes, so nothing is written (or logged).
+      if (sameAssignee(root.assignee, assignee)) {
+        return successResponse(res, { data: root, message: 'Assignment unchanged' });
+      }
+      const updated = await assignComment(
+        String(root._id),
+        assignee,
+        {},
+        { openOnly: true, actor: { cause: 'routed', by: req.user?.id } }
+      );
       // Wrapped up since it was read.
       if (!updated) throw new ConflictError(THREAD_WRAPPED_UP, assignmentComingFrom);
       successResponse(res, {
@@ -3976,7 +4152,7 @@ router.patch(
 
 ## POST /api/v1/comments/:id/claim
 
-**Source:** `server/src/modules/comment/api.ts:448`
+**Source:** `server/src/modules/comment/api.ts:476`
 
 **Access:** Authenticated query_manager only; visible brand and an eligible open query required.
 
@@ -4022,6 +4198,7 @@ curl -i -X POST "${BASE_URL}/api/v1/comments/670000000000000000000008/claim" \
 - No request body. Only query_manager can call this endpoint; managers use assignment routes.
 - Claim preserves hold/unresolved status and does not resume SLA. Already assigned to you is HTTP 200 for an open query.
 - Pool membership is read from the current User record; another person or team cannot be claimed. A stale brand-access token still affects visibility.
+- A successful new claim appends cause claimed with the caller as actor in the same update. Already assigned to you does not append another history entry.
 
 ### Validation declarations
 
@@ -4082,9 +4259,104 @@ router.post(
   )
 ```
 
+## POST /api/v1/comments/:id/forward
+
+**Source:** `server/src/modules/comment/api.ts:521`
+
+**Access:** Authenticated query_manager only, personally holding the visible current session or comment root. Managers use routing endpoints.
+
+**Prerequisites:** Visible brand, personally assigned non-resolved query, eligible target query manager/team/department.
+
+**Business logic:** Resolve the latest session (conversation) or root (comment), verify the caller personally holds it before checking resolved status, then resolve a brand-eligible target. The database write rechecks holder and non-resolved status, changes assignee and appends a forwarded assignment log together. Mirror/emit afterwards. Status, SLA and wrap-up fields are preserved.
+
+**Implementation entry points:** `server/src/modules/session/assignment.ts; server/src/modules/session/service.ts; server/src/modules/comment/forward.ts; server/src/modules/comment/service.ts`
+
+### Request example
+
+```sh
+curl -i -X POST "${BASE_URL}/api/v1/comments/670000000000000000000008/forward" \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  --data '{"assigneeType":"team","assigneeId":"670000000000000000000020","note":"Please check the warehouse delivery update"}'
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "Thread forwarded",
+  "data": {
+    "_id": "670000000000000000000008",
+    "status": "hold",
+    "assignee": {
+      "kind": "team",
+      "id": "670000000000000000000020",
+      "name": "Night shift"
+    }
+  }
+}
+```
+
+- assigneeType is query_manager, team or department; null is forbidden. assigneeId is required. Optional note is trimmed, maximum 500 characters.
+- Forwarding to yourself returns 400. Forwarding a pool requires claiming it first. Managers route rather than forward.
+- A successful forward returns the updated Session for conversations or root Comment for threads. The former holder loses action permission; a team/department target must be claimed.
+- The optional note lives in assignmentLog. History reads remain manager-only; a forward does not send a provider message or create an internal SessionNote.
+
+### Validation declarations
+
+**Params: commentIdSchema** — `server/src/modules/comment/validation.ts`
+
+```typescript
+export const commentIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+**Body: forwardSchema** — `server/src/modules/session/validation.ts`
+
+```typescript
+export const forwardSchema = z.strictObject({
+  assigneeType: z.enum(ASSIGNEE_TYPES),
+  assigneeId: idSchema,
+  note: z.string().trim().max(FORWARD_NOTE_MAX_LENGTH, 'Note is too long').optional(),
+});
+```
+
+### Error examples
+
+- HTTP 400: This is already assigned to you
+- HTTP 403: Only the query manager this is assigned to can forward it
+- HTTP 409: This thread changed hands meanwhile
+
+### Handler code
+
+```typescript
+router.post(
+    '/:id/forward',
+    authenticate,
+    authorize(ROLES.QUERY_MANAGER),
+    validateParams(commentIdSchema),
+    validateBody(forwardSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const forwardComingFrom = `${comingFrom} - POST /:id/forward`;
+      const user = req.user as Express.User;
+      const { comment, brand } = await ensureVisibleComment(String(req.params.id ?? ''), user);
+      const root = await getThreadRoot(comment);
+      if (!root || root.parentCommentId) {
+        throw new NotFoundError('This thread has no root to forward', forwardComingFrom);
+      }
+      const choice = req.body as ForwardChoice;
+      const forwarded = await forwardThreadForCaller(root, brand, choice, user, forwardComingFrom);
+      successResponse(res, { data: forwarded, message: 'Thread forwarded' });
+    }
+  )
+```
+
 ## PATCH /api/v1/comments/:id/wrap-up
 
-**Source:** `server/src/modules/comment/api.ts:494`
+**Source:** `server/src/modules/comment/api.ts:547`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -4130,6 +4402,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/comments/670000000000000000000008/wrap-up" 
 - Optional reason is trimmed and limited to 500 characters. Only a real status transition appends a log; re-saving the same status does not replace its reason.
 - hold, unresolved and resolved stop resolution time. First-response time is independent of these pauses.
 - Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- Actual sentiment, type (sessions), tag or summary changes append wrapUpLog with before/after values; reordered tags and equivalent empty/absent summaries do not produce edits. Status transitions use the separate statusLog.
 
 ### Validation declarations
 
@@ -4200,7 +4473,7 @@ router.patch(
 
 ## POST /api/v1/comments/:id/hide
 
-**Source:** `server/src/modules/comment/api.ts:531`
+**Source:** `server/src/modules/comment/api.ts:584`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -4298,7 +4571,7 @@ router.post(
 
 ## POST /api/v1/comments/:id/like
 
-**Source:** `server/src/modules/comment/api.ts:558`
+**Source:** `server/src/modules/comment/api.ts:611`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -4398,7 +4671,7 @@ router.post(
 
 ## DELETE /api/v1/comments/:id
 
-**Source:** `server/src/modules/comment/api.ts:585`
+**Source:** `server/src/modules/comment/api.ts:638`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -4929,7 +5202,7 @@ router.delete(
 
 ## GET /api/v1/conversations
 
-**Source:** `server/src/modules/conversation/api.ts:343`
+**Source:** `server/src/modules/conversation/api.ts:350`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5044,7 +5317,7 @@ router.get(
 
 ## GET /api/v1/conversations/:id/messages
 
-**Source:** `server/src/modules/conversation/api.ts:374`
+**Source:** `server/src/modules/conversation/api.ts:381`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5122,7 +5395,7 @@ router.get(
 
 ## GET /api/v1/conversations/:id/sessions
 
-**Source:** `server/src/modules/conversation/api.ts:397`
+**Source:** `server/src/modules/conversation/api.ts:404`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5233,7 +5506,7 @@ router.get(
 
 ## GET /api/v1/conversations/:id/stats
 
-**Source:** `server/src/modules/conversation/api.ts:421`
+**Source:** `server/src/modules/conversation/api.ts:428`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5304,7 +5577,7 @@ router.get(
 
 ## GET /api/v1/conversations/:id/customer
 
-**Source:** `server/src/modules/conversation/api.ts:443`
+**Source:** `server/src/modules/conversation/api.ts:450`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5376,7 +5649,7 @@ router.get(
 
 ## PATCH /api/v1/conversations/:id/customer
 
-**Source:** `server/src/modules/conversation/api.ts:466`
+**Source:** `server/src/modules/conversation/api.ts:473`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5467,7 +5740,7 @@ router.patch(
 
 ## POST /api/v1/conversations/:id/claim
 
-**Source:** `server/src/modules/conversation/api.ts:495`
+**Source:** `server/src/modules/conversation/api.ts:502`
 
 **Access:** Authenticated query_manager only; visible brand and an eligible open query required.
 
@@ -5515,6 +5788,7 @@ curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/claim
 - No request body. Only query_manager can call this endpoint; managers use assignment routes.
 - Claim preserves hold/unresolved status and does not resume SLA. Already assigned to you is HTTP 200 for an open query.
 - Pool membership is read from the current User record; another person or team cannot be claimed. A stale brand-access token still affects visibility.
+- A successful new claim appends cause claimed with the caller as actor in the same update. Already assigned to you does not append another history entry.
 
 ### Validation declarations
 
@@ -5548,8 +5822,7 @@ router.post(
         claimComingFrom
       );
       const session = await getLatestSession(conversation._id);
-      if (!session)
-        throw new NotFoundError('This conversation has no session yet', claimComingFrom);
+      if (!session) throw new NotFoundError(NO_SESSION_YET, claimComingFrom);
       const claimed = await claimForCaller(session, brand, user, claimComingFrom);
       successResponse(res, {
         data: claimed.session,
@@ -5559,11 +5832,116 @@ router.post(
   )
 ```
 
+## POST /api/v1/conversations/:id/forward
+
+**Source:** `server/src/modules/conversation/api.ts:531`
+
+**Access:** Authenticated query_manager only, personally holding the visible current session or comment root. Managers use routing endpoints.
+
+**Prerequisites:** Visible brand, personally assigned non-resolved query, eligible target query manager/team/department.
+
+**Business logic:** Resolve the latest session (conversation) or root (comment), verify the caller personally holds it before checking resolved status, then resolve a brand-eligible target. The database write rechecks holder and non-resolved status, changes assignee and appends a forwarded assignment log together. Mirror/emit afterwards. Status, SLA and wrap-up fields are preserved.
+
+**Implementation entry points:** `server/src/modules/session/assignment.ts; server/src/modules/session/service.ts; server/src/modules/comment/forward.ts; server/src/modules/comment/service.ts`
+
+### Request example
+
+```sh
+curl -i -X POST "${BASE_URL}/api/v1/conversations/670000000000000000000005/forward" \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  --data '{"assigneeType":"team","assigneeId":"670000000000000000000020","note":"Please check the warehouse delivery update"}'
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "Conversation forwarded",
+  "data": {
+    "_id": "670000000000000000000006",
+    "status": "hold",
+    "assignee": {
+      "kind": "team",
+      "id": "670000000000000000000020",
+      "name": "Night shift"
+    },
+    "conversationId": "670000000000000000000005"
+  }
+}
+```
+
+- assigneeType is query_manager, team or department; null is forbidden. assigneeId is required. Optional note is trimmed, maximum 500 characters.
+- Forwarding to yourself returns 400. Forwarding a pool requires claiming it first. Managers route rather than forward.
+- A successful forward returns the updated Session for conversations or root Comment for threads. The former holder loses action permission; a team/department target must be claimed.
+- The optional note lives in assignmentLog. History reads remain manager-only; a forward does not send a provider message or create an internal SessionNote.
+
+### Validation declarations
+
+**Params: conversationIdSchema** — `server/src/modules/conversation/validation.ts`
+
+```typescript
+export const conversationIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+**Body: forwardSchema** — `server/src/modules/session/validation.ts`
+
+```typescript
+export const forwardSchema = z.strictObject({
+  assigneeType: z.enum(ASSIGNEE_TYPES),
+  assigneeId: idSchema,
+  note: z.string().trim().max(FORWARD_NOTE_MAX_LENGTH, 'Note is too long').optional(),
+});
+```
+
+### Error examples
+
+- HTTP 400: This is already assigned to you
+- HTTP 403: Only the query manager this is assigned to can forward it
+- HTTP 409: This conversation changed hands meanwhile
+
+### Handler code
+
+```typescript
+router.post(
+    '/:id/forward',
+    authenticate,
+    authorize(ROLES.QUERY_MANAGER),
+    validateParams(conversationIdSchema),
+    validateBody(forwardSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const forwardComingFrom = `${comingFrom} - POST /:id/forward`;
+      const user = req.user as Express.User;
+      const { conversation, brand } = await loadVisibleConversation(
+        String(req.params.id ?? ''),
+        user,
+        forwardComingFrom
+      );
+      const session = await getLatestSession(conversation._id);
+      if (!session) {
+        throw new NotFoundError(NO_SESSION_YET, forwardComingFrom);
+      }
+      const forwarded = await forwardForCaller(
+        session,
+        brand,
+        req.body as ForwardChoice,
+        user,
+        forwardComingFrom
+      );
+      successResponse(res, { data: forwarded, message: 'Conversation forwarded' });
+    }
+  )
+```
+
 ## PATCH /api/v1/conversations/:id/assignment
 
-**Source:** `server/src/modules/conversation/api.ts:526`
+**Source:** `server/src/modules/conversation/api.ts:567`
 
-**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
 **Prerequisites:** Company, brand visibility and eligible organizational membership.
 
@@ -5610,6 +5988,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/conversations/670000000000000000000005/assi
 
 - assigneeType accepts query_manager, team, department or null (clear). The target must be eligible for this brand; inactive teams/departments take no new work.
 - Resolved work rejects assignment changes with 409. Routing and claiming preserve status, including hold.
+- A real assignment write appends assignmentLog in the same document update. An already-matching target produces no write/log; comments report Assignment unchanged.
 
 ### Validation declarations
 
@@ -5657,7 +6036,7 @@ router.patch(
       );
       const session = await getLatestSession(conversation._id);
       if (!session) {
-        throw new NotFoundError('This conversation has no session yet', assignmentComingFrom);
+        throw new NotFoundError(NO_SESSION_YET, assignmentComingFrom);
       }
       const choice = req.body as AssigneeChoice;
       const updated = await routeSession(
@@ -5677,7 +6056,7 @@ router.patch(
 
 ## POST /api/v1/conversations/:id/messages
 
-**Source:** `server/src/modules/conversation/api.ts:563`
+**Source:** `server/src/modules/conversation/api.ts:604`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5782,7 +6161,7 @@ router.post(
 
 ## POST /api/v1/conversations/:id/attachments
 
-**Source:** `server/src/modules/conversation/api.ts:603`
+**Source:** `server/src/modules/conversation/api.ts:644`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -5936,7 +6315,7 @@ router.post(
 
 ## POST /api/v1/conversations/:id/messages/:messageId/reaction
 
-**Source:** `server/src/modules/conversation/api.ts:679`
+**Source:** `server/src/modules/conversation/api.ts:720`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -6020,7 +6399,7 @@ router.post(
 
 ## DELETE /api/v1/conversations/:id/messages/:messageId/reaction
 
-**Source:** `server/src/modules/conversation/api.ts:693`
+**Source:** `server/src/modules/conversation/api.ts:734`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
@@ -8020,7 +8399,8 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=
       "conversationId": "670000000000000000000005",
       "heldBy": {
         "id": "670000000000000000000002",
-        "name": "Amina Rahman"
+        "name": "Amina Rahman",
+        "role": "company_admin"
       },
       "reason": "Waiting for warehouse confirmation",
       "startedAt": "2026-10-17T04:10:00.000Z",
@@ -8029,7 +8409,8 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=
         "cause": "reply",
         "by": {
           "id": "670000000000000000000002",
-          "name": "Amina Rahman"
+          "name": "Amina Rahman",
+          "role": "company_admin"
         }
       },
       "durationMs": 1800000,
@@ -8043,7 +8424,8 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=
 - Both from/to or neither; defaults to last 30 days. Inclusive Asia/Dhaka dates, at most one year. platform/page/limit are not accepted.
 - Returns at most 1,000 overlapping holds, newest first, without pagination or a truncation flag. Durations cover the entire hold, not just its overlap with the requested range.
 - Active holds have endedAt and endedBy null; durations run to read time. Business hours are those at the query clock start.
-- No separate hold collection: deleting a thread or merging away a session removes its stored holds.
+- No separate hold collection: deleting a thread removes its stored holds; session merge is no longer supported.
+- Named actors now include role, resolved at read time with the current name. Deleted users retain id with name and role null; neither field is a historical snapshot.
 
 ### Validation declarations
 
@@ -8544,13 +8926,13 @@ router.delete(
 
 ## GET /api/v1/sessions
 
-**Source:** `server/src/modules/session/api.ts:84`
+**Source:** `server/src/modules/session/api.ts:91`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -8629,13 +9011,13 @@ router.get(
 
 ## GET /api/v1/sessions/assignees
 
-**Source:** `server/src/modules/session/api.ts:105`
+**Source:** `server/src/modules/session/api.ts:112`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -8708,13 +9090,13 @@ router.get(
 
 ## GET /api/v1/sessions/:id
 
-**Source:** `server/src/modules/session/api.ts:126`
+**Source:** `server/src/modules/session/api.ts:133`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -8781,15 +9163,83 @@ router.get(
   )
 ```
 
+## GET /api/v1/sessions/:id/sla
+
+**Source:** `server/src/modules/session/api.ts:149`
+
+**Access:** Any authenticated inbox read role with visible session/conversation; personal ownership is not required for this read.
+
+**Prerequisites:** Visible session. Usage is null before the first customer message or when no SLA snapshot exists.
+
+**Business logic:** slaUsage reads the historical business schedule at firstCustomerMessageAt. First-response usage ends at firstResponseAt, otherwise resolvedAt, otherwise asOf. Resolution usage adds finished usedMs to business time since waitingSince when running. It reads usage without mutating the stored SLA.
+
+**Implementation entry points:** `server/src/modules/session/api.ts; server/src/modules/session/sla.ts:slaUsage`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/sessions/670000000000000000000006/sla" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "asOf": "2026-10-19T04:30:00.000Z",
+    "timezone": "Asia/Dhaka",
+    "firstResponseMs": 300000,
+    "resolutionUsedMs": 1800000
+  }
+}
+```
+
+- Example assumes 10:00 Dhaka customer start, 10:05 response and 10:30 read, without pauses on a working day.
+- data is null without a start or snapshot. Each unmeasured/disabled clock has null usage independently. Values are milliseconds of business time, not wall-clock duration.
+- The inbox detail view polls this read every 60 seconds while enabled. Badge state derives from the session snapshot; it does not require this request.
+
+### Validation declarations
+
+**Params: sessionIdSchema** — `server/src/modules/session/validation.ts`
+
+```typescript
+export const sessionIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+    '/:id/sla',
+    authenticate,
+    authorize(...READ_ROLES),
+    validateParams(sessionIdSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const { session } = await ensureVisibleSession(String(req.params.id ?? ''), req.user);
+      successResponse(res, { data: await slaUsage(session) });
+    }
+  )
+```
+
 ## PATCH /api/v1/sessions/:id/status
 
-**Source:** `server/src/modules/session/api.ts:141`
+**Source:** `server/src/modules/session/api.ts:164`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** ensureVisibleSession checks both visibility and action permission. mergeWithPrevious selects merge; otherwise changeStatus uses the revision-guarded status writer, then updates derived state. Only real transitions append history. A hold pauses resolution; the response omits the hidden statusLog.
+**Business logic:** ensureVisibleSession checks visibility and action permission. changeStatus writes the required status and optional reason through the revision-guarded writer, then refreshes summary/SLA state. Same-status saves do not append status history. mergeWithPrevious is no longer accepted.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -8827,10 +9277,10 @@ curl -i -X PATCH "${BASE_URL}/api/v1/sessions/670000000000000000000006/status" \
 
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
-- Alternative body: {"mergeWithPrevious":true}. That branch merges into the previous session and returns it with message Session merged.
 - Optional reason is trimmed and limited to 500 characters. Only a real status transition appends a log; re-saving the same status does not replace its reason.
 - hold, unresolved and resolved stop resolution time. First-response time is independent of these pauses.
 - Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- The strict body requires status and accepts optional reason. mergeWithPrevious is an unsupported key and returns 400.
 
 ### Validation declarations
 
@@ -8845,15 +9295,10 @@ export const sessionIdSchema = z.object({
 **Body: changeStatusSchema** — `server/src/modules/session/validation.ts`
 
 ```typescript
-export const changeStatusSchema = z
-  .strictObject({
-    status: z.enum(SESSION_STATUSES).optional(),
-    mergeWithPrevious: z.boolean().optional(),
-    reason: statusReasonSchema,
-  })
-  .refine(v => v.status !== undefined || v.mergeWithPrevious === true, {
-    message: 'Provide a status to set, or mergeWithPrevious: true',
-  });
+export const changeStatusSchema = z.strictObject({
+  status: z.enum(SESSION_STATUSES),
+  reason: statusReasonSchema,
+});
 ```
 
 ### Error examples
@@ -8874,27 +9319,16 @@ router.patch(
       const id = String(req.params.id ?? '');
       await ensureVisibleSession(id, req.user, { act: true });
 
-      const { status, mergeWithPrevious, reason } = req.body as {
-        status?: 'pending' | 'unresolved' | 'resolved' | 'hold';
-        mergeWithPrevious?: boolean;
-        reason?: string;
-      };
-
-      const updated = mergeWithPrevious
-        ? await mergeIntoPrevious(id)
-        : await changeStatus(id, { status: status!, statusChangedBy: req.user?.id, reason });
-
-      successResponse(res, {
-        data: updated,
-        message: mergeWithPrevious ? 'Session merged' : 'Session status updated',
-      });
+      const { status, reason } = req.body as ChangeStatusInput;
+      const updated = await changeStatus(id, { status, statusChangedBy: req.user?.id, reason });
+      successResponse(res, { data: updated, message: 'Session status updated' });
     }
   )
 ```
 
 ## GET /api/v1/sessions/:id/status-log
 
-**Source:** `server/src/modules/session/api.ts:173`
+**Source:** `server/src/modules/session/api.ts:185`
 
 **Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
@@ -8924,7 +9358,8 @@ curl -i "${BASE_URL}/api/v1/sessions/670000000000000000000006/status-log" \
       "cause": "agent",
       "by": {
         "id": "670000000000000000000002",
-        "name": "Amina Rahman"
+        "name": "Amina Rahman",
+        "role": "company_admin"
       },
       "reason": "Waiting for warehouse confirmation"
     },
@@ -8934,7 +9369,8 @@ curl -i "${BASE_URL}/api/v1/sessions/670000000000000000000006/status-log" \
       "cause": "reply",
       "by": {
         "id": "670000000000000000000002",
-        "name": "Amina Rahman"
+        "name": "Amina Rahman",
+        "role": "company_admin"
       },
       "reason": null
     }
@@ -8945,6 +9381,7 @@ curl -i "${BASE_URL}/api/v1/sessions/670000000000000000000006/status-log" \
 - History is oldest first; no history returns an empty array.
 - by is null for an unknown actor; a deleted user retains id with name null. Missing reason is null.
 - Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- Named actors now include role, resolved at read time with the current name. Deleted users retain id with name and role null; neither field is a historical snapshot.
 
 ### Validation declarations
 
@@ -8977,15 +9414,180 @@ router.get(
   )
 ```
 
+## GET /api/v1/sessions/:id/assignment-log
+
+**Source:** `server/src/modules/session/api.ts:202`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility still applies. Query managers receive 403.
+
+**Prerequisites:** Company, brand visibility and eligible organizational membership.
+
+**Business logic:** Explicitly read the hidden assignmentLog from the visible session or comment root, resolve actors and return oldest first. Assignee names are stored snapshots, actor name/role are current read-time labels; cleared assignments are null.
+
+**Implementation entry points:** `server/src/modules/session/status-history.ts:readAssignmentLog, namedAssignmentLog`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/sessions/670000000000000000000006/assignment-log" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "assignee": {
+        "kind": "team",
+        "id": "670000000000000000000020",
+        "name": "Night shift"
+      },
+      "at": "2026-10-19T04:15:00.000Z",
+      "cause": "forwarded",
+      "by": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman",
+        "role": "query_manager"
+      },
+      "note": "Please check the warehouse delivery update"
+    }
+  ]
+}
+```
+
+- Causes are routed, claimed or forwarded. Missing actor/note is null. Empty history returns [].
+- This is an embedded history, not a separate collection or a reconstruction of all legacy assignments. Comment reply IDs resolve to their root.
+
+### Validation declarations
+
+**Params: sessionIdSchema** — `server/src/modules/session/validation.ts`
+
+```typescript
+export const sessionIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+    '/:id/assignment-log',
+    authenticate,
+    authorize(...MANAGER_ROLES),
+    validateParams(sessionIdSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const id = String(req.params.id ?? '');
+      await ensureVisibleSession(id, req.user);
+      const log = await readAssignmentLog(SessionModel, id);
+      successResponse(res, { data: await namedAssignmentLog(log) });
+    }
+  )
+```
+
+## GET /api/v1/sessions/:id/wrap-up-log
+
+**Source:** `server/src/modules/session/api.ts:220`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility still applies. Query managers receive 403.
+
+**Prerequisites:** Company, brand visibility and eligible organizational membership.
+
+**Business logic:** Read hidden wrapUpLog and resolve actors plus current tag names. Return oldest-first entries containing before/after changes for sentiment, tags, summary and sessionType (sessions only). Status changes are read through status-log.
+
+**Implementation entry points:** `server/src/modules/session/wrap-up-log.ts; server/src/modules/session/status-history.ts:readWrapUpLog, namedWrapUpLog`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/sessions/670000000000000000000006/wrap-up-log" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "at": "2026-10-19T04:20:00.000Z",
+      "by": {
+        "id": "670000000000000000000002",
+        "name": "Amina Rahman",
+        "role": "query_manager"
+      },
+      "changes": [
+        {
+          "field": "sentiment",
+          "from": "NEUTRAL",
+          "to": "POSITIVE"
+        },
+        {
+          "field": "resolutionSummary",
+          "from": null,
+          "to": "Confirmed the delivery update"
+        }
+      ]
+    }
+  ]
+}
+```
+
+- Missing scalar values become null; missing tags become []. Tag changes return current names, with Deleted tag for a missing ID.
+- Actor name and role are current labels. The history records actual edits, including standalone tag/sentiment changes, not just pressing the wrap-up button.
+
+### Validation declarations
+
+**Params: sessionIdSchema** — `server/src/modules/session/validation.ts`
+
+```typescript
+export const sessionIdSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+    '/:id/wrap-up-log',
+    authenticate,
+    authorize(...MANAGER_ROLES),
+    validateParams(sessionIdSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const id = String(req.params.id ?? '');
+      await ensureVisibleSession(id, req.user);
+      const log = await readWrapUpLog(SessionModel, id);
+      successResponse(res, { data: await namedWrapUpLog(log) });
+    }
+  )
+```
+
 ## PATCH /api/v1/sessions/:id/sentiment
 
-**Source:** `server/src/modules/session/api.ts:189`
+**Source:** `server/src/modules/session/api.ts:237`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -9024,6 +9626,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/sessions/670000000000000000000006/sentiment
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- Actual sentiment, type (sessions), tag or summary changes append wrapUpLog with before/after values; reordered tags and equivalent empty/absent summaries do not produce edits. Status transitions use the separate statusLog.
 
 ### Validation declarations
 
@@ -9064,7 +9667,7 @@ router.patch(
       const { sentiment } = req.body as {
         sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'MIXED';
       };
-      const updated = await setSentiment(id, sentiment);
+      const updated = await setSentiment(id, sentiment, {}, req.user?.id);
 
       successResponse(res, { data: updated, message: 'Session sentiment updated' });
     }
@@ -9073,13 +9676,13 @@ router.patch(
 
 ## PATCH /api/v1/sessions/:id/wrap-up
 
-**Source:** `server/src/modules/session/api.ts:214`
+**Source:** `server/src/modules/session/api.ts:262`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -9122,6 +9725,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/sessions/670000000000000000000006/wrap-up" 
 - Optional reason is trimmed and limited to 500 characters. Only a real status transition appends a log; re-saving the same status does not replace its reason.
 - hold, unresolved and resolved stop resolution time. First-response time is independent of these pauses.
 - Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- Actual sentiment, type (sessions), tag or summary changes append wrapUpLog with before/after values; reordered tags and equivalent empty/absent summaries do not produce edits. Status transitions use the separate statusLog.
 
 ### Validation declarations
 
@@ -9187,9 +9791,9 @@ router.patch(
 
 ## PATCH /api/v1/sessions/:id/assignment
 
-**Source:** `server/src/modules/session/api.ts:249`
+**Source:** `server/src/modules/session/api.ts:297`
 
-**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
@@ -9238,6 +9842,7 @@ curl -i -X PATCH "${BASE_URL}/api/v1/sessions/670000000000000000000006/assignmen
 - Use {"assigneeType":null} to clear; response message becomes Session unassigned.
 - assigneeType accepts query_manager, team, department or null (clear). The target must be eligible for this brand; inactive teams/departments take no new work.
 - Resolved work rejects assignment changes with 409. Routing and claiming preserve status, including hold.
+- A real assignment write appends assignmentLog in the same document update. An already-matching target produces no write/log; comments report Assignment unchanged.
 
 ### Validation declarations
 
@@ -9299,13 +9904,13 @@ router.patch(
 
 ## PUT /api/v1/sessions/:id/tags
 
-**Source:** `server/src/modules/session/api.ts:281`
+**Source:** `server/src/modules/session/api.ts:329`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -9344,6 +9949,7 @@ curl -i -X PUT "${BASE_URL}/api/v1/sessions/670000000000000000000006/tags" \
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 - Assignment policy and active channel checks can reject the operation even when the record is readable.
 - Query-manager mutations require personal assignment. Department/team pools permit claiming, not direct modification. Page-authored comment threads are the documented exception for reply/moderation.
+- Actual sentiment, type (sessions), tag or summary changes append wrapUpLog with before/after values; reordered tags and equivalent empty/absent summaries do not produce edits. Status transitions use the separate statusLog.
 
 ### Validation declarations
 
@@ -9387,7 +9993,7 @@ router.put(
       const { tagIds } = req.body as { tagIds: string[] };
       const tags = await resolveTagIds(brand._id, tagIds, `${comingFrom} - PUT /:id/tags`);
 
-      const updated = await setTags(id, tags);
+      const updated = await setTags(id, tags, {}, req.user?.id);
       successResponse(res, { data: updated, message: 'Session tags updated' });
     }
   )
@@ -9395,13 +10001,13 @@ router.put(
 
 ## GET /api/v1/sessions/:id/notes
 
-**Source:** `server/src/modules/session/api.ts:304`
+**Source:** `server/src/modules/session/api.ts:352`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -9467,13 +10073,13 @@ router.get(
 
 ## POST /api/v1/sessions/:id/notes
 
-**Source:** `server/src/modules/session/api.ts:320`
+**Source:** `server/src/modules/session/api.ts:368`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin, query_manager.
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business logic:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.
 
 **Implementation entry points:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`
 
@@ -10880,15 +11486,15 @@ expressApp.get('/health/queue', async (_req: Request, res: Response) => {
 
 ## GET /api/v1/teams
 
-**Source:** `server/src/modules/team/api.ts:37`
+**Source:** `server/src/modules/team/api.ts:39`
 
-**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
 **Prerequisites:** Existing company and department; creation/joining requires an active department. Team administration requires a manager role.
 
-**Business logic:** Tenant-scoped Team CRUD with no DELETE. Derive companyId from a visible department. Names are unique per department using English strength-2 collation; duplicate writes become 409. Department is immutable; rename or deactivate instead of moving/deleting.
+**Business logic:** Search tenant-scoped teams, then withStats decorates the page with departmentName, departmentStatus, query-manager memberCount and brandCount from direct team/department grants. Individual member grants do not count; a brand granted both ways counts once. Existing offset pagination is preserved.
 
-**Implementation entry points:** `server/src/modules/team/api.ts`
+**Implementation entry points:** `server/src/modules/team/api.ts; server/src/modules/team/stats.ts`
 
 ### Request example
 
@@ -10909,7 +11515,11 @@ curl -i -X GET "${BASE_URL}/api/v1/teams" \
       "name": "Night shift",
       "status": "active",
       "departmentId": "670000000000000000000003",
-      "companyId": "670000000000000000000001"
+      "companyId": "670000000000000000000001",
+      "departmentName": "Support",
+      "departmentStatus": "active",
+      "memberCount": 3,
+      "brandCount": 2
     }
   ],
   "pagination": {
@@ -10953,17 +11563,17 @@ router.get(
     validateQuery(listTeamsSchema),
     logRequest({}),
     async (req: Request, res: Response) => {
-      const data = await search(req.query, getTenantScope(req.user));
-      paginatedSuccessResponse(res, { data });
+      const page = await search(req.query, getTenantScope(req.user));
+      paginatedSuccessResponse(res, { data: { ...page, items: await withStats(page.items) } });
     }
   )
 ```
 
 ## POST /api/v1/teams
 
-**Source:** `server/src/modules/team/api.ts:52`
+**Source:** `server/src/modules/team/api.ts:54`
 
-**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
 **Prerequisites:** Existing company and department; creation/joining requires an active department. Team administration requires a manager role.
 
@@ -11048,9 +11658,9 @@ router.post(
 
 ## GET /api/v1/teams/:id
 
-**Source:** `server/src/modules/team/api.ts:82`
+**Source:** `server/src/modules/team/api.ts:84`
 
-**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
 **Prerequisites:** Existing company and department; creation/joining requires an active department. Team administration requires a manager role.
 
@@ -11117,11 +11727,87 @@ router.get(
   )
 ```
 
+## GET /api/v1/teams/:id/brands
+
+**Source:** `server/src/modules/team/api.ts:103`
+
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility still applies. Query managers receive 403.
+
+**Prerequisites:** Tenant-visible Team.
+
+**Business logic:** Load a tenant-scoped team, then getTeamBrands queries same-company brands granted directly to the team or its department. Sort case-insensitively A–Z and return each once with the applicable grants. Individual member grants are excluded.
+
+**Implementation entry points:** `server/src/modules/team/stats.ts:getTeamBrands`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/teams/670000000000000000000020/brands" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "id": "670000000000000000000004",
+      "name": "Example Brand",
+      "status": "active",
+      "logoUrl": null,
+      "grants": [
+        "team",
+        "department"
+      ]
+    }
+  ]
+}
+```
+
+- Returns an array, not an offset page. grants contains team, department or both.
+- GET /teams/:id remains an ordinary Team read; the list endpoint supplies enriched counts.
+
+### Validation declarations
+
+**Params: teamIdParamsSchema** — `server/src/modules/team/validation.ts`
+
+```typescript
+export const teamIdParamsSchema = z.object({
+  id: idSchema,
+});
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+    '/:id/brands',
+    authenticate,
+    authorize(...MANAGE_ROLES),
+    validateParams(teamIdParamsSchema),
+    logRequest({}),
+    async (req: Request, res: Response) => {
+      const team = await getById(String(req.params.id), getTenantScope(req.user));
+      if (!team) {
+        throw new NotFoundError(`${model} not found`, `${comingFrom} - GET /:id/brands`);
+      }
+      successResponse(res, { data: await getTeamBrands(team) });
+    }
+  )
+```
+
 ## PATCH /api/v1/teams/:id
 
-**Source:** `server/src/modules/team/api.ts:100`
+**Source:** `server/src/modules/team/api.ts:121`
 
-**Access:** Authenticated super_admin, company_owner or company_admin; tenant/brand visibility is still required.
+**Access:** Authenticated super_admin, company_owner or company_admin; tenant and brand visibility checks still apply.
 
 **Prerequisites:** Existing company and department; creation/joining requires an active department. Team administration requires a manager role.
 

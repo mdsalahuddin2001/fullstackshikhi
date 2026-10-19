@@ -7,7 +7,7 @@ description: "Read the shared status writer, hold reasons, automatic-reply rules
 
 A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
 
-Source snapshot: `2a5407c`, 18 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+Source snapshot: `6516627`, 19 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
 
 ## One writer for both kinds of query
 
@@ -46,7 +46,7 @@ This is optimistic concurrency on one document. Conversation summaries, derived 
 
 The ordinary response omits statusLog. Read the manager-only endpoint below for reason/history. The API accepts an optional trimmed reason up to 500 characters. Empty input does not become a meaningful reason; an overlong reason fails validation with 400. A concurrent status race can produce 409. Visibility, assignment policy and authentication can separately produce 404, 403 or 401.
 
-The same reason is accepted on session wrap-up, comment update and comment wrap-up. Wrap-up accepts hold/unresolved/resolved, with the required classification fields shown in the [API reference](/docs/listenyzen/api-reference). Session `mergeWithPrevious: true` chooses merge instead of the status-change branch; do not interpret a supplied reason as a guaranteed new history entry on that path.
+The same reason is accepted on session wrap-up, comment update and comment wrap-up. Wrap-up accepts hold/unresolved/resolved, with the required classification fields shown in the [API reference](/docs/listenyzen/api-reference). Session merging is removed. The status endpoint requires status and rejects mergeWithPrevious. Same-status wrap-up edits can append wrap-up history without appending status history; see [assignment and wrap-up history](/docs/listenyzen/code-history).
 
 ## Messages can move a query back to pending
 
@@ -73,7 +73,7 @@ Send any courtesy message before putting the query on hold: a qualifying message
 
 `GET /api/v1/sessions/:id/status-log` and `GET /api/v1/comments/:id/status-log` require super_admin, company_owner or company_admin plus record visibility. A query manager receives 403. There is no separate supervisor role. A comment reply ID is resolved to its root.
 
-The route calls `readStatusLog`, explicitly selecting the normally hidden array. `namedStatusLog` loads unique user IDs once, resolves current names, and returns oldest first:
+The route calls `readStatusLog`, explicitly selecting the normally hidden array. `namedStatusLog` loads unique user IDs once, resolves current names and roles, and returns oldest first:
 
 ```json title="Example output — HTTP 200"
 {
@@ -84,7 +84,7 @@ The route calls `readStatusLog`, explicitly selecting the normally hidden array.
       "status": "hold",
       "at": "2026-10-17T04:10:00.000Z",
       "cause": "agent",
-      "by": { "id": "670000000000000000000002", "name": "Amina Rahman" },
+      "by": { "id": "670000000000000000000002", "name": "Amina Rahman", "role": "query_manager" },
       "reason": "Waiting for warehouse confirmation"
     },
     {
@@ -98,7 +98,7 @@ The route calls `readStatusLog`, explicitly selecting the normally hidden array.
 }
 ```
 
-No log returns an empty array. An unknown actor is null; a deleted account is an object retaining its ID with name null. Historical names are not snapshots here. These endpoints return recorded entries, whereas clock calculations can infer a missing legacy status point.
+No log returns an empty array. An unknown actor is null; a deleted account is an object retaining its ID with name and role null. Historical names are not snapshots here. These endpoints return recorded entries, whereas clock calculations can infer a missing legacy status point.
 
 ## Derive the brand hold log
 
@@ -118,7 +118,7 @@ Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17
     "source": "session",
     "id": "670000000000000000000006",
     "conversationId": "670000000000000000000005",
-    "heldBy": { "id": "670000000000000000000002", "name": "Amina Rahman" },
+    "heldBy": { "id": "670000000000000000000002", "name": "Amina Rahman", "role": "query_manager" },
     "reason": "Waiting for warehouse confirmation",
     "startedAt": "2026-10-17T04:10:00.000Z",
     "endedAt": "2026-10-17T04:40:00.000Z",
@@ -131,6 +131,6 @@ Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17
 
 The example is 10:10–10:40 Dhaka on a working Saturday, assuming the default schedule. An active hold has endedAt/endedBy null and durations calculated to read time. Comment rows use source comment and conversationId null. Query parameter sources are plural; row sources are singular.
 
-The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Team pools, claims and manager routing are implemented. Deep links from hold rows remain deferred. Holds live on the query; merging away a session or deleting a thread removes its holds from this report. No separate immutable audit collection exists.
+The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Team pools, claims and manager routing are implemented. Deep links from hold rows remain deferred. Holds live on the query; deleting a thread removes its holds from this report. No separate immutable audit collection exists.
 
 Continue to [settings and SLA](/docs/listenyzen/code-sla) to see how these transitions determine charged time.

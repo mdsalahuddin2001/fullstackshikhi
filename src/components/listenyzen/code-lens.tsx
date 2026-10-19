@@ -41,7 +41,7 @@ export function CodeLens({ tour }: { tour: keyof typeof tours }) {
           <button disabled={step === 0} onClick={() => setStep(step - 1)}><ChevronLeft size={16} />Previous explanation</button>
           <button disabled={step === data.notes.length - 1} onClick={() => setStep(step + 1)}>Next explanation<ChevronRight size={16} /></button>
         </div>
-        <p className="ly-caption">Read-only excerpt from revision 2a5407c. Imports and surrounding declarations are in the source file; this panel does not execute backend code.</p>
+        <p className="ly-caption">Read-only excerpt from revision 6516627. Imports and surrounding declarations are in the source file; this panel does not execute backend code.</p>
       </div>
     </section>
   );

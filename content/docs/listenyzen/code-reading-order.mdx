@@ -1,0 +1,248 @@
+---
+title: "Read the whole codebase in order"
+description: "A file-by-file study roadmap connecting database models, backend modules, the worker, frontend and tests."
+---
+
+## Start here
+
+Read the code in dependency order, then trace a few complete workflows. Start with **schemas → startup → one simple feature → authentication → organization and access → inbox → assignment/status → SLA → ingestion → frontend/realtime → operations**.
+
+This is a study order, not the order in which code executes. For example, schemas are easiest to understand first, but an HTTP request starts in middleware. Provider ingestion creates inbox records at runtime; studying the storage services first makes the provider adapters easier to follow.
+
+Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `6516627` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
+
+## How to read each module
+
+For each feature, use this small loop:
+
+1. **`schema.ts`** — identify stored fields, references, defaults and indexes. Write down which fields are authoritative and which are copies.
+2. **`validation.ts`** — identify what callers can actually supply. A schema field is not automatically writable through the API.
+3. **`index.ts`** — find the mounted URL prefix.
+4. **`api.ts`** — pick one route and read its middleware, visibility checks, handler and response.
+5. **`service.ts`** — follow only the service functions that route calls, then the helpers those functions depend on.
+6. **Relevant tests** — read one success case, one permission failure and one edge case; then return to the implementation to explain why each result occurs.
+
+Some modules differ: Customer is reached through conversation routes, Team has membership helpers, Session has assignment/status/SLA helpers, and webhook processing is split into provider files. Follow imports instead of expecting every directory to have the same files.
+
+For every operation, keep this note:
+
+```text
+Business need:
+Entry point and input:
+Who may call it, and which record may they see?
+Records read:
+Records written, in order:
+External calls / queue work / events:
+Response and failure cases:
+Tests proving the rule:
+```
+
+Do not try to memorize a large service file from top to bottom. Follow one operation to its output, then return for the next operation.
+
+## 1. Learn the stored nouns and relationships
+
+Start with `server/src/libraries/db/base-schema.ts`, then read these schemas in order:
+
+| Order | Files | Connection to understand |
+| --- | --- | --- |
+| 1 | `server/src/modules/company/schema.ts`, `server/src/modules/user/schema.ts` | Tenant and identity. The shared User schema also represents query managers. |
+| 2 | `server/src/modules/department/schema.ts`, `server/src/modules/team/schema.ts` | Company → Department → Team; User stores teamId and the derived departmentId. |
+| 3 | `server/src/modules/brand/schema.ts`, `server/src/modules/brand/tags/schema.ts` | A brand belongs to a company, grants access and owns a tag vocabulary. |
+| 4 | `server/src/modules/customer/schema.ts`, `server/src/modules/conversation/schema.ts` | Customer identity, long-lived conversation, and Message records. Conversation mirrors current session state. |
+| 5 | `server/src/modules/session/schema.ts` | Session, SessionNote, assignment snapshots, embedded status history and SLA state. |
+| 6 | `server/src/modules/comment/schema.ts` | Public roots/replies; provider parent IDs differ from Mongo IDs. The root owns thread state. |
+| 7 | `server/src/modules/settings/schema.ts`, `server/src/modules/settings/definitions.ts` | Versioned policies; defaults and discriminator types. |
+| 8 | `server/src/modules/fixed-reply/schema.ts`, `server/src/modules/file/schema.ts` | Supporting records; File is distinct from embedded message attachments. |
+
+**Checkpoint:** draw Company → Brand → Conversation → Session → Message, then the separate Brand → Comment path. Explain why a message, conversation and session are not interchangeable. Mark references versus snapshots and embedded arrays.
+
+## 2. Find the two running processes
+
+Read these files in this order, initially skimming helper internals:
+
+1. `server/package.json` — find API, worker, development and backfill commands.
+2. `server/src/configs/index.ts` and `server/src/configs/config.schema.ts` — configuration loading and validation.
+3. `server/src/app.ts` → `server/src/libraries/db/index.ts` → `server/src/server.ts` — database startup, Express setup, middleware, socket setup and lifecycle.
+4. `server/src/routes.ts` → `server/src/modules/index.ts` — `/api/v1`, health routes and feature registration.
+5. `server/src/worker.ts` — the sibling process that starts queue consumption and emits through Redis; it has no HTTP listener.
+
+**Checkpoint:** point to where a URL reaches a feature, and explain why the API can be running while incoming messages are not being processed. Keep the detailed [architecture chapter](/docs/listenyzen/architecture) open beside these files.
+
+## 3. Learn the request pattern with one small feature
+
+Use **Department** as the first complete feature. Read `server/src/modules/department/schema.ts`, `validation.ts`, `index.ts`, `api.ts` and `service.ts` using the module loop above. Follow create, then get/list, then delete and its team guard.
+
+When the route reaches shared machinery, read:
+
+| Shared file | What it adds to the feature |
+| --- | --- |
+| `server/src/middlewares/request-validate/index.ts` | Parses and replaces request input before the handler. |
+| `server/src/libraries/utils/zod-validations.ts` | Reusable ID and list contracts. |
+| `server/src/libraries/query/QueryBuilder.ts` | Allowed filters/search/sort, scoped queries and pagination. |
+| `server/src/libraries/utils/sendResponse.ts` | Success and pagination response envelopes. |
+| `server/src/libraries/error-handling/index.ts` | Shared error exports; follow the imported error classes and middleware from here. |
+
+Read `server/test/request-validate.test.ts`, `sendResponse.test.ts` and `department-delete-guard.test.ts` as you encounter those behaviors.
+
+**Checkpoint:** trace a department ID from request validation to scoped database lookup and response. Explain why DELETE can return 409 even though the department exists.
+
+## 4. Understand identity before studying permissions
+
+Read `server/src/auth/index.ts`, `api.ts`, `validation.ts` and `service.ts`. Follow registration, then login, then refresh. Branch into:
+
+- `server/src/auth/strategies/local.strategy.ts` for credential authentication.
+- `server/src/libraries/utils/tokens.ts` for token claims.
+- `server/src/middlewares/auth/index.ts` for the principal attached to requests and role checks.
+- `server/src/auth/company-access.ts` for company status checks.
+- `server/src/auth/roles.ts` and `server/src/auth/tenant.ts` for explicit role sets and tenant/brand filters.
+- `server/src/types/express/index.d.ts` for the shape of req.user.
+
+Return to User's password hook and `server/src/modules/user/service.ts` to compare document saves with direct update hashing. Read `server/test/auth-token-handling.test.ts`, `tenant-scope.test.ts`, `user-password-containment.test.ts` and `provision-rollback.test.ts`.
+
+**Checkpoint:** distinguish authentication, role authorization, tenant scope and brand visibility. Explain which claims refresh reloads and why a team move is not immediately reflected in an existing access token. Continue with [the access code walkthrough](/docs/listenyzen/code-access).
+
+## 5. Build the organization and brand-access graph
+
+Read the ordinary feature files in this order: **Company → User administration → Department → Team → Query manager → Brand**. Department is now familiar, so focus on cross-module calls.
+
+The important connections are:
+
+| Read next | Follow into | Why |
+| --- | --- | --- |
+| `server/src/modules/team/api.ts` | `server/src/modules/team/service.ts` | Tenant-visible department determines companyId; teams can be deactivated, not moved/deleted. |
+| `server/src/modules/query-manager/api.ts` | `server/src/modules/team/membership.ts` | Resolve the selected team and write teamId plus departmentId together. |
+| `server/src/modules/brand/api.ts` | `server/src/modules/brand/service.ts` | Store department, team and individual grants separately. |
+| `server/src/auth/tenant.ts` | `server/src/modules/query-manager/service.ts`, `server/src/modules/brand/assignees.ts` | Relate the visibility union to the available assignment targets. |
+
+Read `server/test/team-routes.test.ts`, `query-manager-team.test.ts`, `brand-team-access.test.ts` and `brand-assignees.test.ts`.
+
+**Checkpoint:** explain why granting a team access to a brand does not assign a particular query to that team. Draw the three alternative access paths within the company boundary.
+
+## 6. Finish the independent brand features
+
+Read **Fixed reply → Brand tags → Settings** before the larger inbox workflows. They depend on brand access, but do not need a conversation to exist.
+
+- `server/src/modules/fixed-reply/`: use the normal module loop to learn reusable text CRUD.
+- `server/src/modules/brand/tags/names.ts`, `validation.ts`, `service.ts`, `api.ts`: follow hierarchical names, subtree expansion, archive and ID resolution.
+- `server/src/modules/settings/definitions.ts`, `schema.ts`, `validation.ts`, `service.ts`, `api.ts`: follow virtual defaults, baseVersion, history and historical lookup. Read `server/test/settings-route.test.ts`.
+
+**Checkpoint:** explain local fixed replies versus provider WhatsApp templates, tag references versus names, and settings version versus SLA rulesVersion. Save the clock algorithm for step 9.
+
+## 7. Understand private inbox storage and queries
+
+Read **Conversation → Customer → Session**. Start with list/read handlers before send handlers.
+
+1. `server/src/modules/conversation/api.ts`, `validation.ts`, `access.ts` — request filters, visibility and action boundaries.
+2. `server/src/modules/conversation/service.ts` — conversation lookup/upsert, message persistence and list operations.
+3. `server/src/modules/customer/service.ts` — customer lookup/editing through the conversation.
+4. `server/src/modules/session/service.ts` — episode selection, latest-session reads, notes and the conversation mirror.
+5. `server/src/libraries/query/cursorPagination.ts` — stable continuation boundaries used by inbox lists.
+
+Read `server/test/cursor-pagination.test.ts`, `session.test.ts` and `conversation-access.test.ts`. Trace the named functions `recordIncomingMessage`, `assignMessageToSession` and `syncConversationFromLatestSession`; the [ingestion code chapter](/docs/listenyzen/code-ingestion) explains their ordering.
+
+**Checkpoint:** explain which writes occur before Message.create, where a new episode starts, and why the mirror needs compare-and-swap. Separate the session document from the conversation's latest-session summary.
+
+## 8. Connect ownership, status and public threads
+
+First read assignment; then read status. They change different things.
+
+| Order | Files | Question to answer |
+| --- | --- | --- |
+| 1 | `server/src/auth/reply-access.ts` | Who can act, what can be claimed, and what mine=true includes. |
+| 2 | `server/src/modules/session/assignment.ts`, `server/src/modules/session/service.ts` | How routeSession/claimForCaller reach an atomic conditional write. |
+| 3 | `server/src/modules/session/status-log.ts`, `server/src/modules/session/status-history.ts` | How actual transitions are guarded, recorded and presented with actor names. |
+| 4 | `server/src/modules/comment/validation.ts`, `api.ts`, `service.ts` | How public root/reply traversal reuses ownership and status concepts without a Session document. |
+
+Read `server/test/claim.test.ts`, `team-assignment-routes.test.ts`, `assigned-only-routes.test.ts`, `assignment-emit.test.ts` and `comment-thread-reopen.test.ts`. Some test filenames retain older terminology; read the assertions for current behavior.
+
+**Checkpoint:** explain why claiming a held query changes ownership but does not resume its clock. Explain why a comment reply ID can lead to a root assignment, and why resolved comment threads differ from new direct-message episodes.
+
+Use [teams and claims](/docs/listenyzen/code-assignment) and [status history](/docs/listenyzen/code-status) as companions.
+
+## 9. Calculate time, then read the reports
+
+Read in this order:
+
+1. `server/src/libraries/business-time/index.ts` — business-hour arithmetic.
+2. `server/src/modules/settings/service.ts` — revisit historical policy selection.
+3. `server/src/modules/session/sla.ts` — start timestamp, qualifying response, status intervals and guarded writes.
+4. `server/src/modules/comment/sla.ts` — adapt the same rules to a comment root and its descendants.
+5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts` — consume stored state and histories to build reports.
+
+Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts` and `overview-sla-compliance.test.ts`.
+
+**Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection. See [the SLA walkthrough](/docs/listenyzen/code-sla).
+
+## 10. Connect providers to the domain you already know
+
+Now study the external boundaries. Follow one text message completely before attachments or templates.
+
+**Incoming:** `server/src/modules/webhook/index.ts` → `server/src/libraries/queue/index.ts` → `server/src/worker.ts` and `server/src/modules/webhook/queue.ts` → `server/src/modules/webhook/facebook.ts` or `whatsapp.ts` → the conversation/comment services already studied. `server/src/modules/webhook/topics.ts` defines the shared queue topics.
+
+**Outgoing:** `server/src/modules/conversation/api.ts` → `server/src/modules/conversation/send-channel.ts` → the provider client imported by that send path → conversation persistence and session effects.
+
+Then read the related features:
+
+| Area | Entry files |
+| --- | --- |
+| Channel connection | `server/src/modules/brand/meta-channels.ts`, `whatsapp.ts`, `channel-access.ts` |
+| Media | `server/src/modules/conversation/media.ts`, `server/src/libraries/aws/s3/index.ts`, `server/src/modules/file/api.ts`, `service.ts` |
+| Templates | `server/src/modules/brand/whatsapp-templates.ts`, `server/src/modules/conversation/whatsapp-templates.ts` |
+
+Follow each file's imports into the provider libraries when you need payload construction, retries or error handling. Read `server/test/webhook-queue.test.ts`, `webhook-brand-status.test.ts`, `send-channel-status.test.ts`, `message-attachments.test.ts`, `whatsapp-delivery-status.test.ts` and `whatsapp-templates.test.ts`.
+
+**Checkpoint:** distinguish accepted HTTP ingress, enqueued work, stored message and emitted event. Identify partial-success boundaries in an attachment send and where provider IDs enforce deduplication.
+
+## 11. Follow the frontend back to those routes
+
+Start with `client/src/main.tsx` → `client/src/router.tsx` → `client/src/lib/api.ts` and `client/src/lib/query-client.ts`. Then read `client/src/features/auth/api.ts` and `client/src/types/auth.ts` to connect client identity with server tokens and user data.
+
+For each screen, read **page → feature API hook → backend route → response type → cache update → rendering**. For example:
+
+| UI area | Start here | Connect to |
+| --- | --- | --- |
+| Organization | `client/src/pages/departments/index.tsx`, `client/src/pages/departments/components/teams-sheet.tsx` | `client/src/features/teams/api.ts` and the Team routes. |
+| Agent membership | `client/src/pages/query-managers/components/team-select.tsx` | `client/src/features/query-managers/api.ts` and resolveMembership. |
+| Brand grants | `client/src/pages/brands/access/index.tsx` | `client/src/features/brands/api.ts` and the three grant PUTs. |
+| Inbox | `client/src/pages/inbox/index.tsx` | `client/src/features/inbox/api.ts`, `types.ts`, `cache.ts`. |
+| Assignment | `client/src/features/inbox/assignment-card.tsx`, `claim-button.tsx`, `reply-access.ts` | Claim/routing endpoints and the server's action guard. |
+| Comments | `client/src/pages/comments/components/comment-thread.tsx` | `client/src/features/comments/api.ts` and Comment routes. |
+| History and reporting | `client/src/features/status-history/api.ts`, `client/src/pages/admin/hold-log.tsx` | Status-log and overview/holds endpoints. |
+
+Finally connect realtime: `server/src/libraries/socket/index.ts` and `emit.ts` → `client/src/lib/socket.ts` → `client/src/features/inbox/use-inbox-realtime.ts` and `client/src/features/comments/use-comments-realtime.ts`. Follow which event changes cached data and which triggers a refetch.
+
+**Checkpoint:** explain how a successful claim updates the row and reply permission, both in the caller's UI and another agent's UI. Client button visibility is a convenience; the backend still enforces authorization.
+
+## 12. Finish with operations and the remaining files
+
+Read `DEPLOY.md`, `RELEASE.md`, root `docker-compose.yml`, `docker-compose.prod.yml` and `docker-bake.hcl`. Return to startup/shutdown, logging, Redis, queue and health libraries with those deployment boundaries in mind.
+
+Read `server/scripts/dev/backfill-default-teams.ts`, `backfill-session-sla.ts` and `backfill-comment-sla.ts` as code, then their relevant tests. Understand the migration before considering execution; a study session does not require writing to a database. The [development chapter](/docs/listenyzen/development) explains the operational context.
+
+For complete coverage, now revisit each feature directory's remaining files and the remaining tests. On the client, use router.tsx to enumerate screens, then follow each screen's imports into feature hooks, components and utilities. Read reusable visual components after you understand the screens that use them. Separate fixtures/mock data from live API wiring.
+
+Use the repository's Postman collection and [API reference](/docs/listenyzen/api-reference) as a checklist: for each operation, locate its handler, service, input schema, access boundary and consumer. Reading requests is enough; running mutating examples is not necessary for this exercise.
+
+## Three traces that connect everything
+
+After the first pass, reproduce these paths without consulting the roadmap:
+
+| Scenario | Trace | Explain the failure path too |
+| --- | --- | --- |
+| Claim an inbox pool | Assignment card → inbox API hook → conversation claim route → latest session → claimForCaller → claimableFilter → claimSession → conversation mirror → event/cache refresh | What if another agent claims first, or the query resolves meanwhile? |
+| Receive a WhatsApp message | Webhook ingress → queue → worker dispatch → provider normalization → conversation upsert → session selection → Message insert → status/SLA synchronization → event → inbox | What is protected by the provider-ID index, and what earlier writes are separate? |
+| Put work on hold and inspect it | UI status request → validation/access → shared status writer → SLA recomputation → manager history/hold query → historical hours and actor names → report | What if status is unchanged, the caller lacks ownership, or a previous breach already exists? |
+
+For each trace, write one example input, the affected records, the output, and one relevant test name. When you can explain all three, the organization, request, storage, background-work and UI paths are connected. Use that understanding to study the remaining provider branches and edge cases.
+
+## Files added to the latest study pass
+
+After step 5, read `server/src/modules/team/stats.ts` and getTeamBrands in the team service; then `client/src/pages/teams/index.tsx`, `components/team-detail-sheet.tsx` and `components/team-form-dialog.tsx` relative to that Teams page directory.
+
+At step 8, read `server/src/modules/session/schema.ts` and `wrap-up-log.ts`, then forward handlers in `session/assignment.ts` and both Session/Comment services. Read [the history chapter](/docs/listenyzen/code-history) before the manager UI. Connect `client/src/features/inbox/forward.tsx`, `history-version.ts` and `client/src/features/status-history/history-timeline.tsx` to those routes.
+
+At step 9, follow slaUsage and the boolean syncSessionSla result into session:updated emission. On the client, read `client/src/features/inbox/sla.ts`, `session-sla.tsx`, `session-details-sheet.tsx` and the usage query in api.ts. Distinguish the badge's snapshot from fetched business-time usage.
+
+At step 11, follow useSyncCurrentUser in `client/src/features/auth/api.ts`: the dashboard refreshes /users/me on window focus and updates the client user. This refreshes client membership checks, not JWT claims; server token-based brand visibility still needs token refresh. Read `client/src/components/linkified-text.tsx` for safe http(s)/www rendering in messages and comments (text rendering, not injected HTML).
+
+Finally retrace a message that opens a new Session: assignMessageToSession reports opened, and incoming/outgoing storage reloads the Conversation when status changes **or a session opens**, so message:new does not carry the previous episode's assignee. Session merging and session:merged no longer belong to this trace.

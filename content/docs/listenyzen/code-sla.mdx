@@ -203,14 +203,19 @@ These guards protect the message, failure and append-only status counters plus r
 Source: `server/src/modules/session/sla.ts`.
 
 ```typescript title="server/src/modules/session/sla.ts"
-export const syncSessionSla = async (sessionId: Types.ObjectId | string): Promise<void> => {
+export const syncSessionSla = async (sessionId: Types.ObjectId | string): Promise<boolean> => {
   try {
-    const session = await SessionModel.findById(sessionId).select(SLA_SESSION_FIELDS).lean();
-    if (!session) return;
+    const session = await SessionModel.findById(sessionId)
+      .select({ ...SLA_SESSION_FIELDS, firstCustomerMessageAt: 1, firstResponseAt: 1, sla: 1 })
+      .lean();
+    if (!session) return false;
     const state = await computeSessionSla(session);
-    if (state) await SessionModel.bulkWrite([slaWrite(session, state)]);
+    if (!state) return false;
+    const written = await SessionModel.bulkWrite([slaWrite(session, state)]);
+    return written.modifiedCount > 0 && visibleSla(session) !== visibleSla(state);
   } catch (error) {
     logger.error('syncSessionSla(): failed', { sessionId: String(sessionId), error });
+    return false;
   }
 };
 ```
@@ -224,6 +229,35 @@ Investigate `syncSessionSla(): failed` logs when derived timing is missing. The 
 `comment/sla.ts` uses the root comment as the timing record. It traverses descendants within the same brand/post to find the earliest page response, then calls the shared SLA builder with the root’s status timeline. Other participants do not create a new root clock. Root-author-only matching belongs to the unresolved-reopen rule, not resolution interval calculation.
 
 Because comment deletion/hiding can change a thread without monotonically increasing a message count, comment synchronization uses `slaRevision`. Every relevant thread mutation bumps the root revision; the final write only applies when it still matches. A reply after resolved wrap-up does not create a new comment SLA cycle in the current implementation.
+
+## 8. Read live usage and follow it into the client
+
+`GET /api/v1/sessions/:id/sla` requires authentication, an inbox read role and session visibility. It does not require personal ownership. It returns null data when no customer start or SLA snapshot exists. Otherwise slaUsage selects business hours at the original customer start and derives usage without writing the session.
+
+```sh
+curl "${BASE_URL}/api/v1/sessions/670000000000000000000006/sla" -b cookies.txt
+```
+
+```json title="Illustrative HTTP 200"
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "asOf": "2026-10-19T04:30:00.000Z",
+    "timezone": "Asia/Dhaka",
+    "firstResponseMs": 300000,
+    "resolutionUsedMs": 1800000
+  }
+}
+```
+
+For a Monday schedule covering 10:00–10:30 in Dhaka, a customer start at 10:00, first reply at 10:05 and uninterrupted pending interval through 10:30 produce these values. Each unmeasured clock returns null. First response ends at firstResponseAt, otherwise resolvedAt, otherwise asOf. Resolution adds the business time since waitingSince to persisted usedMs when running; it is not total wall time.
+
+syncSessionSla returns true only when its guarded write modifies the document and a visible start/response/clock value changes. Counters alone do not trigger this signal. `onMessageStored` announces session changes when status moves or SLA changes; delivery-failure refresh also announces changed clocks. Errors remain logged and swallowed. This keeps session:updated consumers current without treating every internal counter increment as a visible change.
+
+Read client `features/inbox/sla.ts` for badge classification, then `session-sla.tsx`, `session-details-sheet.tsx` and the usage hook in `api.ts`. The badge uses the snapshot and current time; the details hook fetches server usage every 60 seconds while enabled. The client does not reproduce business-hour arithmetic. Details distinguish elapsed wall time from business usage.
+
+First response continues through hold/unresolved. A session resolved without a reply by its deadline is labelled **Not needed**; resolved after the deadline remains breached. Overview compliance also uses resolvedAt rather than allowing the unanswered resolved session to breach later. Completed resolution is judged at completion, with equality to the target on time. A missing snapshot produces no badge. This new usage endpoint is for sessions; there is no matching comment usage route.
 
 ## A safe way to extend SLA behavior
 

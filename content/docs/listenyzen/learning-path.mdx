@@ -3,6 +3,8 @@ title: "Business requirements & learning order"
 description: "Move from database entities to independent features, then dependent workflows and their endpoint implementations."
 ---
 
+Studying the implementation? Follow [Read the whole codebase in order](/docs/listenyzen/code-reading-order) for exact files, module order and checkpoints.
+
 ## How to read this documentation
 
 Begin with [every database entity, schema and relationship](/docs/listenyzen/data-model). Then follow the stages below. “No dependency” means no earlier **business feature** is required; database/runtime primitives still exist. Authentication and tenant scope are cross-cutting prerequisites, not optional steps.
@@ -470,7 +472,7 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business rule and implementation:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business rule and implementation:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append status history. Status changes mirror the latest session onto Conversation. Session merge is removed; mergeWithPrevious is rejected. Same-status classification edits can still append wrap-up history.
 
 **Read the code:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`.
 
@@ -644,6 +646,19 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 ## What changed in this revision
 
-Revision `2a5407c` adds teams, required query-manager membership, team brand grants and pools, atomic claims, personal-only modification permissions and guarded conversation mirroring. It retains the previously documented SLA and status-history behavior. The client adds hold-reason fields, manager History tabs and the Admin hold-log page. The detailed transition examples are in [hold, reopen and history](/docs/listenyzen/code-status).
+The previous update introduced teams, required query-manager membership, team brand grants and pools, atomic claims, personal-only modification permissions and guarded conversation mirroring. It retains the previously documented SLA and status-history behavior. The client adds hold-reason fields, manager History tabs and the Admin hold-log page. The detailed transition examples are in [hold, reopen and history](/docs/listenyzen/code-status).
 
 Team pools, manager routing and claims are now implemented. Hold-row deep links remain deferred. Existing production index/backfill state is not verified by this source review. See [development and repair](/docs/listenyzen/development) before operating on stored data.
+
+## Latest additions: continue after ownership and status
+
+The current snapshot adds forwarding, assignment/classification history, live session SLA details and a dedicated Teams page. Session merging is removed. Study these in this order:
+
+| Prerequisite | Requirement and routes | Walkthrough |
+| --- | --- | --- |
+| Organization and brand grants | Enriched GET /teams and GET /teams/:id/brands explain members and team/department brand access. | [Teams and ownership](/docs/listenyzen/code-assignment) |
+| Personal ownership and eligible targets | POST /conversations/:id/forward and POST /comments/:id/forward hand work to an eligible person/pool and retain an internal note. | [Forwarding input/output](/docs/listenyzen/code-assignment#8-the-current-holder-can-forward-work) |
+| Assignment and status writers | GET /sessions/:id/assignment-log, /wrap-up-log and matching comment routes explain ownership/classification separately from status. | [History examples](/docs/listenyzen/code-history) |
+| Historical settings and status intervals | GET /sessions/:id/sla supplies business-time usage for the details sheet. | [SLA usage example](/docs/listenyzen/code-sla#8-read-live-usage-and-follow-it-into-the-client) |
+
+Every route above has the /api/v1 prefix. See the API reference for each operation's validation, errors and complete source handler. Examples are illustrative, not live calls.

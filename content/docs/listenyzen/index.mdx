@@ -4,16 +4,20 @@ description: "Database first, then business requirements, prerequisites and code
 ---
 
 <Callout title="Current source snapshot">
-Based on Listenyzen revision `2a5407c`, inspected on 18 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 121 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
+Based on Listenyzen revision `6516627`, inspected on 19 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 129 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
 </Callout>
 
 ## 1. Understand the database before the endpoints
 
-Start with all 15 base collections: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File and Setting. SLA and business-hour settings share the Setting collection through discriminators. Status history is embedded in Session and Comment, not a separate collection.
+Start with all 15 base collections: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File and Setting. SLA and business-hour settings share the Setting collection through discriminators. Status, assignment and wrap-up history are embedded in Session and Comment, not a separate collection.
 
 <Cards>
 <Card title="Entities, schemas & relationships" href="/docs/listenyzen/data-model">Read field types, defaults, references, indexes, embedded history and consistency boundaries.</Card>
 <Card title="Business requirements & learning order" href="/docs/listenyzen/learning-path">Follow prerequisites from independent features to dependent workflows, with code entry points and input/output examples at every stage.</Card>
+</Cards>
+
+<Cards>
+<Card title="Read the whole codebase in order" href="/docs/listenyzen/code-reading-order">A file-by-file study route, module dependencies, checkpoints, tests and complete backend-to-frontend traces.</Card>
 </Cards>
 
 ## 2. Learn the shared foundations
@@ -36,6 +40,8 @@ Once company identity and brand access exist, settings, tags and reusable replie
 <Cards>
 <Card title="Business workflows" href="/docs/listenyzen/workflows">Provisioning, access assignments, messages, settings, templates and reporting.</Card>
 <Card title="Message & session code" href="/docs/listenyzen/code-ingestion">Provider identity, episode choice, persistence and events.</Card>
+<Card title="Teams, routing & forwarding" href="/docs/listenyzen/code-assignment">Claim eligible pools, enforce personal ownership and forward work with an internal note.</Card>
+<Card title="Assignment & wrap-up history" href="/docs/listenyzen/code-history">Read embedded changes, actor resolution and manager-only history APIs.</Card>
 <Card title="Hold, reopen & history code" href="/docs/listenyzen/code-status">Status-write concurrency, reasons, automatic replies and manager reporting.</Card>
 <Card title="Settings & SLA code" href="/docs/listenyzen/code-sla">Historical policies, full pending-time accounting and guarded derived writes.</Card>
 </Cards>
@@ -45,7 +51,7 @@ Once company identity and brand access exist, settings, tags and reusable replie
 Every operation has an example request and response, access requirements, prerequisites, business context, validation declarations and handler code. Read the learning path first when a route depends on unfamiliar entities or workflows.
 
 <Cards>
-<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 123 operations, including session/comment history and the brand hold log.</Card>
+<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 131 operations, including session/comment history and the brand hold log.</Card>
 <Card title="Development & repair" href="/docs/listenyzen/development">Configure the processes, understand backfills and check production index requirements.</Card>
 </Cards>
 
@@ -61,3 +67,13 @@ Resolution charges business time while pending, including silence after an agent
 The manager-only History tabs and Admin hold log expose who changed status, when and why. Team pools, claims and manager routing are implemented. Hold-row deep links remain deferred.
 
 [Download the complete Markdown guide](/downloads/LISTENYZEN_BACKEND_ONBOARDING.md) · [Download the API reference](/downloads/LISTENYZEN_API_REFERENCE.md)
+
+## Updated in this snapshot
+
+- Teams have a dedicated management page, member/brand counts and a brand-access detail endpoint.
+- Personal holders can forward queries with an internal note; managers can inspect separate assignment and wrap-up histories.
+- Session details show live business-time SLA usage and corrected completed-session badge behavior.
+- Reopened conversations refresh their assignment summary; the client refreshes current-user membership and linkifies message/comment URLs.
+- Session merging is removed, including its request field and realtime event.
+
+Continue through [the whole-code reading order](/docs/listenyzen/code-reading-order), [forwarding](/docs/listenyzen/code-assignment), [history](/docs/listenyzen/code-history) and [SLA details](/docs/listenyzen/code-sla).

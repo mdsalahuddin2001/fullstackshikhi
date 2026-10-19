@@ -88,7 +88,7 @@ The newest session's status, sentiment, assignee and tags are copied onto Conver
 
 Wrap-up accepts only unresolved/resolved/hold (not pending) and writes status, sentiment, sessionType, optional summary and tags. Notes and resolution summaries are limited to 8,000 characters by their input schemas. `resolvedAt` is stamped for resolved and removed for other statuses. Status/wrap-up paths clear conversation unread count and emit updates. Internal notes increment noteCount without becoming provider messages.
 
-`PATCH /sessions/:id/status` also accepts `{ "mergeWithPrevious": true }`. This invokes `mergeIntoPrevious`, which moves messages/notes to the immediately preceding session, recounts them, removes the current session, recalculates SLA and emits `session:merged`. The merge branch takes precedence over a supplied status; it preserves the previous session’s outcome rather than applying that status. This multi-document operation is not transactional.
+Session merging has been removed. `PATCH /sessions/:id/status` requires status and accepts an optional reason. The strict schema rejects the former mergeWithPrevious field with HTTP 400; there is no merge UI or merge event.
 
 Concurrency caveat: selecting the latest session and creating the next one are separate operations. There is no unique session sequence constraint or per-conversation queue serialization in the shown paths. Parallel jobs can race; assess this when changing ingestion or increasing worker concurrency.
 
@@ -129,7 +129,7 @@ Current defaults:
 
 SLA snapshots use the setting versions in force when the customer first wrote, not today's settings. Outbound-only sessions have nothing to measure until a customer message exists.
 
-**First response:** earliest non-failed, non-automatic outgoing message at/after the first customer message. `isAutomatic: true` is excluded; holding or wrapping up does not pause the first-response clock. Provider acceptance without a known failure currently counts; the code does not require a delivered receipt.
+**First response:** earliest non-failed, non-automatic outgoing message at/after the first customer message. `isAutomatic: true` is excluded; hold and unresolved do not pause the first-response clock. A resolved session without a reply stops usage at resolvedAt: resolving by its deadline is “Not needed,” while resolving after the deadline is breached. Provider acceptance without a known failure currently counts; the code does not require a delivered receipt.
 
 **Resolution:** business time from the first customer message (or customer-authored root comment), including customer silence while pending. The status timeline subtracts every hold, unresolved and resolved interval. Returning to pending resumes the same clock with its previous charged time; a newly created session has its own clock.
 
@@ -175,7 +175,7 @@ Use `server/src/modules/overview/service.ts` and its date-boundary helpers when 
 
 ## Realtime contract and background work
 
-Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `message:updated`, `conversation:read`, `session:updated`, `session:merged`, `note:added`, `comment:new`, `comment:updated`, `comment:deleted`, `assignment:changed`, `brand:tags-updated`, `typing`.
+Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `message:updated`, `conversation:read`, `session:updated`, `note:added`, `comment:new`, `comment:updated`, `comment:deleted`, `assignment:changed`, `brand:tags-updated`, `typing`.
 
 The API emits through Socket.IO; worker operations emit through Redis. `emitToRoom` selects the available transport and skips with a debug log if neither exists. Persistence can therefore succeed without a live event. Client consumers live in `features/inbox/use-inbox-realtime.ts`, `features/comments/use-comments-realtime.ts` and associated cache helpers.
 

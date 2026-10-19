@@ -7,7 +7,7 @@ description: "Create the organization, grant brand access, pool work, claim it a
 
 Departments organize staff; teams divide a department into working groups. Managers distribute work to a person or pool. Agents can see a brand's work but must take responsibility before changing a query. A pool is a queue to claim from, not shared permission to reply.
 
-Read [entities and relationships](/docs/listenyzen/data-model), [identity and visibility](/docs/listenyzen/code-access), and [session identity](/docs/listenyzen/code-ingestion) first. This chapter reflects source revision `2a5407c`, inspected 18 October 2026. Examples use fictional IDs and compact responses; they were not executed against a live backend.
+Read [entities and relationships](/docs/listenyzen/data-model), [identity and visibility](/docs/listenyzen/code-access), and [session identity](/docs/listenyzen/code-ingestion) first. This chapter reflects source revision `6516627`, inspected 19 October 2026. Examples use fictional IDs and compact responses; they were not executed against a live backend.
 
 ```mermaid
 flowchart LR
@@ -47,7 +47,9 @@ flowchart LR
 
 The case-insensitive unique department/name index arbitrates concurrent creates and renames; duplicate names return 409. Names may repeat in different departments. PATCH rejects departmentId; a team cannot move because it would silently change every member's department. Deactivation preserves existing references. A department containing even inactive teams returns 409 on deletion.
 
-The UI manages teams from the Departments page: Manage teams opens a sheet with create, edit and activate/deactivate actions. Its per-department list currently caps at 100.
+The dedicated Teams page supports team management and a detail sheet with members and brands. The Departments page retains its Manage teams sheet (its list caps at 100). GET /teams now adds departmentName, departmentStatus, memberCount and brandCount to each row; GET /teams/:id remains an ordinary team document. `team/stats.ts` batches department lookup, member counts and brand reads. brandCount counts the union of direct team and department grants once per brand, including inactive brands; individual member grants do not count.
+
+Manager-only `GET /api/v1/teams/:id/brands` returns an unpaginated A–Z list in tenant scope. Each row has id, name, status, logoUrl and grants (team, department, or both). It excludes brands reachable only through individual members. Member changes use the existing query-manager API.
 
 ## 2. Membership is one write of two related fields
 
@@ -144,7 +146,8 @@ export const claimSession = async (
 ): Promise<ISession | null> => {
   const session = await SessionModel.findOneAndUpdate(
     { _id: id, status: { $ne: 'resolved' }, ...claimable },
-    { $set: { assignee } },
+    // The caller takes it for themselves: they are both the assignee and who made the change.
+    assignmentUpdate(assignee, { cause: 'claimed', by: assignee.id }),
     { new: true }
   ).populate(TAGS_POPULATE);
   if (session) await afterAssignment(session);
@@ -167,6 +170,32 @@ The old onlyAssignedCanAct setting, GET/PATCH `/companies/me/settings`, client S
 `syncConversationFromLatestSession` copies status, sentiment, tags and assignee. It now reads Conversation.mirrorVersion **before** reading the latest session, then writes only if that version is unchanged and increments it. On a race it retries up to five times. This prevents a late copy from overwriting a newer owner/status summary, which matters because the action gate reads that summary. It does not make the session and conversation writes a multi-document transaction.
 
 Assignment changes emit `assignment:changed`. The session event includes conversationId so inbox/list caches can invalidate the correct conversation; comment consumers refresh the relevant thread/list. Changing a pool does not append a status-log entry or end a hold.
+
+## 8. The current holder can forward work
+
+Query managers use `POST /api/v1/conversations/:id/forward` or `POST /api/v1/comments/:id/forward`. Conversation forwarding resolves the latest Session; comment forwarding resolves the thread root even when given a reply ID. Managers continue using assignment routes.
+
+```json title="Forward request body"
+{ "assigneeType": "team", "assigneeId": "670000000000000000000020", "note": "Please investigate delivery." }
+```
+
+```json title="Illustrative HTTP 200 — compact response"
+{
+  "success": true,
+  "message": "Conversation forwarded",
+  "data": {
+    "_id": "670000000000000000000006",
+    "status": "hold",
+    "assignee": { "kind": "team", "id": "670000000000000000000020", "name": "Night shift" }
+  }
+}
+```
+
+The shared forwardSchema requires a non-null query_manager/team/department target and assigneeId. The optional note is trimmed and limited to 500 characters. `session/assignment.ts` first checks that the caller personally holds the query, then rejects resolved work and forwarding to themselves. It resolves the target through brand eligibility. The service write again requires non-resolved status and the original holder's ID, so a concurrent ownership change returns 409 instead of being overwritten.
+
+A nonholder receives 403; resolved work receives 409; self-forwarding receives 400. Missing session/root receives 404. Comment success uses message `Thread forwarded` and returns the root Comment. Forwarding preserves status, wrap-up and clock state: a held query stays held. The former holder loses action permission and a pool recipient must claim before acting.
+
+The note is internal assignment history, not a provider message or SessionNote. Forwarding appends cause forwarded; manager routing appends routed; a successful claim appends claimed. Assignment and its log entry share one database write. Routing to the same target adds no entry. Read [history storage and presentation](/docs/listenyzen/code-history) next. The client entry point is `client/src/features/inbox/forward.tsx`.
 
 ## Migration and known boundaries
 

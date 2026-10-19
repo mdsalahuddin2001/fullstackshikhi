@@ -264,7 +264,7 @@ This is an embedded array, **not a sixteenth collection**. Both schemas reuse `s
 
 The embedded entries have no `_id`. The chronological log records real transitions; re-saving the same status does not append an entry or change its original reason. History resolves user names at read time: a deleted user has an ID with a null name. This differs from `assignee.name` and `Setting.changedBy.name` snapshots.
 
-Both Session and Comment add `(brandId, statusChangedAt)` indexes for hold-log reads. Schema declarations do not establish that those indexes have been created in production. The hold-log service derives rows from these documents, so merging away a session or deleting a thread removes its history from that view.
+Both Session and Comment add `(brandId, statusChangedAt)` indexes for hold-log reads. Schema declarations do not establish that those indexes have been created in production. The hold-log service derives rows from these documents, so deleting a thread removes its history from that view.
 
 Message adds optional `isAutomatic: boolean`, with no default. It marks an actual automatic outgoing reply and is distinct from `system`, which marks an internal informational notice. First-response calculation and hold-ending rules ignore automatic replies.
 
@@ -297,3 +297,9 @@ The schema files remain the exact index definitions. The cursor-index maintenanc
 - `withTransaction` exists but no production source caller was found. Company provisioning uses compensating deletions; message/session updates are multiple sequential writes.
 - Session state copied onto Conversation must remain synchronized. Tag and customer display fields have different ownership: do not introduce arbitrary snapshots where existing reads intentionally populate live names.
 
+
+## Assignment and classification history
+
+Session and Comment now also embed assignmentLog and wrapUpLog, each defaulting to [] with select:false. assignmentLog stores assignee snapshot/null, at, cause (routed/claimed/forwarded), optional actor reference and optional note (500 characters). wrapUpLog stores at, actor reference and changes with field/from/to. Session tracks sentiment, sessionType, tags and resolutionSummary; Comment omits sessionType. Tag changes contain ObjectId arrays. These add no collections and are explicitly selected by manager history reads. See [the history walkthrough](/docs/listenyzen/code-history) for comparison rules and response presentation.
+
+Team list fields departmentName, departmentStatus, memberCount and brandCount are derived response fields, not stored Team schema fields. Session SLA usage (asOf/timezone/firstResponseMs/resolutionUsedMs) is also computed on read, separate from the persisted SLA snapshot.

@@ -1,6 +1,6 @@
 # Listenyzen backend — database-first learning guide
 
-Inspected 18 October 2026 at source revision `2a5407c`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
+Inspected 19 October 2026 at source revision `6516627`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
 
 # Data models & relationships
 *Interactive illustration available in the website chapter.*
@@ -264,7 +264,7 @@ This is an embedded array, **not a sixteenth collection**. Both schemas reuse `s
 
 The embedded entries have no `_id`. The chronological log records real transitions; re-saving the same status does not append an entry or change its original reason. History resolves user names at read time: a deleted user has an ID with a null name. This differs from `assignee.name` and `Setting.changedBy.name` snapshots.
 
-Both Session and Comment add `(brandId, statusChangedAt)` indexes for hold-log reads. Schema declarations do not establish that those indexes have been created in production. The hold-log service derives rows from these documents, so merging away a session or deleting a thread removes its history from that view.
+Both Session and Comment add `(brandId, statusChangedAt)` indexes for hold-log reads. Schema declarations do not establish that those indexes have been created in production. The hold-log service derives rows from these documents, so deleting a thread removes its history from that view.
 
 Message adds optional `isAutomatic: boolean`, with no default. It marks an actual automatic outgoing reply and is distinct from `system`, which marks an internal informational notice. First-response calculation and hold-ending rules ignore automatic replies.
 
@@ -297,9 +297,18 @@ The schema files remain the exact index definitions. The cursor-index maintenanc
 - `withTransaction` exists but no production source caller was found. Company provisioning uses compensating deletions; message/session updates are multiple sequential writes.
 - Session state copied onto Conversation must remain synchronized. Tag and customer display fields have different ownership: do not introduce arbitrary snapshots where existing reads intentionally populate live names.
 
+
+## Assignment and classification history
+
+Session and Comment now also embed assignmentLog and wrapUpLog, each defaulting to [] with select:false. assignmentLog stores assignee snapshot/null, at, cause (routed/claimed/forwarded), optional actor reference and optional note (500 characters). wrapUpLog stores at, actor reference and changes with field/from/to. Session tracks sentiment, sessionType, tags and resolutionSummary; Comment omits sessionType. Tag changes contain ObjectId arrays. These add no collections and are explicitly selected by manager history reads. See [the history walkthrough](/docs/listenyzen/code-history) for comparison rules and response presentation.
+
+Team list fields departmentName, departmentStatus, memberCount and brandCount are derived response fields, not stored Team schema fields. Session SLA usage (asOf/timezone/firstResponseMs/resolutionUsedMs) is also computed on read, separate from the persisted SLA snapshot.
+
 ---
 
 # Business requirements & learning order
+Studying the implementation? Follow [Read the whole codebase in order](/docs/listenyzen/code-reading-order) for exact files, module order and checkpoints.
+
 ## How to read this documentation
 
 Begin with [every database entity, schema and relationship](/docs/listenyzen/data-model). Then follow the stages below. “No dependency” means no earlier **business feature** is required; database/runtime primitives still exist. Authentication and tenant scope are cross-cutting prerequisites, not optional steps.
@@ -767,7 +776,7 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 **Prerequisites:** Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.
 
-**Business rule and implementation:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merge moves work into the previous episode and removes the merged episode, including its own hold history.
+**Business rule and implementation:** Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append status history. Status changes mirror the latest session onto Conversation. Session merge is removed; mergeWithPrevious is rejected. Same-status classification edits can still append wrap-up history.
 
 **Read the code:** `server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts`.
 
@@ -941,9 +950,269 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 ## What changed in this revision
 
-Revision `2a5407c` adds teams, required query-manager membership, team brand grants and pools, atomic claims, personal-only modification permissions and guarded conversation mirroring. It retains the previously documented SLA and status-history behavior. The client adds hold-reason fields, manager History tabs and the Admin hold-log page. The detailed transition examples are in [hold, reopen and history](/docs/listenyzen/code-status).
+The previous update introduced teams, required query-manager membership, team brand grants and pools, atomic claims, personal-only modification permissions and guarded conversation mirroring. It retains the previously documented SLA and status-history behavior. The client adds hold-reason fields, manager History tabs and the Admin hold-log page. The detailed transition examples are in [hold, reopen and history](/docs/listenyzen/code-status).
 
 Team pools, manager routing and claims are now implemented. Hold-row deep links remain deferred. Existing production index/backfill state is not verified by this source review. See [development and repair](/docs/listenyzen/development) before operating on stored data.
+
+## Latest additions: continue after ownership and status
+
+The current snapshot adds forwarding, assignment/classification history, live session SLA details and a dedicated Teams page. Session merging is removed. Study these in this order:
+
+| Prerequisite | Requirement and routes | Walkthrough |
+| --- | --- | --- |
+| Organization and brand grants | Enriched GET /teams and GET /teams/:id/brands explain members and team/department brand access. | [Teams and ownership](/docs/listenyzen/code-assignment) |
+| Personal ownership and eligible targets | POST /conversations/:id/forward and POST /comments/:id/forward hand work to an eligible person/pool and retain an internal note. | [Forwarding input/output](/docs/listenyzen/code-assignment#8-the-current-holder-can-forward-work) |
+| Assignment and status writers | GET /sessions/:id/assignment-log, /wrap-up-log and matching comment routes explain ownership/classification separately from status. | [History examples](/docs/listenyzen/code-history) |
+| Historical settings and status intervals | GET /sessions/:id/sla supplies business-time usage for the details sheet. | [SLA usage example](/docs/listenyzen/code-sla#8-read-live-usage-and-follow-it-into-the-client) |
+
+Every route above has the /api/v1 prefix. See the API reference for each operation's validation, errors and complete source handler. Examples are illustrative, not live calls.
+
+---
+
+# Read the whole codebase in order
+## Start here
+
+Read the code in dependency order, then trace a few complete workflows. Start with **schemas → startup → one simple feature → authentication → organization and access → inbox → assignment/status → SLA → ingestion → frontend/realtime → operations**.
+
+This is a study order, not the order in which code executes. For example, schemas are easiest to understand first, but an HTTP request starts in middleware. Provider ingestion creates inbox records at runtime; studying the storage services first makes the provider adapters easier to follow.
+
+Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `6516627` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
+
+## How to read each module
+
+For each feature, use this small loop:
+
+1. **`schema.ts`** — identify stored fields, references, defaults and indexes. Write down which fields are authoritative and which are copies.
+2. **`validation.ts`** — identify what callers can actually supply. A schema field is not automatically writable through the API.
+3. **`index.ts`** — find the mounted URL prefix.
+4. **`api.ts`** — pick one route and read its middleware, visibility checks, handler and response.
+5. **`service.ts`** — follow only the service functions that route calls, then the helpers those functions depend on.
+6. **Relevant tests** — read one success case, one permission failure and one edge case; then return to the implementation to explain why each result occurs.
+
+Some modules differ: Customer is reached through conversation routes, Team has membership helpers, Session has assignment/status/SLA helpers, and webhook processing is split into provider files. Follow imports instead of expecting every directory to have the same files.
+
+For every operation, keep this note:
+
+```text
+Business need:
+Entry point and input:
+Who may call it, and which record may they see?
+Records read:
+Records written, in order:
+External calls / queue work / events:
+Response and failure cases:
+Tests proving the rule:
+```
+
+Do not try to memorize a large service file from top to bottom. Follow one operation to its output, then return for the next operation.
+
+## 1. Learn the stored nouns and relationships
+
+Start with `server/src/libraries/db/base-schema.ts`, then read these schemas in order:
+
+| Order | Files | Connection to understand |
+| --- | --- | --- |
+| 1 | `server/src/modules/company/schema.ts`, `server/src/modules/user/schema.ts` | Tenant and identity. The shared User schema also represents query managers. |
+| 2 | `server/src/modules/department/schema.ts`, `server/src/modules/team/schema.ts` | Company → Department → Team; User stores teamId and the derived departmentId. |
+| 3 | `server/src/modules/brand/schema.ts`, `server/src/modules/brand/tags/schema.ts` | A brand belongs to a company, grants access and owns a tag vocabulary. |
+| 4 | `server/src/modules/customer/schema.ts`, `server/src/modules/conversation/schema.ts` | Customer identity, long-lived conversation, and Message records. Conversation mirrors current session state. |
+| 5 | `server/src/modules/session/schema.ts` | Session, SessionNote, assignment snapshots, embedded status history and SLA state. |
+| 6 | `server/src/modules/comment/schema.ts` | Public roots/replies; provider parent IDs differ from Mongo IDs. The root owns thread state. |
+| 7 | `server/src/modules/settings/schema.ts`, `server/src/modules/settings/definitions.ts` | Versioned policies; defaults and discriminator types. |
+| 8 | `server/src/modules/fixed-reply/schema.ts`, `server/src/modules/file/schema.ts` | Supporting records; File is distinct from embedded message attachments. |
+
+**Checkpoint:** draw Company → Brand → Conversation → Session → Message, then the separate Brand → Comment path. Explain why a message, conversation and session are not interchangeable. Mark references versus snapshots and embedded arrays.
+
+## 2. Find the two running processes
+
+Read these files in this order, initially skimming helper internals:
+
+1. `server/package.json` — find API, worker, development and backfill commands.
+2. `server/src/configs/index.ts` and `server/src/configs/config.schema.ts` — configuration loading and validation.
+3. `server/src/app.ts` → `server/src/libraries/db/index.ts` → `server/src/server.ts` — database startup, Express setup, middleware, socket setup and lifecycle.
+4. `server/src/routes.ts` → `server/src/modules/index.ts` — `/api/v1`, health routes and feature registration.
+5. `server/src/worker.ts` — the sibling process that starts queue consumption and emits through Redis; it has no HTTP listener.
+
+**Checkpoint:** point to where a URL reaches a feature, and explain why the API can be running while incoming messages are not being processed. Keep the detailed [architecture chapter](/docs/listenyzen/architecture) open beside these files.
+
+## 3. Learn the request pattern with one small feature
+
+Use **Department** as the first complete feature. Read `server/src/modules/department/schema.ts`, `validation.ts`, `index.ts`, `api.ts` and `service.ts` using the module loop above. Follow create, then get/list, then delete and its team guard.
+
+When the route reaches shared machinery, read:
+
+| Shared file | What it adds to the feature |
+| --- | --- |
+| `server/src/middlewares/request-validate/index.ts` | Parses and replaces request input before the handler. |
+| `server/src/libraries/utils/zod-validations.ts` | Reusable ID and list contracts. |
+| `server/src/libraries/query/QueryBuilder.ts` | Allowed filters/search/sort, scoped queries and pagination. |
+| `server/src/libraries/utils/sendResponse.ts` | Success and pagination response envelopes. |
+| `server/src/libraries/error-handling/index.ts` | Shared error exports; follow the imported error classes and middleware from here. |
+
+Read `server/test/request-validate.test.ts`, `sendResponse.test.ts` and `department-delete-guard.test.ts` as you encounter those behaviors.
+
+**Checkpoint:** trace a department ID from request validation to scoped database lookup and response. Explain why DELETE can return 409 even though the department exists.
+
+## 4. Understand identity before studying permissions
+
+Read `server/src/auth/index.ts`, `api.ts`, `validation.ts` and `service.ts`. Follow registration, then login, then refresh. Branch into:
+
+- `server/src/auth/strategies/local.strategy.ts` for credential authentication.
+- `server/src/libraries/utils/tokens.ts` for token claims.
+- `server/src/middlewares/auth/index.ts` for the principal attached to requests and role checks.
+- `server/src/auth/company-access.ts` for company status checks.
+- `server/src/auth/roles.ts` and `server/src/auth/tenant.ts` for explicit role sets and tenant/brand filters.
+- `server/src/types/express/index.d.ts` for the shape of req.user.
+
+Return to User's password hook and `server/src/modules/user/service.ts` to compare document saves with direct update hashing. Read `server/test/auth-token-handling.test.ts`, `tenant-scope.test.ts`, `user-password-containment.test.ts` and `provision-rollback.test.ts`.
+
+**Checkpoint:** distinguish authentication, role authorization, tenant scope and brand visibility. Explain which claims refresh reloads and why a team move is not immediately reflected in an existing access token. Continue with [the access code walkthrough](/docs/listenyzen/code-access).
+
+## 5. Build the organization and brand-access graph
+
+Read the ordinary feature files in this order: **Company → User administration → Department → Team → Query manager → Brand**. Department is now familiar, so focus on cross-module calls.
+
+The important connections are:
+
+| Read next | Follow into | Why |
+| --- | --- | --- |
+| `server/src/modules/team/api.ts` | `server/src/modules/team/service.ts` | Tenant-visible department determines companyId; teams can be deactivated, not moved/deleted. |
+| `server/src/modules/query-manager/api.ts` | `server/src/modules/team/membership.ts` | Resolve the selected team and write teamId plus departmentId together. |
+| `server/src/modules/brand/api.ts` | `server/src/modules/brand/service.ts` | Store department, team and individual grants separately. |
+| `server/src/auth/tenant.ts` | `server/src/modules/query-manager/service.ts`, `server/src/modules/brand/assignees.ts` | Relate the visibility union to the available assignment targets. |
+
+Read `server/test/team-routes.test.ts`, `query-manager-team.test.ts`, `brand-team-access.test.ts` and `brand-assignees.test.ts`.
+
+**Checkpoint:** explain why granting a team access to a brand does not assign a particular query to that team. Draw the three alternative access paths within the company boundary.
+
+## 6. Finish the independent brand features
+
+Read **Fixed reply → Brand tags → Settings** before the larger inbox workflows. They depend on brand access, but do not need a conversation to exist.
+
+- `server/src/modules/fixed-reply/`: use the normal module loop to learn reusable text CRUD.
+- `server/src/modules/brand/tags/names.ts`, `validation.ts`, `service.ts`, `api.ts`: follow hierarchical names, subtree expansion, archive and ID resolution.
+- `server/src/modules/settings/definitions.ts`, `schema.ts`, `validation.ts`, `service.ts`, `api.ts`: follow virtual defaults, baseVersion, history and historical lookup. Read `server/test/settings-route.test.ts`.
+
+**Checkpoint:** explain local fixed replies versus provider WhatsApp templates, tag references versus names, and settings version versus SLA rulesVersion. Save the clock algorithm for step 9.
+
+## 7. Understand private inbox storage and queries
+
+Read **Conversation → Customer → Session**. Start with list/read handlers before send handlers.
+
+1. `server/src/modules/conversation/api.ts`, `validation.ts`, `access.ts` — request filters, visibility and action boundaries.
+2. `server/src/modules/conversation/service.ts` — conversation lookup/upsert, message persistence and list operations.
+3. `server/src/modules/customer/service.ts` — customer lookup/editing through the conversation.
+4. `server/src/modules/session/service.ts` — episode selection, latest-session reads, notes and the conversation mirror.
+5. `server/src/libraries/query/cursorPagination.ts` — stable continuation boundaries used by inbox lists.
+
+Read `server/test/cursor-pagination.test.ts`, `session.test.ts` and `conversation-access.test.ts`. Trace the named functions `recordIncomingMessage`, `assignMessageToSession` and `syncConversationFromLatestSession`; the [ingestion code chapter](/docs/listenyzen/code-ingestion) explains their ordering.
+
+**Checkpoint:** explain which writes occur before Message.create, where a new episode starts, and why the mirror needs compare-and-swap. Separate the session document from the conversation's latest-session summary.
+
+## 8. Connect ownership, status and public threads
+
+First read assignment; then read status. They change different things.
+
+| Order | Files | Question to answer |
+| --- | --- | --- |
+| 1 | `server/src/auth/reply-access.ts` | Who can act, what can be claimed, and what mine=true includes. |
+| 2 | `server/src/modules/session/assignment.ts`, `server/src/modules/session/service.ts` | How routeSession/claimForCaller reach an atomic conditional write. |
+| 3 | `server/src/modules/session/status-log.ts`, `server/src/modules/session/status-history.ts` | How actual transitions are guarded, recorded and presented with actor names. |
+| 4 | `server/src/modules/comment/validation.ts`, `api.ts`, `service.ts` | How public root/reply traversal reuses ownership and status concepts without a Session document. |
+
+Read `server/test/claim.test.ts`, `team-assignment-routes.test.ts`, `assigned-only-routes.test.ts`, `assignment-emit.test.ts` and `comment-thread-reopen.test.ts`. Some test filenames retain older terminology; read the assertions for current behavior.
+
+**Checkpoint:** explain why claiming a held query changes ownership but does not resume its clock. Explain why a comment reply ID can lead to a root assignment, and why resolved comment threads differ from new direct-message episodes.
+
+Use [teams and claims](/docs/listenyzen/code-assignment) and [status history](/docs/listenyzen/code-status) as companions.
+
+## 9. Calculate time, then read the reports
+
+Read in this order:
+
+1. `server/src/libraries/business-time/index.ts` — business-hour arithmetic.
+2. `server/src/modules/settings/service.ts` — revisit historical policy selection.
+3. `server/src/modules/session/sla.ts` — start timestamp, qualifying response, status intervals and guarded writes.
+4. `server/src/modules/comment/sla.ts` — adapt the same rules to a comment root and its descendants.
+5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts` — consume stored state and histories to build reports.
+
+Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts` and `overview-sla-compliance.test.ts`.
+
+**Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection. See [the SLA walkthrough](/docs/listenyzen/code-sla).
+
+## 10. Connect providers to the domain you already know
+
+Now study the external boundaries. Follow one text message completely before attachments or templates.
+
+**Incoming:** `server/src/modules/webhook/index.ts` → `server/src/libraries/queue/index.ts` → `server/src/worker.ts` and `server/src/modules/webhook/queue.ts` → `server/src/modules/webhook/facebook.ts` or `whatsapp.ts` → the conversation/comment services already studied. `server/src/modules/webhook/topics.ts` defines the shared queue topics.
+
+**Outgoing:** `server/src/modules/conversation/api.ts` → `server/src/modules/conversation/send-channel.ts` → the provider client imported by that send path → conversation persistence and session effects.
+
+Then read the related features:
+
+| Area | Entry files |
+| --- | --- |
+| Channel connection | `server/src/modules/brand/meta-channels.ts`, `whatsapp.ts`, `channel-access.ts` |
+| Media | `server/src/modules/conversation/media.ts`, `server/src/libraries/aws/s3/index.ts`, `server/src/modules/file/api.ts`, `service.ts` |
+| Templates | `server/src/modules/brand/whatsapp-templates.ts`, `server/src/modules/conversation/whatsapp-templates.ts` |
+
+Follow each file's imports into the provider libraries when you need payload construction, retries or error handling. Read `server/test/webhook-queue.test.ts`, `webhook-brand-status.test.ts`, `send-channel-status.test.ts`, `message-attachments.test.ts`, `whatsapp-delivery-status.test.ts` and `whatsapp-templates.test.ts`.
+
+**Checkpoint:** distinguish accepted HTTP ingress, enqueued work, stored message and emitted event. Identify partial-success boundaries in an attachment send and where provider IDs enforce deduplication.
+
+## 11. Follow the frontend back to those routes
+
+Start with `client/src/main.tsx` → `client/src/router.tsx` → `client/src/lib/api.ts` and `client/src/lib/query-client.ts`. Then read `client/src/features/auth/api.ts` and `client/src/types/auth.ts` to connect client identity with server tokens and user data.
+
+For each screen, read **page → feature API hook → backend route → response type → cache update → rendering**. For example:
+
+| UI area | Start here | Connect to |
+| --- | --- | --- |
+| Organization | `client/src/pages/departments/index.tsx`, `client/src/pages/departments/components/teams-sheet.tsx` | `client/src/features/teams/api.ts` and the Team routes. |
+| Agent membership | `client/src/pages/query-managers/components/team-select.tsx` | `client/src/features/query-managers/api.ts` and resolveMembership. |
+| Brand grants | `client/src/pages/brands/access/index.tsx` | `client/src/features/brands/api.ts` and the three grant PUTs. |
+| Inbox | `client/src/pages/inbox/index.tsx` | `client/src/features/inbox/api.ts`, `types.ts`, `cache.ts`. |
+| Assignment | `client/src/features/inbox/assignment-card.tsx`, `claim-button.tsx`, `reply-access.ts` | Claim/routing endpoints and the server's action guard. |
+| Comments | `client/src/pages/comments/components/comment-thread.tsx` | `client/src/features/comments/api.ts` and Comment routes. |
+| History and reporting | `client/src/features/status-history/api.ts`, `client/src/pages/admin/hold-log.tsx` | Status-log and overview/holds endpoints. |
+
+Finally connect realtime: `server/src/libraries/socket/index.ts` and `emit.ts` → `client/src/lib/socket.ts` → `client/src/features/inbox/use-inbox-realtime.ts` and `client/src/features/comments/use-comments-realtime.ts`. Follow which event changes cached data and which triggers a refetch.
+
+**Checkpoint:** explain how a successful claim updates the row and reply permission, both in the caller's UI and another agent's UI. Client button visibility is a convenience; the backend still enforces authorization.
+
+## 12. Finish with operations and the remaining files
+
+Read `DEPLOY.md`, `RELEASE.md`, root `docker-compose.yml`, `docker-compose.prod.yml` and `docker-bake.hcl`. Return to startup/shutdown, logging, Redis, queue and health libraries with those deployment boundaries in mind.
+
+Read `server/scripts/dev/backfill-default-teams.ts`, `backfill-session-sla.ts` and `backfill-comment-sla.ts` as code, then their relevant tests. Understand the migration before considering execution; a study session does not require writing to a database. The [development chapter](/docs/listenyzen/development) explains the operational context.
+
+For complete coverage, now revisit each feature directory's remaining files and the remaining tests. On the client, use router.tsx to enumerate screens, then follow each screen's imports into feature hooks, components and utilities. Read reusable visual components after you understand the screens that use them. Separate fixtures/mock data from live API wiring.
+
+Use the repository's Postman collection and [API reference](/docs/listenyzen/api-reference) as a checklist: for each operation, locate its handler, service, input schema, access boundary and consumer. Reading requests is enough; running mutating examples is not necessary for this exercise.
+
+## Three traces that connect everything
+
+After the first pass, reproduce these paths without consulting the roadmap:
+
+| Scenario | Trace | Explain the failure path too |
+| --- | --- | --- |
+| Claim an inbox pool | Assignment card → inbox API hook → conversation claim route → latest session → claimForCaller → claimableFilter → claimSession → conversation mirror → event/cache refresh | What if another agent claims first, or the query resolves meanwhile? |
+| Receive a WhatsApp message | Webhook ingress → queue → worker dispatch → provider normalization → conversation upsert → session selection → Message insert → status/SLA synchronization → event → inbox | What is protected by the provider-ID index, and what earlier writes are separate? |
+| Put work on hold and inspect it | UI status request → validation/access → shared status writer → SLA recomputation → manager history/hold query → historical hours and actor names → report | What if status is unchanged, the caller lacks ownership, or a previous breach already exists? |
+
+For each trace, write one example input, the affected records, the output, and one relevant test name. When you can explain all three, the organization, request, storage, background-work and UI paths are connected. Use that understanding to study the remaining provider branches and edge cases.
+
+## Files added to the latest study pass
+
+After step 5, read `server/src/modules/team/stats.ts` and getTeamBrands in the team service; then `client/src/pages/teams/index.tsx`, `components/team-detail-sheet.tsx` and `components/team-form-dialog.tsx` relative to that Teams page directory.
+
+At step 8, read `server/src/modules/session/schema.ts` and `wrap-up-log.ts`, then forward handlers in `session/assignment.ts` and both Session/Comment services. Read [the history chapter](/docs/listenyzen/code-history) before the manager UI. Connect `client/src/features/inbox/forward.tsx`, `history-version.ts` and `client/src/features/status-history/history-timeline.tsx` to those routes.
+
+At step 9, follow slaUsage and the boolean syncSessionSla result into session:updated emission. On the client, read `client/src/features/inbox/sla.ts`, `session-sla.tsx`, `session-details-sheet.tsx` and the usage query in api.ts. Distinguish the badge's snapshot from fetched business-time usage.
+
+At step 11, follow useSyncCurrentUser in `client/src/features/auth/api.ts`: the dashboard refreshes /users/me on window focus and updates the client user. This refreshes client membership checks, not JWT claims; server token-based brand visibility still needs token refresh. Read `client/src/components/linkified-text.tsx` for safe http(s)/www rendering in messages and comments (text rendering, not injected HTML).
+
+Finally retrace a message that opens a new Session: assignMessageToSession reports opened, and incoming/outgoing storage reloads the Conversation when status changes **or a session opens**, so message:new does not carry the previous episode's assignee. Session merging and session:merged no longer belong to this trace.
 
 ---
 
@@ -1029,6 +1298,8 @@ flowchart LR
 ---
 
 # Architecture & request lifecycle
+Studying the implementation? Follow [Read the whole codebase in order](/docs/listenyzen/code-reading-order) for exact files, module order and checkpoints.
+
 *Interactive illustration available in the website chapter.*
 
 
@@ -1936,7 +2207,7 @@ The newest session's status, sentiment, assignee and tags are copied onto Conver
 
 Wrap-up accepts only unresolved/resolved/hold (not pending) and writes status, sentiment, sessionType, optional summary and tags. Notes and resolution summaries are limited to 8,000 characters by their input schemas. `resolvedAt` is stamped for resolved and removed for other statuses. Status/wrap-up paths clear conversation unread count and emit updates. Internal notes increment noteCount without becoming provider messages.
 
-`PATCH /sessions/:id/status` also accepts `{ "mergeWithPrevious": true }`. This invokes `mergeIntoPrevious`, which moves messages/notes to the immediately preceding session, recounts them, removes the current session, recalculates SLA and emits `session:merged`. The merge branch takes precedence over a supplied status; it preserves the previous session’s outcome rather than applying that status. This multi-document operation is not transactional.
+Session merging has been removed. `PATCH /sessions/:id/status` requires status and accepts an optional reason. The strict schema rejects the former mergeWithPrevious field with HTTP 400; there is no merge UI or merge event.
 
 Concurrency caveat: selecting the latest session and creating the next one are separate operations. There is no unique session sequence constraint or per-conversation queue serialization in the shown paths. Parallel jobs can race; assess this when changing ingestion or increasing worker concurrency.
 
@@ -1977,7 +2248,7 @@ Current defaults:
 
 SLA snapshots use the setting versions in force when the customer first wrote, not today's settings. Outbound-only sessions have nothing to measure until a customer message exists.
 
-**First response:** earliest non-failed, non-automatic outgoing message at/after the first customer message. `isAutomatic: true` is excluded; holding or wrapping up does not pause the first-response clock. Provider acceptance without a known failure currently counts; the code does not require a delivered receipt.
+**First response:** earliest non-failed, non-automatic outgoing message at/after the first customer message. `isAutomatic: true` is excluded; hold and unresolved do not pause the first-response clock. A resolved session without a reply stops usage at resolvedAt: resolving by its deadline is “Not needed,” while resolving after the deadline is breached. Provider acceptance without a known failure currently counts; the code does not require a delivered receipt.
 
 **Resolution:** business time from the first customer message (or customer-authored root comment), including customer silence while pending. The status timeline subtracts every hold, unresolved and resolved interval. Returning to pending resumes the same clock with its previous charged time; a newly created session has its own clock.
 
@@ -2023,7 +2294,7 @@ Use `server/src/modules/overview/service.ts` and its date-boundary helpers when 
 
 ## Realtime contract and background work
 
-Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `message:updated`, `conversation:read`, `session:updated`, `session:merged`, `note:added`, `comment:new`, `comment:updated`, `comment:deleted`, `assignment:changed`, `brand:tags-updated`, `typing`.
+Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `message:updated`, `conversation:read`, `session:updated`, `note:added`, `comment:new`, `comment:updated`, `comment:deleted`, `assignment:changed`, `brand:tags-updated`, `typing`.
 
 The API emits through Socket.IO; worker operations emit through Redis. `emitToRoom` selects the available transport and skips with a debug log if neither exists. Persistence can therefore succeed without a live event. Client consumers live in `features/inbox/use-inbox-realtime.ts`, `features/comments/use-comments-realtime.ts` and associated cache helpers.
 
@@ -2038,7 +2309,7 @@ The webhook router verifies the signature, creates one queue job per provider en
 
 For a direct message, the domain write path is `recordIncomingMessage`. Its input includes brand/company IDs, platform, channel ID, participant ID, provider mid, sender identity, text/attachments and sentAt. These are supplied by the trusted processing path, not copied from an authenticated browser body.
 
-Source: `server/src/modules/conversation/service.ts:368`
+Source: `server/src/modules/conversation/service.ts:371`
 
 ```typescript
 export const recordIncomingMessage = async (
@@ -2089,7 +2360,8 @@ export const recordIncomingMessage = async (
     direction: 'incoming',
     sentAt: input.sentAt,
   });
-  const current = statusChanged ? await reloadConversation(conversation) : conversation;
+  const current =
+    statusChanged || session.opened ? await reloadConversation(conversation) : conversation;
 
   logger.info('recordIncomingMessage(): stored inbound message', {
     conversationId: String(conversation._id),
@@ -2109,7 +2381,7 @@ export const recordIncomingMessage = async (
 - **Update the inbox preview:** This write can increment unread state before Message.create succeeds. It is a separate database operation.
 - **Choose the episode:** The latest episode and message direction determine whether to continue or create a session.
 - **Persist the message:** Store references to conversation and session plus the provider identity. The sparse unique mid index rejects duplicate IDs.
-- **Apply status rules after persistence:** onMessageStored can reopen an unresolved episode for a new customer message, synchronize its conversation summary and recompute SLA. Reload the conversation when status changed so the event carries current state.
+- **Apply status rules after persistence:** onMessageStored applies reopen rules and synchronizes SLA. Reload the conversation when status changes or a session opens, so message:new carries the new episode’s assignment summary.
 - **Notify the room:** Persistence happens before the event. The transport is Socket.IO in the API or Redis emitter in the worker.
 
 ## 1. The early duplicate read is not the whole idempotency story
@@ -2193,14 +2465,14 @@ export const assignMessageToSession = async (input: AssignInput): Promise<Assign
     // A fresh session becomes the latest — reflect its (default pending/NEUTRAL) status on the
     // conversation so a reopened thread stops reading as `resolved` in the list.
     await syncConversationFromLatestSession(input.conversationId);
-    return { id: created._id as Types.ObjectId };
+    return { id: created._id as Types.ObjectId, opened: true };
   }
 
   await SessionModel.updateOne(
     { _id: latest._id },
     { $set: { lastActivityAt: input.sentAt }, $inc: { messageCount: 1 } }
   );
-  return { id: latest._id as Types.ObjectId };
+  return { id: latest._id as Types.ObjectId, opened: false };
 };
 ```
 
@@ -2212,7 +2484,7 @@ The required sequence has no schema default: the creating path must derive it. I
 
 ### Branch B — continue an episode
 
-Otherwise, the service updates lastActivityAt and increments messageCount on the existing session. It returns the session’s ObjectId so Message can reference it. Ordinary outgoing follow-ups to a resolved episode remain in that episode; unresolved and hold also reuse the episode. After the message insert, `onMessageStored` may return that same episode to pending: a new customer message reopens unresolved, while a qualifying non-automatic outgoing reply ends hold.
+Otherwise, the service updates lastActivityAt and increments messageCount on the existing session. It returns an object containing the session’s ObjectId as id so Message can reference it. Ordinary outgoing follow-ups to a resolved episode remain in that episode; unresolved and hold also reuse the episode. After the message insert, `onMessageStored` may return that same episode to pending: a new customer message reopens unresolved, while a qualifying non-automatic outgoing reply ends hold.
 
 The function increments a counter before the subsequent message insert. A later insertion failure can therefore leave a counter that requires reconciliation. There is no cross-document transaction around this sequence.
 
@@ -2312,6 +2584,8 @@ Continue with [versioned settings and guarded SLA writes](/docs/listenyzen/code-
 
 The current ingestion path calls `onMessageStored` after inserting Message. It applies the pending rules, synchronizes the conversation summary and refreshes SLA. When status changed, `reloadConversation` ensures the emitted message event contains the updated summary. See [hold and reopening code](/docs/listenyzen/code-status) for timestamp guards and the distinction between provider rejection and a later delivery failure.
 
+The excerpt retains a stale source comment about merging and sequence reuse. Session merging is no longer supported in this revision. The active rule remains latest sequence plus one. assignMessageToSession now returns `{ id, opened: true }` for a new episode and `{ id }` for a continued episode. Incoming and outgoing storage reload the conversation on status change or opened before emitting message:new, so a new episode does not retain the previous owner in its event payload.
+
 ---
 
 # Code walkthrough: teams, routing & claims
@@ -2319,7 +2593,7 @@ The current ingestion path calls `onMessageStored` after inserting Message. It a
 
 Departments organize staff; teams divide a department into working groups. Managers distribute work to a person or pool. Agents can see a brand's work but must take responsibility before changing a query. A pool is a queue to claim from, not shared permission to reply.
 
-Read [entities and relationships](/docs/listenyzen/data-model), [identity and visibility](/docs/listenyzen/code-access), and [session identity](/docs/listenyzen/code-ingestion) first. This chapter reflects source revision `2a5407c`, inspected 18 October 2026. Examples use fictional IDs and compact responses; they were not executed against a live backend.
+Read [entities and relationships](/docs/listenyzen/data-model), [identity and visibility](/docs/listenyzen/code-access), and [session identity](/docs/listenyzen/code-ingestion) first. This chapter reflects source revision `6516627`, inspected 19 October 2026. Examples use fictional IDs and compact responses; they were not executed against a live backend.
 
 ```mermaid
 flowchart LR
@@ -2359,7 +2633,9 @@ flowchart LR
 
 The case-insensitive unique department/name index arbitrates concurrent creates and renames; duplicate names return 409. Names may repeat in different departments. PATCH rejects departmentId; a team cannot move because it would silently change every member's department. Deactivation preserves existing references. A department containing even inactive teams returns 409 on deletion.
 
-The UI manages teams from the Departments page: Manage teams opens a sheet with create, edit and activate/deactivate actions. Its per-department list currently caps at 100.
+The dedicated Teams page supports team management and a detail sheet with members and brands. The Departments page retains its Manage teams sheet (its list caps at 100). GET /teams now adds departmentName, departmentStatus, memberCount and brandCount to each row; GET /teams/:id remains an ordinary team document. `team/stats.ts` batches department lookup, member counts and brand reads. brandCount counts the union of direct team and department grants once per brand, including inactive brands; individual member grants do not count.
+
+Manager-only `GET /api/v1/teams/:id/brands` returns an unpaginated A–Z list in tenant scope. Each row has id, name, status, logoUrl and grants (team, department, or both). It excludes brands reachable only through individual members. Member changes use the existing query-manager API.
 
 ## 2. Membership is one write of two related fields
 
@@ -2456,7 +2732,8 @@ export const claimSession = async (
 ): Promise<ISession | null> => {
   const session = await SessionModel.findOneAndUpdate(
     { _id: id, status: { $ne: 'resolved' }, ...claimable },
-    { $set: { assignee } },
+    // The caller takes it for themselves: they are both the assignee and who made the change.
+    assignmentUpdate(assignee, { cause: 'claimed', by: assignee.id }),
     { new: true }
   ).populate(TAGS_POPULATE);
   if (session) await afterAssignment(session);
@@ -2480,6 +2757,32 @@ The old onlyAssignedCanAct setting, GET/PATCH `/companies/me/settings`, client S
 
 Assignment changes emit `assignment:changed`. The session event includes conversationId so inbox/list caches can invalidate the correct conversation; comment consumers refresh the relevant thread/list. Changing a pool does not append a status-log entry or end a hold.
 
+## 8. The current holder can forward work
+
+Query managers use `POST /api/v1/conversations/:id/forward` or `POST /api/v1/comments/:id/forward`. Conversation forwarding resolves the latest Session; comment forwarding resolves the thread root even when given a reply ID. Managers continue using assignment routes.
+
+```json title="Forward request body"
+{ "assigneeType": "team", "assigneeId": "670000000000000000000020", "note": "Please investigate delivery." }
+```
+
+```json title="Illustrative HTTP 200 — compact response"
+{
+  "success": true,
+  "message": "Conversation forwarded",
+  "data": {
+    "_id": "670000000000000000000006",
+    "status": "hold",
+    "assignee": { "kind": "team", "id": "670000000000000000000020", "name": "Night shift" }
+  }
+}
+```
+
+The shared forwardSchema requires a non-null query_manager/team/department target and assigneeId. The optional note is trimmed and limited to 500 characters. `session/assignment.ts` first checks that the caller personally holds the query, then rejects resolved work and forwarding to themselves. It resolves the target through brand eligibility. The service write again requires non-resolved status and the original holder's ID, so a concurrent ownership change returns 409 instead of being overwritten.
+
+A nonholder receives 403; resolved work receives 409; self-forwarding receives 400. Missing session/root receives 404. Comment success uses message `Thread forwarded` and returns the root Comment. Forwarding preserves status, wrap-up and clock state: a held query stays held. The former holder loses action permission and a pool recipient must claim before acting.
+
+The note is internal assignment history, not a provider message or SessionNote. Forwarding appends cause forwarded; manager routing appends routed; a successful claim appends claimed. Assignment and its log entry share one database write. Routing to the same target adds no entry. Read [history storage and presentation](/docs/listenyzen/code-history) next. The client entry point is `client/src/features/inbox/forward.tsx`.
+
 ## Migration and known boundaries
 
 See [development](/docs/listenyzen/development) for the dry-run default-team migration and production index requirements. This source review did not execute a migration or confirm live deployment state. Hold-log deep links remain deferred; team pools, manager routing and claims are implemented in this snapshot.
@@ -2491,7 +2794,7 @@ See [development](/docs/listenyzen/development) for the dry-run default-team mig
 
 A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
 
-Source snapshot: `2a5407c`, 18 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+Source snapshot: `6516627`, 19 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
 
 ## One writer for both kinds of query
 
@@ -2530,7 +2833,7 @@ This is optimistic concurrency on one document. Conversation summaries, derived 
 
 The ordinary response omits statusLog. Read the manager-only endpoint below for reason/history. The API accepts an optional trimmed reason up to 500 characters. Empty input does not become a meaningful reason; an overlong reason fails validation with 400. A concurrent status race can produce 409. Visibility, assignment policy and authentication can separately produce 404, 403 or 401.
 
-The same reason is accepted on session wrap-up, comment update and comment wrap-up. Wrap-up accepts hold/unresolved/resolved, with the required classification fields shown in the [API reference](/docs/listenyzen/api-reference). Session `mergeWithPrevious: true` chooses merge instead of the status-change branch; do not interpret a supplied reason as a guaranteed new history entry on that path.
+The same reason is accepted on session wrap-up, comment update and comment wrap-up. Wrap-up accepts hold/unresolved/resolved, with the required classification fields shown in the [API reference](/docs/listenyzen/api-reference). Session merging is removed. The status endpoint requires status and rejects mergeWithPrevious. Same-status wrap-up edits can append wrap-up history without appending status history; see [assignment and wrap-up history](/docs/listenyzen/code-history).
 
 ## Messages can move a query back to pending
 
@@ -2557,7 +2860,7 @@ Send any courtesy message before putting the query on hold: a qualifying message
 
 `GET /api/v1/sessions/:id/status-log` and `GET /api/v1/comments/:id/status-log` require super_admin, company_owner or company_admin plus record visibility. A query manager receives 403. There is no separate supervisor role. A comment reply ID is resolved to its root.
 
-The route calls `readStatusLog`, explicitly selecting the normally hidden array. `namedStatusLog` loads unique user IDs once, resolves current names, and returns oldest first:
+The route calls `readStatusLog`, explicitly selecting the normally hidden array. `namedStatusLog` loads unique user IDs once, resolves current names and roles, and returns oldest first:
 
 ```json title="Example output — HTTP 200"
 {
@@ -2568,7 +2871,7 @@ The route calls `readStatusLog`, explicitly selecting the normally hidden array.
       "status": "hold",
       "at": "2026-10-17T04:10:00.000Z",
       "cause": "agent",
-      "by": { "id": "670000000000000000000002", "name": "Amina Rahman" },
+      "by": { "id": "670000000000000000000002", "name": "Amina Rahman", "role": "query_manager" },
       "reason": "Waiting for warehouse confirmation"
     },
     {
@@ -2582,7 +2885,7 @@ The route calls `readStatusLog`, explicitly selecting the normally hidden array.
 }
 ```
 
-No log returns an empty array. An unknown actor is null; a deleted account is an object retaining its ID with name null. Historical names are not snapshots here. These endpoints return recorded entries, whereas clock calculations can infer a missing legacy status point.
+No log returns an empty array. An unknown actor is null; a deleted account is an object retaining its ID with name and role null. Historical names are not snapshots here. These endpoints return recorded entries, whereas clock calculations can infer a missing legacy status point.
 
 ## Derive the brand hold log
 
@@ -2602,7 +2905,7 @@ Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17
     "source": "session",
     "id": "670000000000000000000006",
     "conversationId": "670000000000000000000005",
-    "heldBy": { "id": "670000000000000000000002", "name": "Amina Rahman" },
+    "heldBy": { "id": "670000000000000000000002", "name": "Amina Rahman", "role": "query_manager" },
     "reason": "Waiting for warehouse confirmation",
     "startedAt": "2026-10-17T04:10:00.000Z",
     "endedAt": "2026-10-17T04:40:00.000Z",
@@ -2615,9 +2918,92 @@ Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17
 
 The example is 10:10–10:40 Dhaka on a working Saturday, assuming the default schedule. An active hold has endedAt/endedBy null and durations calculated to read time. Comment rows use source comment and conversationId null. Query parameter sources are plural; row sources are singular.
 
-The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Team pools, claims and manager routing are implemented. Deep links from hold rows remain deferred. Holds live on the query; merging away a session or deleting a thread removes its holds from this report. No separate immutable audit collection exists.
+The client exposes a manager-only History tab and Admin → Hold log (`/dashboard/admin/holds`). Team pools, claims and manager routing are implemented. Deep links from hold rows remain deferred. Holds live on the query; deleting a thread removes its holds from this report. No separate immutable audit collection exists.
 
 Continue to [settings and SLA](/docs/listenyzen/code-sla) to see how these transitions determine charged time.
+
+---
+
+# Code walkthrough: assignment & wrap-up history
+## Dependencies and business requirement
+
+Read [the data model](/docs/listenyzen/data-model), [ownership and forwarding](/docs/listenyzen/code-assignment), then [status changes](/docs/listenyzen/code-status). Managers need to distinguish who changed ownership, who changed classification, and who changed status. These are three separate histories on the same query.
+
+## Storage comes first
+
+Session and Comment contain assignmentLog and wrapUpLog arrays, both defaulting to empty and declared select:false. They are embedded records, not new collections. Ordinary query responses do not select these histories. Comment history belongs to the root. The shared definitions live in `server/src/modules/session/schema.ts` and are reused by Comment.
+
+| Array | Stored entry | Meaning |
+| --- | --- | --- |
+| assignmentLog | assignee (kind/id/name or null), at, cause, optional by and note | cause is routed, claimed or forwarded; assignee name is a snapshot. Null means cleared. |
+| wrapUpLog | at, optional by, changes | Each change has field and optional from/to values. Fields are sentiment, sessionType, tags and resolutionSummary; Comment has no sessionType. |
+| statusLog | status, at, cause, optional by and reason | A real status transition; distinct from a classification edit. |
+
+Tags are stored as ID arrays in wrap-up changes. The log does not duplicate the full query. Existing records are not automatically backfilled with past ownership or classification changes.
+
+## Follow the write
+
+1. Read `session/schema.ts`. assignmentUpdate combines setting/clearing the assignee with pushing an assignment entry in the same Mongo update. It trims and caps notes as well as the request validation.
+2. Follow the assignment callers in Session and Comment services. Route uses cause routed, claim uses claimed, and forward uses forwarded. Their conditional writes determine whether the entry is actually stored.
+3. Read `session/wrap-up-log.ts`. The helper compares before/after fields: trimmed empty text equals absence; tags are deduplicated and compared as sets, so reordering alone is not a change; omitted fields remain untouched.
+4. Follow editWrapUpFields and wrap-up handlers. Classification values and their entry are updated together. Wrap-up passes extra set/push operations into the shared status writer, so a same-status save can append wrap-up history without adding status history.
+
+The previous classification values are read separately before updating. These logs do not establish serializable auditing of concurrent field edits or a separate immutable audit store. No effective field change means no wrap-up entry.
+
+## Manager-only reads
+
+All paths below start with `/api/v1`. They require super_admin, company_owner or company_admin and the existing visibility checks.
+
+| Endpoint | Result |
+| --- | --- |
+| GET `/sessions/:id/assignment-log` | Named session's assignment entries, oldest first. |
+| GET `/sessions/:id/wrap-up-log` | Named session's classification changes, oldest first. |
+| GET `/comments/:id/assignment-log` | Thread root's assignment entries. |
+| GET `/comments/:id/wrap-up-log` | Thread root's classification changes. |
+
+Comment api.ts registers status, assignment and wrap-up history through ROOT_HISTORIES. A reply ID resolves to its root; no root yields an empty history array. Visibility still applies. Ordinary agents do not gain history-read access by forwarding a query.
+
+```sh
+curl "${BASE_URL}/api/v1/sessions/670000000000000000000006/assignment-log" -b cookies.txt
+```
+
+```json title="Illustrative HTTP 200"
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "assignee": { "kind": "team", "id": "670000000000000000000020", "name": "Night shift" },
+      "at": "2026-10-19T04:30:00.000Z",
+      "cause": "forwarded",
+      "by": { "id": "670000000000000000000002", "name": "Amina Rahman", "role": "query_manager" },
+      "note": "Please investigate delivery."
+    }
+  ]
+}
+```
+
+```json title="Illustrative wrap-up-log response"
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "at": "2026-10-19T04:35:00.000Z",
+      "by": { "id": "670000000000000000000002", "name": "Amina Rahman", "role": "query_manager" },
+      "changes": [{ "field": "sentiment", "from": null, "to": "positive" }]
+    }
+  ]
+}
+```
+
+History presentation resolves actors to current name and role. A deleted user retains its id with null name/role; an unknown actor is null. Assignment names remain the stored snapshot. Wrap-up tag IDs resolve to current tag names, with “Deleted tag” for a missing tag. Absent scalar values become null, absent tags become empty arrays, and absent assignment notes become null. Status and hold-log actors also include role now.
+
+## Follow the response into the interface
+
+Read `client/src/features/status-history/api.ts` and `history-timeline.tsx` for the separate history lists. Then read `client/src/features/inbox/history-version.ts` and the session details integration. The history query key includes status, statusChangedAt, assignee ID, sentiment, sessionType, tags and summary. Hooks use staleTime: 0 so opening a history again can refresh it even when values changed and then returned to their previous values. Caller gating and the backend role guard keep history manager-only.
+
+To study one complete trace, forward a held query in the code: forward button → API hook → visibility/holder checks → conditional assignment update plus log → conversation mirror/event → manager history fetch → actor/name presentation. Compare this with changing only sentiment while leaving status unchanged.
 
 ---
 
@@ -2872,14 +3258,19 @@ These guards protect the message, failure and append-only status counters plus r
 Source: `server/src/modules/session/sla.ts`.
 
 ```typescript title="server/src/modules/session/sla.ts"
-export const syncSessionSla = async (sessionId: Types.ObjectId | string): Promise<void> => {
+export const syncSessionSla = async (sessionId: Types.ObjectId | string): Promise<boolean> => {
   try {
-    const session = await SessionModel.findById(sessionId).select(SLA_SESSION_FIELDS).lean();
-    if (!session) return;
+    const session = await SessionModel.findById(sessionId)
+      .select({ ...SLA_SESSION_FIELDS, firstCustomerMessageAt: 1, firstResponseAt: 1, sla: 1 })
+      .lean();
+    if (!session) return false;
     const state = await computeSessionSla(session);
-    if (state) await SessionModel.bulkWrite([slaWrite(session, state)]);
+    if (!state) return false;
+    const written = await SessionModel.bulkWrite([slaWrite(session, state)]);
+    return written.modifiedCount > 0 && visibleSla(session) !== visibleSla(state);
   } catch (error) {
     logger.error('syncSessionSla(): failed', { sessionId: String(sessionId), error });
+    return false;
   }
 };
 ```
@@ -2893,6 +3284,35 @@ Investigate `syncSessionSla(): failed` logs when derived timing is missing. The 
 `comment/sla.ts` uses the root comment as the timing record. It traverses descendants within the same brand/post to find the earliest page response, then calls the shared SLA builder with the root’s status timeline. Other participants do not create a new root clock. Root-author-only matching belongs to the unresolved-reopen rule, not resolution interval calculation.
 
 Because comment deletion/hiding can change a thread without monotonically increasing a message count, comment synchronization uses `slaRevision`. Every relevant thread mutation bumps the root revision; the final write only applies when it still matches. A reply after resolved wrap-up does not create a new comment SLA cycle in the current implementation.
+
+## 8. Read live usage and follow it into the client
+
+`GET /api/v1/sessions/:id/sla` requires authentication, an inbox read role and session visibility. It does not require personal ownership. It returns null data when no customer start or SLA snapshot exists. Otherwise slaUsage selects business hours at the original customer start and derives usage without writing the session.
+
+```sh
+curl "${BASE_URL}/api/v1/sessions/670000000000000000000006/sla" -b cookies.txt
+```
+
+```json title="Illustrative HTTP 200"
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "asOf": "2026-10-19T04:30:00.000Z",
+    "timezone": "Asia/Dhaka",
+    "firstResponseMs": 300000,
+    "resolutionUsedMs": 1800000
+  }
+}
+```
+
+For a Monday schedule covering 10:00–10:30 in Dhaka, a customer start at 10:00, first reply at 10:05 and uninterrupted pending interval through 10:30 produce these values. Each unmeasured clock returns null. First response ends at firstResponseAt, otherwise resolvedAt, otherwise asOf. Resolution adds the business time since waitingSince to persisted usedMs when running; it is not total wall time.
+
+syncSessionSla returns true only when its guarded write modifies the document and a visible start/response/clock value changes. Counters alone do not trigger this signal. `onMessageStored` announces session changes when status moves or SLA changes; delivery-failure refresh also announces changed clocks. Errors remain logged and swallowed. This keeps session:updated consumers current without treating every internal counter increment as a visible change.
+
+Read client `features/inbox/sla.ts` for badge classification, then `session-sla.tsx`, `session-details-sheet.tsx` and the usage hook in `api.ts`. The badge uses the snapshot and current time; the details hook fetches server usage every 60 seconds while enabled. The client does not reproduce business-hour arithmetic. Details distinguish elapsed wall time from business usage.
+
+First response continues through hold/unresolved. A session resolved without a reply by its deadline is labelled **Not needed**; resolved after the deadline remains breached. Overview compliance also uses resolvedAt rather than allowing the unanswered resolved session to breach later. Completed resolution is judged at completion, with equality to the target on time. A missing snapshot produces no badge. This new usage endpoint is for sessions; there is no matching comment usage route.
 
 ## A safe way to extend SLA behavior
 
@@ -3173,7 +3593,7 @@ Useful focused notes: `realtime-inbox-sockets.md`, `webhook-queue-bullmq.md`, `t
 
 ## October 17 SLA and index rollout
 
-Source revision `2a5407c` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
+Source revision `6516627` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
 
 Run repair commands only against the intended Listenyzen environment, using the script options in `server/scripts/dev/backfill-session-sla.ts` and `backfill-comment-sla.ts`. A `--all` recomputation is useful when data already carries the current rulesVersion but a later first-response rule changed. Inspect the script first: these commands write derived database fields, and the documentation build does not execute them.
 
@@ -3189,4 +3609,4 @@ Production must provision the Team unique `(departmentId, name)` index with Engl
 
 ## Complete endpoint contracts
 
-See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 121 API operations and two health checks.
+See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 129 API operations and two health checks.
