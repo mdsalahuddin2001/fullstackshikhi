@@ -8,33 +8,33 @@ description: A reproducible shop dataset, explicit checkpoints, and a safe place
 Install Docker Desktop first, or use an existing local PostgreSQL 17/18 installation. The following creates a learning-only server bound to your computer. The password is a disposable lab value.
 
 ```bash
- docker run --name pg-handbook \
-  -e POSTGRES_PASSWORD=handbook-local \
-  -e POSTGRES_DB=handbook_lab \
+ docker run --name postgres-local \
+  -e POSTGRES_PASSWORD=localdev \
+  -e POSTGRES_DB=app_db \
   -p 127.0.0.1:55432:5432 \
-  -v pg-handbook-data:/var/lib/postgresql/data \
+  -v postgres-local-data:/var/lib/postgresql/data \
   -d postgres:17
- docker exec pg-handbook pg_isready -U postgres -d handbook_lab
+ docker exec postgres-local pg_isready -U postgres -d app_db
 ```
 
-Wait until readiness reports “accepting connections.” On later days use `docker start pg-handbook`; do not run the creation command again. The named volume retains data after stopping the container.
+Wait until readiness reports “accepting connections.” On later days use `docker start postgres-local`; do not run the creation command again. The named volume retains data after stopping the container.
 
 Download [setup.sql](/labs/postgresql/setup.sql) and [check.sql](/labs/postgresql/check.sql). From the directory containing those downloads:
 
 ```bash
-docker exec -i pg-handbook psql -U postgres -d handbook_lab < setup.sql
-docker exec -i pg-handbook psql -U postgres -d handbook_lab < check.sql
-docker exec -it pg-handbook psql -U postgres -d handbook_lab
+docker exec -i postgres-local psql -U postgres -d app_db < setup.sql
+docker exec -i postgres-local psql -U postgres -d app_db < check.sql
+docker exec -it postgres-local psql -U postgres -d app_db
 ```
 
-If PostgreSQL is already installed, create a dedicated database with `createdb handbook_lab`, then use `psql -d handbook_lab -f setup.sql`. Match your local credentials and port; Docker commands are unnecessary in that case.
+If PostgreSQL is already installed, create a dedicated database with `createdb app_db`, then use `psql -d app_db -f setup.sql`. Match your local credentials and port; Docker commands are unnecessary in that case.
 
 ## Orient yourself
 
 Inside **each new psql session**, run:
 
 ```sql
-SET search_path TO handbook;
+SET search_path TO app;
 SET TIME ZONE 'UTC';
 SELECT current_database(), current_schema();
 \dt
@@ -46,7 +46,7 @@ You should see four products: Keyboard (1200, 10), Mouse (600, 5), SQL Book (800
 
 `psql` is a client; PostgreSQL is the server. `\dt` lists tables, `\d` describes a table, `\timing on` prints timings, `\i file.sql` loads a local file, and `\q` exits. SQL ends with a semicolon. A prompt ending in `-#` often means an unfinished command; `\r` clears the buffer. After an error inside a transaction, use `ROLLBACK`.
 
-Prefer pgAdmin? Connect to host `localhost`, port `55432`, database `handbook_lab`, user `postgres`, password `handbook-local`. Use its query tool for SQL. Backslash commands are psql commands and do not run in pgAdmin.
+Prefer pgAdmin? Connect to host `localhost`, port `55432`, database `app_db`, user `postgres`, password `localdev`. Use its query tool for SQL. Backslash commands are psql commands and do not run in pgAdmin.
 
 ## The shop we will use
 
@@ -58,13 +58,13 @@ erDiagram
  categories ||--o{ products : groups
 ```
 
-Each order item stores the price **at purchase time**. Changing today's catalog price must not change yesterday's revenue. Tables are qualified as `handbook.products` in application code; interactive SQL uses the search path above.
+Each order item stores the price **at purchase time**. Changing today's catalog price must not change yesterday's revenue. Tables are qualified as `app.products` in application code; interactive SQL uses the search path above.
 
 ## Reset strategy
 
 Run modifying exercises inside `BEGIN` and finish with `ROLLBACK` unless a chapter explicitly builds a separate lab table. This preserves predictable answers. Setup is intentionally not silently destructive: running it twice reports existing tables.
 
-To restart, create a **new** empty learning database, for example `handbook_lab_2`, then load setup there. Do not aim reset scripts at an application database. Disposable scratch tables are used for DDL exercises.
+To restart, create a **new** empty learning database, for example `app_db_2`, then load setup there. Do not aim reset scripts at an application database. Disposable scratch tables are used for DDL exercises.
 
 ## Challenge · Prove your connection
 

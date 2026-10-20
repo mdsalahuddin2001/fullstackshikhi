@@ -37,21 +37,21 @@ CREATE TABLE tenant_lab.comments (
 INSERT INTO tenant_lab.organizations VALUES (1,'Alpha'),(2,'Beta');
 INSERT INTO tenant_lab.tickets(tenant_id,id,subject)
 VALUES (1,101,'Alpha private ticket'),(2,202,'Beta private ticket');
-CREATE ROLE handbook_tenant_app NOLOGIN;
-GRANT USAGE ON SCHEMA tenant_lab TO handbook_tenant_app;
-GRANT SELECT,INSERT,UPDATE,DELETE ON tenant_lab.tickets TO handbook_tenant_app;
+CREATE ROLE tenant_app NOLOGIN;
+GRANT USAGE ON SCHEMA tenant_lab TO tenant_app;
+GRANT SELECT,INSERT,UPDATE,DELETE ON tenant_lab.tickets TO tenant_app;
 ALTER TABLE tenant_lab.tickets ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_access ON tenant_lab.tickets
-USING (tenant_id = NULLIF(current_setting('app.tenant_id',true),'')::integer)
-WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id',true),'')::integer);
+USING (tenant_id = NULLIF(current_setting('myapp.tenant_id',true),'')::integer)
+WITH CHECK (tenant_id = NULLIF(current_setting('myapp.tenant_id',true),'')::integer);
 ```
 
 Test with the non-owner role. Superusers and roles with BYPASSRLS bypass policies; table owners normally do too. Testing only as postgres would give misleading results.
 
 ```sql
 BEGIN;
-SET LOCAL ROLE handbook_tenant_app;
-SELECT set_config('app.tenant_id','1',true);
+SET LOCAL ROLE tenant_app;
+SELECT set_config('myapp.tenant_id','1',true);
 SELECT * FROM tenant_lab.tickets ORDER BY id;
 ROLLBACK;
 ```
@@ -69,8 +69,8 @@ As tenant 1, try reading ticket 202, updating it, and inserting a ticket with te
 
 ```sql
 BEGIN;
-SET LOCAL ROLE handbook_tenant_app;
-SELECT set_config('app.tenant_id','1',true);
+SET LOCAL ROLE tenant_app;
+SELECT set_config('myapp.tenant_id','1',true);
 SELECT * FROM tenant_lab.tickets WHERE id=202; -- zero rows
 UPDATE tenant_lab.tickets SET subject='Changed' WHERE id=202; -- zero affected
 INSERT INTO tenant_lab.tickets(tenant_id,id,subject)
@@ -78,7 +78,7 @@ VALUES (2,303,'Forbidden'); -- policy violation
 ROLLBACK;
 
 BEGIN;
-SET LOCAL ROLE handbook_tenant_app;
+SET LOCAL ROLE tenant_app;
 SELECT * FROM tenant_lab.tickets; -- zero rows with no tenant context
 ROLLBACK;
 ```
