@@ -1,0 +1,11 @@
+{
+  "title": "English Handbook",
+  "description": "English communication for Bangla speakers",
+  "icon": "Languages",
+  "root": true,
+  "pages": [
+    "index",
+    "communication",
+    "vocabulary"
+  ]
+}

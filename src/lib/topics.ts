@@ -1,5 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
-import { Compass } from 'lucide-react';
+import { Compass, Languages } from 'lucide-react';
 import { PostgresLogo } from '@/components/brand-logos';
 import { ListenyzenLogo } from '@/components/listenyzen/logo';
 
@@ -23,6 +23,14 @@ export interface Topic {
 }
 
 export const topics: Topic[] = [
+  {
+    slug: 'english-handbook',
+    title: 'English Handbook',
+    description: 'বাংলা ভাষাভাষীদের জন্য English communication: a 12-week study plan, practical conversations, and 240 words and expressions with Bangla meanings.',
+    logo: Languages,
+    brand: { light: '#176b65', lightForeground: '#ffffff', dark: '#73c9b7', darkForeground: '#151a22' },
+    tags: ['Communication', 'Bangla meanings', 'PDF downloads'],
+  },
   {
     slug: 'ai-era-fullstack',
     title: 'Fullstack in the AI Era',
