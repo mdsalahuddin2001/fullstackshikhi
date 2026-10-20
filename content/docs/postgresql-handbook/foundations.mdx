@@ -14,8 +14,8 @@ Start from access patterns and invariants. If orders refer to customers and prod
 ```mermaid
 flowchart LR
  client[psql or application] --> server[PostgreSQL server]
- server --> database[handbook_lab database]
- database --> schema[handbook schema]
+ server --> database[app_db database]
+ database --> schema[app schema]
  schema --> table[products table]
  table --> row[one row per product]
 ```

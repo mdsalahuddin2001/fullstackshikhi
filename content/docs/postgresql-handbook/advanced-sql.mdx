@@ -94,7 +94,7 @@ WHERE o.status='paid' GROUP BY o.id;
 SELECT * FROM paid_order_totals ORDER BY id;
 ```
 
-Expected totals: order 1 → 2400, order 2 → 800, order 4 → 1600. For an expensive shared report, `CREATE MATERIALIZED VIEW handbook.report AS ...` persists a snapshot; `REFRESH MATERIALIZED VIEW handbook.report` updates it. Concurrent refresh needs an eligible unique index. Define acceptable staleness before choosing this design.
+Expected totals: order 1 → 2400, order 2 → 800, order 4 → 1600. For an expensive shared report, `CREATE MATERIALIZED VIEW app.report AS ...` persists a snapshot; `REFRESH MATERIALIZED VIEW app.report` updates it. Concurrent refresh needs an eligible unique index. Define acceptable staleness before choosing this design.
 
 ## Functions and triggers
 

@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
-SET search_path TO handbook;
+SET search_path TO app;
 DO $$
 BEGIN
  IF (SELECT count(*) FROM customers) <> 4 THEN RAISE EXCEPTION 'Expected 4 customers'; END IF;

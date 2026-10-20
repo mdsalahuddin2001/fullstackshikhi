@@ -49,30 +49,30 @@ For the shop dataset, buy one product at a time. Atomically reserve stock, creat
 This function is a complete single-item database exercise. Call it inside a transaction you roll back to preserve the seed. The HTTP service still needs authentication, authorization, idempotency, and error mapping as described in the backend chapter.
 
 ```sql
-CREATE FUNCTION handbook.checkout_one(p_customer integer,p_product integer,p_quantity integer)
+CREATE FUNCTION app.checkout_one(p_customer integer,p_product integer,p_quantity integer)
 RETURNS integer LANGUAGE plpgsql AS $$
 DECLARE agreed_price numeric(12,2); new_order integer;
 BEGIN
  IF p_quantity IS NULL OR p_quantity <= 0 THEN
   RAISE EXCEPTION 'Quantity must be positive';
  END IF;
- UPDATE handbook.products SET stock=stock-p_quantity
+ UPDATE app.products SET stock=stock-p_quantity
  WHERE id=p_product AND stock>=p_quantity
  RETURNING price INTO agreed_price;
  IF NOT FOUND THEN RAISE EXCEPTION 'Unavailable product or stock'; END IF;
- INSERT INTO handbook.orders(customer_id,status)
+ INSERT INTO app.orders(customer_id,status)
  VALUES (p_customer,'pending') RETURNING id INTO new_order;
- INSERT INTO handbook.order_items(order_id,product_id,quantity,unit_price)
+ INSERT INTO app.order_items(order_id,product_id,quantity,unit_price)
  VALUES (new_order,p_product,p_quantity,agreed_price);
  RETURN new_order;
 END;
 $$;
 
 BEGIN;
-SELECT handbook.checkout_one(1,1,2);
-SELECT stock FROM handbook.products WHERE id=1; -- 8
+SELECT app.checkout_one(1,1,2);
+SELECT stock FROM app.products WHERE id=1; -- 8
 SELECT o.id,o.status,i.quantity,i.unit_price
-FROM handbook.orders o JOIN handbook.order_items i ON i.order_id=o.id
+FROM app.orders o JOIN app.order_items i ON i.order_id=o.id
 WHERE o.id>4 ORDER BY o.id;
 ROLLBACK;
 ```

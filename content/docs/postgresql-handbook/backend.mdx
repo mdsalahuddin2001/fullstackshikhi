@@ -11,7 +11,7 @@ Validate untrusted inputs at the boundary, authorize the operation, then rely on
 
 ## A runnable Node.js lab
 
-Create a separate practice directory, then run `npm init -y` and `npm install pg`. Download [lookup.mjs](/labs/postgresql/lookup.mjs), or save the example below with that name. Set `DATABASE_URL` in your shell to the dedicated learning database, for example `postgresql://postgres:handbook-local@localhost:55432/handbook_lab` for the Docker setup.
+Create a separate practice directory, then run `npm init -y` and `npm install pg`. Download [lookup.mjs](/labs/postgresql/lookup.mjs), or save the example below with that name. Set `DATABASE_URL` in your shell to the dedicated learning database, for example `postgresql://postgres:localdev@localhost:55432/app_db` for the Docker setup.
 
 ```js
 import pg from 'pg';
@@ -19,7 +19,7 @@ const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5 })
 try {
  const email = process.argv[2] ?? 'amina@example.test';
  const result = await pool.query(
-  'SELECT id,name FROM handbook.customers WHERE email=$1', [email]
+  'SELECT id,name FROM app.customers WHERE email=$1', [email]
  );
  console.table(result.rows);
 } finally {
@@ -47,17 +47,17 @@ async function transfer(from, to, amount) {
  try {
   await client.query('BEGIN');
   const locked = await client.query(
-   'SELECT id FROM handbook.accounts WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
+   'SELECT id FROM app.accounts WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
    [[from,to]]
   );
   if (locked.rowCount !== 2) throw new Error('Account not found');
   const debit = await client.query(
-   'UPDATE handbook.accounts SET balance=balance-$1 WHERE id=$2 AND balance >= $1 RETURNING id',
+   'UPDATE app.accounts SET balance=balance-$1 WHERE id=$2 AND balance >= $1 RETURNING id',
    [amount,from]
   );
   if (debit.rowCount !== 1) throw new Error('Insufficient balance');
   const credit = await client.query(
-   'UPDATE handbook.accounts SET balance=balance+$1 WHERE id=$2 RETURNING id',
+   'UPDATE app.accounts SET balance=balance+$1 WHERE id=$2 RETURNING id',
    [amount,to]
   );
   if (credit.rowCount !== 1) throw new Error('Account not found');
@@ -72,7 +72,7 @@ async function transfer(from, to, amount) {
 
 try {
  await transfer(1,2,100);
- console.table((await pool.query('SELECT * FROM handbook.accounts ORDER BY id')).rows);
+ console.table((await pool.query('SELECT * FROM app.accounts ORDER BY id')).rows);
 } finally {
  await pool.end();
 }

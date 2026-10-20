@@ -50,12 +50,12 @@ Practice a reversible additive change:
 
 ```sql
 BEGIN;
-ALTER TABLE handbook.customers ADD COLUMN preferred_language text;
-UPDATE handbook.customers SET preferred_language='en'
+ALTER TABLE app.customers ADD COLUMN preferred_language text;
+UPDATE app.customers SET preferred_language='en'
 WHERE preferred_language IS NULL;
-ALTER TABLE handbook.customers ALTER COLUMN preferred_language SET DEFAULT 'en';
-ALTER TABLE handbook.customers ALTER COLUMN preferred_language SET NOT NULL;
-SELECT name,preferred_language FROM handbook.customers ORDER BY id;
+ALTER TABLE app.customers ALTER COLUMN preferred_language SET DEFAULT 'en';
+ALTER TABLE app.customers ALTER COLUMN preferred_language SET NOT NULL;
+SELECT name,preferred_language FROM app.customers ORDER BY id;
 ROLLBACK;
 ```
 
@@ -95,7 +95,7 @@ The product manager wants a required customer nickname. Old rows have none. Defi
 <details>
 <summary>Worked solution</summary>
 
-Add a nullable `nickname`, deploy code that writes it for new/updated customers, and backfill old rows from `name` or another approved rule. Repeat backfill until no rows are NULL; handle concurrent old writers before enforcing NOT NULL. Verify `SELECT count(*) FROM handbook.customers WHERE nickname IS NULL` is zero, and test both old/new app versions during overlap. Then enforce the constraint and remove transitional fallbacks.
+Add a nullable `nickname`, deploy code that writes it for new/updated customers, and backfill old rows from `name` or another approved rule. Repeat backfill until no rows are NULL; handle concurrent old writers before enforcing NOT NULL. Verify `SELECT count(*) FROM app.customers WHERE nickname IS NULL` is zero, and test both old/new app versions during overlap. Then enforce the constraint and remove transitional fallbacks.
 
 An immediate required column lacks values for existing rows and can fail. Inventing a placeholder might satisfy the constraint but violate the product requirement. Schema validity and semantic validity are different checks.
 

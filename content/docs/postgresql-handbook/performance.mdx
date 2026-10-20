@@ -14,24 +14,24 @@ PostgreSQL parses SQL, plans a strategy using estimates, and executes operators 
 Run this in your learning database. It creates a separate table and leaves the shop seed untouched. It needs disk space and may take a little time.
 
 ```sql
-CREATE TABLE handbook.events_lab AS
+CREATE TABLE app.events_lab AS
 SELECT n AS id,
        (n % 1000)::integer AS tenant_id,
        timestamptz '2026-01-01 00:00:00+00' + n * interval '1 second' AS created_at,
        repeat('x',100) AS payload
 FROM generate_series(1,1000000) AS n;
-ANALYZE handbook.events_lab;
+ANALYZE app.events_lab;
 
 EXPLAIN (ANALYZE, BUFFERS)
-SELECT id, created_at FROM handbook.events_lab
+SELECT id, created_at FROM app.events_lab
 WHERE tenant_id=42 ORDER BY created_at DESC,id DESC LIMIT 20;
 
 CREATE INDEX events_lab_tenant_recent
-ON handbook.events_lab(tenant_id,created_at DESC,id DESC);
-ANALYZE handbook.events_lab;
+ON app.events_lab(tenant_id,created_at DESC,id DESC);
+ANALYZE app.events_lab;
 
 EXPLAIN (ANALYZE, BUFFERS)
-SELECT id, created_at FROM handbook.events_lab
+SELECT id, created_at FROM app.events_lab
 WHERE tenant_id=42 ORDER BY created_at DESC,id DESC LIMIT 20;
 ```
 
@@ -62,10 +62,10 @@ Run multiple trials and record warm/cold context. Do not compare a first cold ru
 
 ```sql
 -- Optional shop examples; use only after identifying the query.
-CREATE INDEX orders_pending_recent ON handbook.orders(created_at,id)
+CREATE INDEX orders_pending_recent ON app.orders(created_at,id)
 WHERE status='pending';
-CREATE INDEX customers_lower_email ON handbook.customers(lower(email));
-CREATE INDEX products_attributes ON handbook.products USING gin(attributes);
+CREATE INDEX customers_lower_email ON app.customers(lower(email));
+CREATE INDEX products_attributes ON app.products USING gin(attributes);
 ```
 
 An index on `(tenant_id, created_at, id)` is not a universal answer for queries filtering only an unrelated column. More indexes also mean slower inserts, more vacuum work, and larger backups.
@@ -88,7 +88,7 @@ For the million-row query, explain why tenant comes first and both sort columns 
 Tenant equality restricts the range; the remaining index order matches recent events. ID creates a stable tie-breaker if timestamps tie. For descending order, the next page uses a less-than comparison.
 
 ```sql
-SELECT id,created_at FROM handbook.events_lab
+SELECT id,created_at FROM app.events_lab
 WHERE tenant_id=42
  AND (created_at,id) < (
   timestamptz '2026-01-01 00:00:00+00' + 980042 * interval '1 second',980042

@@ -44,14 +44,14 @@ Unzip the project and open a terminal in its directory. Choose your actual host,
 
 ```bash
 npm ci
-export DATABASE_URL='postgresql://postgres:handbook-local@localhost:55432/reservation_lab'
+export DATABASE_URL='postgresql://postgres:localdev@localhost:55432/reservation_lab'
 export LAB_API_TOKEN='local-learning-token'
 createdb -h localhost -p 55432 -U postgres reservation_lab
 npm run migrate
 npm start
 ```
 
-`createdb` may prompt for your local password. If you have no host PostgreSQL tools, use `docker exec pg-handbook createdb -U postgres reservation_lab` instead. Migrations run once by version under an advisory transaction lock; rerunning `npm run migrate` skips the recorded version. Do not edit a migration after applying it—add a new numbered migration and update the runner for the next exercise.
+`createdb` may prompt for your local password. If you have no host PostgreSQL tools, use `docker exec postgres-local createdb -U postgres reservation_lab` instead. Migrations run once by version under an advisory transaction lock; rerunning `npm run migrate` skips the recorded version. Do not edit a migration after applying it—add a new numbered migration and update the runner for the next exercise.
 
 In another terminal:
 
@@ -92,7 +92,7 @@ The tests use HTTP requests and a real PostgreSQL database. They reset only the 
 
 ```bash
 createdb -h localhost -p 55432 -U postgres reservation_lab_test
-export DATABASE_URL='postgresql://postgres:handbook-local@localhost:55432/reservation_lab_test'
+export DATABASE_URL='postgresql://postgres:localdev@localhost:55432/reservation_lab_test'
 npm run migrate
 npm test
 ```

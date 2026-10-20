@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 BEGIN;
 CREATE SCHEMA IF NOT EXISTS handbook;
-SET search_path TO handbook;
+SET search_path TO app;
 CREATE TABLE customers (
  id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  name text NOT NULL,

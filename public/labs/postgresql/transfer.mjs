@@ -9,17 +9,17 @@ async function transfer(from, to, amount) {
  try {
   await client.query('BEGIN');
   const locked = await client.query(
-   'SELECT id FROM handbook.accounts WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
+   'SELECT id FROM app.accounts WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
    [[from,to]]
   );
   if (locked.rowCount !== 2) throw new Error('Account not found');
   const debit = await client.query(
-   'UPDATE handbook.accounts SET balance=balance-$1 WHERE id=$2 AND balance >= $1 RETURNING id',
+   'UPDATE app.accounts SET balance=balance-$1 WHERE id=$2 AND balance >= $1 RETURNING id',
    [amount,from]
   );
   if (debit.rowCount !== 1) throw new Error('Insufficient balance');
   const credit = await client.query(
-   'UPDATE handbook.accounts SET balance=balance+$1 WHERE id=$2 RETURNING id',
+   'UPDATE app.accounts SET balance=balance+$1 WHERE id=$2 RETURNING id',
    [amount,to]
   );
   if (credit.rowCount !== 1) throw new Error('Account not found');
@@ -34,7 +34,7 @@ async function transfer(from, to, amount) {
 
 try {
  await transfer(1,2,100);
- console.table((await pool.query('SELECT * FROM handbook.accounts ORDER BY id')).rows);
+ console.table((await pool.query('SELECT * FROM app.accounts ORDER BY id')).rows);
 } finally {
  await pool.end();
 }
