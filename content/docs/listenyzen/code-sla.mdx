@@ -90,7 +90,10 @@ Walk through the return value:
 | `messagesSeen` | Number of message records included in this computation. |
 | `failedMessagesSeen` | Number whose known deliveryStatus is failed. |
 | `statusChangesSeen` | Number of status-log entries used for resolution. |
-| `rulesVersion` | Clock algorithm version; currently 2, separate from policy versions. |
+| `sla.firstResponseMs` | Business time from clock start to `firstResponseAt` under the hours in force at the clock start; null while unanswered. |
+| `sla.resolutionMs` | Business time the resolution clock charged up to the resolve (`resolvedChargedMs`), stored even without a resolution target; null until resolved. |
+
+There is no `rulesVersion` any more (removed in `6a94138`). Stored values follow the current rules only; after changing what the clock computes, run both SLA backfills, which recompute every record.
 
 The query selects only the fields needed for the calculation and uses lean objects. It still reads every message in the session. This trades bounded simplicity for work proportional to session history; do not assume a constant-cost update when sessions get large.
 

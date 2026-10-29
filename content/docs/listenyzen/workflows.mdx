@@ -157,6 +157,13 @@ The UI mixes live API-backed metrics with illustrative data; not every visible c
 - `/inbound-trend`: incoming versus resolved counts per day; closure uses resolvedAt.
 - `/holds`: manager-only overlapping holds, newest first, at most 1,000; full wall-clock and historical-business-hour durations, with no pagination.
 - `/sla-compliance`: combines session and comment targets; met targets divided by decided targets, not a naive all-record denominator.
+- `/first-response`: DM sessions and customer comment roots **opened** in range that have a reply. Mean, p50 and p90 in business time (stored `sla.firstResponseMs`) and wall clock, pooled plus `dm` and `comments`.
+- `/resolution-time`: the same shape for items **resolved** in range, using stored `sla.resolutionMs` (hold and unresolved excluded). `unresolved` wrap-ups are not timed.
+- `/customers`: DM customers (one conversation = one customer) with repeat rate and new versus returning, the top 10 tags across sessions and comment roots, and handler sentiment per class.
+- `/customer-trend`: the same customer counts per Saturday-to-Friday week, clipped to the range.
+- `/peak-hours`: inbound DM messages plus customer comments (roots and replies) as a 7 × 24 Asia/Dhaka weekday × hour grid, with the busiest slot.
+
+Percentiles come from database buckets (minutes below a day, hours past it): means are exact, and a percentile is its bucket's smallest value. Items without stored SLA milliseconds count in the wall clock only until the SLA backfills run.
 
 Use `server/src/modules/overview/service.ts` and its date-boundary helpers when modifying reporting. Similar-looking metrics intentionally use different open/closed sets.
 

@@ -9,7 +9,7 @@ Read the code in dependency order, then trace a few complete workflows. Start wi
 
 This is a study order, not the order in which code executes. For example, schemas are easiest to understand first, but an HTTP request starts in middleware. Provider ingestion creates inbox records at runtime; studying the storage services first makes the provider adapters easier to follow.
 
-Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `6516627` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
+Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `6a94138` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
 
 ## How to read each module
 
@@ -126,7 +126,7 @@ Read **Fixed reply → Brand tags → Settings** before the larger inbox workflo
 - `server/src/modules/brand/tags/names.ts`, `validation.ts`, `service.ts`, `api.ts`: follow hierarchical names, subtree expansion, archive and ID resolution.
 - `server/src/modules/settings/definitions.ts`, `schema.ts`, `validation.ts`, `service.ts`, `api.ts`: follow virtual defaults, baseVersion, history and historical lookup. Read `server/test/settings-route.test.ts`.
 
-**Checkpoint:** explain local fixed replies versus provider WhatsApp templates, tag references versus names, and settings version versus SLA rulesVersion. Save the clock algorithm for step 9.
+**Checkpoint:** explain local fixed replies versus provider WhatsApp templates, tag references versus names, and settings version versus the stored SLA values (which have no version: backfills recompute everything). Save the clock algorithm for step 9.
 
 ## 7. Understand private inbox storage and queries
 
@@ -167,9 +167,9 @@ Read in this order:
 2. `server/src/modules/settings/service.ts` — revisit historical policy selection.
 3. `server/src/modules/session/sla.ts` — start timestamp, qualifying response, status intervals and guarded writes.
 4. `server/src/modules/comment/sla.ts` — adapt the same rules to a comment root and its descendants.
-5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts` — consume stored state and histories to build reports.
+5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts`, `customers.ts`, `peak-hours.ts`, `indexes.ts` — consume stored state and histories to build reports; `indexes.ts` names the index each range read hints.
 
-Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts` and `overview-sla-compliance.test.ts`.
+Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts`, `overview-sla-compliance.test.ts`, `overview-first-response.test.ts`, `overview-resolution-time.test.ts`, `overview-customers.test.ts`, `overview-peak-hours.test.ts` and `overview-indexes.test.ts`.
 
 **Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection. See [the SLA walkthrough](/docs/listenyzen/code-sla).
 

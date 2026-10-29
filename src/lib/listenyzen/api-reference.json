@@ -4466,6 +4466,585 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/first-response",
+    "group": "overview",
+    "source": "server/src/modules/overview/api.ts:99",
+    "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
+    "status": 200,
+    "contentType": "application/json",
+    "requestType": "application/json",
+    "request": "curl -i \"${BASE_URL}/api/v1/brands/670000000000000000000004/overview/first-response?from=2026-10-01&to=2026-10-27\" \\\n  -b cookies.txt -c cookies.txt",
+    "body": null,
+    "response": {
+      "success": true,
+      "message": "success",
+      "data": {
+        "range": {
+          "from": "2026-10-01",
+          "to": "2026-10-27"
+        },
+        "all": {
+          "answered": 180,
+          "businessHours": {
+            "mean": 1260000,
+            "p50": 900000,
+            "p90": 3000000
+          },
+          "wallClock": {
+            "mean": 4980000,
+            "p50": 1500000,
+            "p90": 14400000
+          }
+        },
+        "dm": {
+          "answered": 120,
+          "businessHours": {
+            "mean": 1080000,
+            "p50": 780000,
+            "p90": 2580000
+          },
+          "wallClock": {
+            "mean": 3900000,
+            "p50": 1320000,
+            "p90": 10800000
+          }
+        },
+        "comments": {
+          "answered": 60,
+          "businessHours": {
+            "mean": 1620000,
+            "p50": 1200000,
+            "p90": 3600000
+          },
+          "wallClock": {
+            "mean": 7140000,
+            "p50": 2100000,
+            "p90": 21600000
+          }
+        }
+      }
+    },
+    "notes": [
+      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Unanswered items are not timed here; they lower the /engagement response rate instead.",
+      "Durations are milliseconds; null when nothing was timed. Means are exact. p50/p90 are the smallest value of the nearest-rank bucket: exact to the minute below a day, to the hour past it.",
+      "Items without a stored sla.firstResponseMs (not yet backfilled) count in wallClock but not businessHours, so the two answered populations can differ until both SLA backfills run.",
+      "Session reads hint {brandId, firstCustomerMessageAt}; comment reads hint {brandId, platform, commentedAt}. Production must build these indexes first or the read fails."
+    ],
+    "errors": [],
+    "validation": [
+      {
+        "kind": "Params",
+        "name": "brandParamSchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const brandParamSchema = z.object({\n  brandId: idSchema,\n});"
+      },
+      {
+        "kind": "Query",
+        "name": "rangeQuerySchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
+      }
+    ],
+    "handler": "router.get(\n  '/first-response',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getFirstResponseTime({\n      brandId: brand.id,\n      companyId: brand.companyId,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Time DM sessions opened in the range (firstCustomerMessageAt) and customer-written comment roots (commentedAt) that have a firstResponseAt. Business time is the stored sla.firstResponseMs (hours in force at the clock start), summed in the database into minute buckets below a day and hour buckets past it. Wall clock is clock start \u2192 firstResponseAt. Return pooled all plus dm and comments.",
+    "implementation": "server/src/modules/overview/api.ts; overview/service.ts:getFirstResponseTime; overview/indexes.ts; session/sla.ts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/resolution-time",
+    "group": "overview",
+    "source": "server/src/modules/overview/api.ts:126",
+    "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
+    "status": 200,
+    "contentType": "application/json",
+    "requestType": "application/json",
+    "request": "curl -i \"${BASE_URL}/api/v1/brands/670000000000000000000004/overview/resolution-time?from=2026-10-01&to=2026-10-27\" \\\n  -b cookies.txt -c cookies.txt",
+    "body": null,
+    "response": {
+      "success": true,
+      "message": "success",
+      "data": {
+        "range": {
+          "from": "2026-10-01",
+          "to": "2026-10-27"
+        },
+        "all": {
+          "resolved": 150,
+          "businessHours": {
+            "mean": 15840000,
+            "p50": 10800000,
+            "p90": 43200000
+          },
+          "wallClock": {
+            "mean": 86400000,
+            "p50": 36000000,
+            "p90": 259200000
+          }
+        },
+        "dm": {
+          "resolved": 110,
+          "businessHours": {
+            "mean": 14400000,
+            "p50": 9600000,
+            "p90": 39600000
+          },
+          "wallClock": {
+            "mean": 72000000,
+            "p50": 32400000,
+            "p90": 216000000
+          }
+        },
+        "comments": {
+          "resolved": 40,
+          "businessHours": {
+            "mean": 19800000,
+            "p50": 14400000,
+            "p90": 50400000
+          },
+          "wallClock": {
+            "mean": 126000000,
+            "p50": 46800000,
+            "p90": 345600000
+          }
+        }
+      }
+    },
+    "notes": [
+      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "unresolved wrap-ups are not resolutions and are not timed.",
+      "Same duration shape and bucket rule as /first-response; the count field is resolved instead of answered.",
+      "Sessions the SLA sync never stamped (no firstCustomerMessageAt) are skipped.",
+      "Reads hint {brandId, status, resolvedAt} on sessions and comments."
+    ],
+    "errors": [],
+    "validation": [
+      {
+        "kind": "Params",
+        "name": "brandParamSchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const brandParamSchema = z.object({\n  brandId: idSchema,\n});"
+      },
+      {
+        "kind": "Query",
+        "name": "rangeQuerySchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
+      }
+    ],
+    "handler": "router.get(\n  '/resolution-time',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getResolutionTime({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Time DM sessions and customer-written comment roots whose status is resolved and whose resolvedAt falls in the range. Business time is the stored sla.resolutionMs: what the resolution clock charged, with hold and unresolved stretches excluded, stored whether or not the brand has a resolution target. Wall clock is first customer message (root) \u2192 resolvedAt with every stretch included.",
+    "implementation": "server/src/modules/overview/api.ts; overview/service.ts:getResolutionTime; session/sla.ts:resolvedChargedMs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/customers",
+    "group": "overview",
+    "source": "server/src/modules/overview/api.ts:151",
+    "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
+    "status": 200,
+    "contentType": "application/json",
+    "requestType": "application/json",
+    "request": "curl -i \"${BASE_URL}/api/v1/brands/670000000000000000000004/overview/customers?from=2026-10-01&to=2026-10-27\" \\\n  -b cookies.txt -c cookies.txt",
+    "body": null,
+    "response": {
+      "success": true,
+      "message": "success",
+      "data": {
+        "range": {
+          "from": "2026-10-01",
+          "to": "2026-10-27"
+        },
+        "customers": {
+          "total": 240,
+          "repeat": 36,
+          "repeatRate": 15.0,
+          "new": 150,
+          "returning": 90
+        },
+        "topTags": [
+          {
+            "id": "670000000000000000000021",
+            "name": "Complaint/Billing",
+            "sessions": 40,
+            "threads": 12,
+            "total": 52
+          },
+          {
+            "id": "670000000000000000000022",
+            "name": "Inquiry/Delivery",
+            "sessions": 31,
+            "threads": 9,
+            "total": 40
+          }
+        ],
+        "sentiment": [
+          {
+            "value": "POSITIVE",
+            "sessions": 60,
+            "threads": 14
+          },
+          {
+            "value": "NEUTRAL",
+            "sessions": 110,
+            "threads": 20
+          },
+          {
+            "value": "NEGATIVE",
+            "sessions": 45,
+            "threads": 11
+          },
+          {
+            "value": "MIXED",
+            "sessions": 5,
+            "threads": null
+          },
+          {
+            "value": "UNSET",
+            "sessions": null,
+            "threads": 7
+          }
+        ]
+      }
+    },
+    "notes": [
+      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "repeatRate is repeat \u00f7 total as a percentage with one decimal; null when there are no customers.",
+      "Customer counts are DM only; comment threads have no customer identity here.",
+      "Sentiment cells are null where a class cannot hold the value: sessions default NEUTRAL so never UNSET, comments are never MIXED.",
+      "Tag names are the slash-joined vocabulary path, resolved at read time."
+    ],
+    "errors": [],
+    "validation": [
+      {
+        "kind": "Params",
+        "name": "brandParamSchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const brandParamSchema = z.object({\n  brandId: idSchema,\n});"
+      },
+      {
+        "kind": "Query",
+        "name": "rangeQuerySchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
+      }
+    ],
+    "handler": "router.get(\n  '/customers',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getCustomerStats({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Customers are DM conversations (one conversation = one customer) with a session opened in the range: repeat = two or more sessions in range; new = first session ever falls in range, returning = wrote before it. Customer ids are read in chunks of 50,000, four at a time. Top tags count tag ids on sessions plus customer comment roots (at most 10, most used first). Sentiment is the handler-recorded value per class.",
+    "implementation": "server/src/modules/overview/api.ts; overview/customers.ts:getCustomerStats, readInChunks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/customer-trend",
+    "group": "overview",
+    "source": "server/src/modules/overview/api.ts:176",
+    "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
+    "status": 200,
+    "contentType": "application/json",
+    "requestType": "application/json",
+    "request": "curl -i \"${BASE_URL}/api/v1/brands/670000000000000000000004/overview/customer-trend?from=2026-10-01&to=2026-10-27\" \\\n  -b cookies.txt -c cookies.txt",
+    "body": null,
+    "response": {
+      "success": true,
+      "message": "success",
+      "data": [
+        {
+          "from": "2026-10-01",
+          "to": "2026-10-02",
+          "customers": 20,
+          "repeat": 1,
+          "repeatRate": 5.0,
+          "new": 14,
+          "returning": 6
+        },
+        {
+          "from": "2026-10-03",
+          "to": "2026-10-09",
+          "customers": 71,
+          "repeat": 9,
+          "repeatRate": 12.7,
+          "new": 44,
+          "returning": 27
+        }
+      ]
+    },
+    "notes": [
+      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "data is an array of weeks, not an object with range.",
+      "Someone who first wrote just before a partial first week counts as returning.",
+      "repeatRate is null for a week with no customers."
+    ],
+    "errors": [],
+    "validation": [
+      {
+        "kind": "Params",
+        "name": "brandParamSchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const brandParamSchema = z.object({\n  brandId: idSchema,\n});"
+      },
+      {
+        "kind": "Query",
+        "name": "rangeQuerySchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
+      }
+    ],
+    "handler": "router.get(\n  '/customer-trend',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getCustomerTrend({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Split the range into business weeks (Saturday to Friday), clipped at the range edges so the first and last weeks can be partial, and count DM customers per week with the same repeat / new / returning rules as /customers, scoped to each week.",
+    "implementation": "server/src/modules/overview/api.ts; overview/customers.ts:getCustomerTrend"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/peak-hours",
+    "group": "overview",
+    "source": "server/src/modules/overview/api.ts:201",
+    "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
+    "status": 200,
+    "contentType": "application/json",
+    "requestType": "application/json",
+    "request": "curl -i \"${BASE_URL}/api/v1/brands/670000000000000000000004/overview/peak-hours?from=2026-10-01&to=2026-10-27\" \\\n  -b cookies.txt -c cookies.txt",
+    "body": null,
+    "response": {
+      "success": true,
+      "message": "success",
+      "data": {
+        "range": {
+          "from": "2026-10-01",
+          "to": "2026-10-27"
+        },
+        "days": [
+          "Sat",
+          "Sun",
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
+        "cells": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            42,
+            37,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            55,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            18,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "total": 152,
+        "busiest": {
+          "day": "Mon",
+          "hour": 20,
+          "count": 55
+        }
+      }
+    },
+    "notes": [
+      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "cells[day][hour] follows days order (Saturday first) and hours 00\u201323 in business time.",
+      "busiest is null when nothing came in.",
+      "Messages use the partial {brandId, sentAt} index (direction: incoming only); comments hint {brandId, platform, commentedAt}."
+    ],
+    "errors": [],
+    "validation": [
+      {
+        "kind": "Params",
+        "name": "brandParamSchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const brandParamSchema = z.object({\n  brandId: idSchema,\n});"
+      },
+      {
+        "kind": "Query",
+        "name": "rangeQuerySchema",
+        "file": "server/src/modules/overview/validation.ts",
+        "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
+      }
+    ],
+    "handler": "router.get(\n  '/peak-hours',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getPeakHours({ brandId: brand.id, platform: query.platform, ...range });\n    successResponse(res, { data });\n  }\n);",
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Count every inbound DM message (system notices excluded) and every customer comment, root or reply, grouped in MongoDB by Asia/Dhaka weekday and hour. Brand and agent replies are excluded. The response is always 7 \u00d7 24 numbers regardless of volume.",
+    "implementation": "server/src/modules/overview/api.ts; overview/peak-hours.ts:getPeakHours; overview/indexes.ts"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/holds",
     "group": "overview",
     "source": "server/src/modules/overview/api.ts:167",

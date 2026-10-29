@@ -238,7 +238,7 @@ Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domai
 | Logo/avatar disappears after deploy              | Ephemeral local upload directory or incorrect BASE_URL.                                                                                             |
 | Long thread appears incomplete                   | `/conversations/:id/messages` returns the earliest 200 messages in ascending order; use grouped session thread reads appropriately.                 |
 | Large conversation response                      | Session thread pages cap session count, but fetch all messages/notes for selected sessions.                                                         |
-| SLA changes look surprising                      | Historical settings, business hours, status history, automatic-reply exclusion and SLA rulesVersion.              |
+| SLA changes look surprising                      | Historical settings, business hours, status history, automatic-reply exclusion, and whether both SLA backfills ran after the last clock change. |
 | SLA field missing although message saved         | SLA synchronization logs errors without failing the main write; inspect logs and use the relevant backfill.                                         |
 | Duplicate event/counter anomalies                | Non-atomic read-before-write dedupe and session creation; whole-entry retries; concurrent jobs and provider echoes.                                 |
 | Incorrect preview after late events              | Conversation upsert sets last-message values from the arriving event without a general monotonic timestamp guard.                                   |
@@ -264,9 +264,9 @@ Useful focused notes: `realtime-inbox-sockets.md`, `webhook-queue-bullmq.md`, `t
 
 ## October 17 SLA and index rollout
 
-Source revision `6516627` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
+*Superseded on 27 October (see below).* Revision `6516627` used `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`, and backfill eligibility included stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
 
-Run repair commands only against the intended Listenyzen environment, using the script options in `server/scripts/dev/backfill-session-sla.ts` and `backfill-comment-sla.ts`. A `--all` recomputation is useful when data already carries the current rulesVersion but a later first-response rule changed. Inspect the script first: these commands write derived database fields, and the documentation build does not execute them.
+Run repair commands only against the intended Listenyzen environment, using the script options in `server/scripts/dev/backfill-session-sla.ts` and `backfill-comment-sla.ts`. Inspect the script first: these commands write derived database fields, and the documentation build does not execute them.
 
 The source repository records a development backfill, but this review did not query that database or verify production completion. Production still needs the new `(brandId, statusChangedAt)` indexes on sessions and comments provisioned through the deployment process: production autoIndex is disabled. Greater charged resolution time after switching from the old customer-wait algorithm is expected.
 
@@ -277,3 +277,17 @@ Manager history is embedded in query records. Merging/deleting records can remov
 `server/scripts/dev/backfill-default-teams.ts` provides `pnpm backfill:default-teams` (dry run) and `pnpm backfill:default-teams --apply` from the Listenyzen server directory. It creates/reuses a General team per department, following department status, and moves team-less query managers into it. Agents without a valid department are reported for administrative correction. This documentation update does not run the migration.
 
 Production must provision the Team unique `(departmentId, name)` index with English strength-2 collation, plus schema-declared access indexes; autoIndex is disabled there. Existing company permission settings may remain in old documents but are no longer read. Refresh tokens after a membership change to update brand access; claims and mine filters already read current membership. Deployment and migration completion have not been verified against a live database.
+
+## October 27 Overview indexes and SLA recompute
+
+Revision `6a94138` removes `rulesVersion`: `pnpm backfill:session-sla --apply` and `pnpm backfill:comment-sla --apply` now recompute **every** session and thread. Run both after any change to what `session/sla.ts` computes or stores. Until they run, older items count in first-response and resolution wall-clock figures but not in business time.
+
+Before deploying the Overview reads to production (`autoIndex` is off there), per the Listenyzen `CLAUDE.md`:
+
+1. Atlas must run MongoDB 5.0 or later (`$dateTrunc`).
+2. Build the six hinted indexes first, or those reads return 500: sessions `{brandId, firstCustomerMessageAt}`, `{brandId, status, resolvedAt}`, `{conversationId, firstCustomerMessageAt}`; comments `{brandId, platform, commentedAt}`, `{brandId, status, resolvedAt}`; messages `{brandId, sentAt}` partial on `direction: 'incoming'`.
+3. Build the eight partial SLA-decision indexes (not hinted; missing means slow, not failing).
+4. Drop the old comments `{brandId, commentedAt}`.
+5. Run both SLA backfills.
+
+`libraries/business-time` caches one `Intl.DateTimeFormat` per timezone; building one per call measured 18× slower. This documentation update did not run these steps or verify a live database.

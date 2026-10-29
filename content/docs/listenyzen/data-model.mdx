@@ -180,7 +180,8 @@ SLA state shape:
 
 ```typescript
 {
-  rulesVersion?: number; // current clock rules: 2 for sessions and comments
+  firstResponseMs?: number | null; // business ms to first reply; null while unanswered
+  resolutionMs?: number | null;    // business ms charged up to resolve; null until resolved
   slaVersion: number;
   hoursVersion: number;
   firstResponse: null | { minutes: number; atRiskAt: Date; dueAt: Date };
@@ -259,7 +260,7 @@ This is an embedded array, **not a sixteenth collection**. Both schemas reuse `s
 | `statusLog[].reason?` | Trimmed string, maximum 500 characters; optional, including for hold. |
 | `statusRevision?` | Incremented on an actual status transition; used to guard concurrent status writes. |
 | `statusChangedAt`, `statusChangedBy` | Latest transition metadata; comment roots now store these too. |
-| `sla.rulesVersion?` | Calculation version, currently 2 for both sources; distinct from historical setting versions. |
+| `sla.firstResponseMs?`, `sla.resolutionMs?` | Stored business-time results read by Overview. Missing on records not recomputed since `6a94138`; backfill fills them. There is no calculation-version field. |
 | `sla.statusChangesSeen` | Session calculation's count of log entries; guards against an older derived result overwriting a newer one. Comment SLA instead uses `slaRevision`. |
 
 The embedded entries have no `_id`. The chronological log records real transitions; re-saving the same status does not append an entry or change its original reason. History resolves user names at read time: a deleted user has an ID with a null name. This differs from `assignee.name` and `Setting.changedBy.name` snapshots.
@@ -278,12 +279,14 @@ Message adds optional `isAutomatic: boolean`, with no default. It marks an actua
 | BrandTag         | Unique brand+normalized path; company index.                                                                                                                    |
 | Customer         | Unique platform+page+external identity.                                                                                                                         |
 | Conversation     | Unique page+participant; brand+lastMessageAt+\_id cursor order; compound platform/status/sentiment/tag variants; partial assignee index.                        |
-| Message          | Sparse unique provider mid; conversation+sentAt, session+sentAt, individual reference indexes.                                                                  |
-| Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags. |
-| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes.   |
+| Message          | Sparse unique provider mid; conversation+sentAt, session+sentAt, individual reference indexes; partial brand+sentAt on `direction: 'incoming'` (peak hours).    |
+| Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags; conversation+firstCustomerMessageAt (new vs returning); partial brand+SLA-decision field ×4. |
+| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes; brand+platform+commentedAt (replaces brand+commentedAt); partial brand+SLA-decision field ×4. |
 | SessionNote      | Session+createdAt and reference indexes.                                                                                                                        |
 | Setting          | Unique scope+scopeId+type+version for history/concurrent-save protection.                                                                                       |
 | File             | Unique key; uploadedBy and createdAt indexes.                                                                                                                   |
+
+Overview range reads `.hint()` the indexes named in `server/src/modules/overview/indexes.ts`; `server/test/overview-indexes.test.ts` fails if a hint stops matching a schema index. A hinted index missing in production makes that read fail, not just run slowly.
 
 The schema files remain the exact index definitions. The cursor-index maintenance script creates a **selected** set of indexes, not every schema index. MongoDB production startup will not automatically create the rest.
 

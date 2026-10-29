@@ -1,6 +1,6 @@
 # Listenyzen API endpoint reference
 
-Source-derived examples for all 129 mounted API operations and two health endpoints. Inspected on 2026-10-19. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
+Source-derived examples for all 134 mounted API operations and two health endpoints. Inspected on 2026-10-29. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
 
 Entity objects are compact projections: audit fields, virtuals and optional fields are omitted for readability. Envelopes, status codes and special response types follow the implementation. Optional fields, populated references and lean reads can change the returned entity fields. Read the linked source location for the complete handler.
 
@@ -8365,6 +8365,767 @@ router.get(
       successResponse(res, { data });
     }
   )
+```
+
+## GET /api/v1/brands/:brandId/overview/first-response
+
+**Source:** `server/src/modules/overview/api.ts:99`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
+
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+
+**Business logic:** Resolve a visible brand and the paired date range. Time DM sessions opened in the range (firstCustomerMessageAt) and customer-written comment roots (commentedAt) that have a firstResponseAt. Business time is the stored sla.firstResponseMs (hours in force at the clock start), summed in the database into minute buckets below a day and hour buckets past it. Wall clock is clock start → firstResponseAt. Return pooled all plus dm and comments.
+
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts:getFirstResponseTime; overview/indexes.ts; session/sla.ts`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/first-response?from=2026-10-01&to=2026-10-27" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "range": {
+      "from": "2026-10-01",
+      "to": "2026-10-27"
+    },
+    "all": {
+      "answered": 180,
+      "businessHours": {
+        "mean": 1260000,
+        "p50": 900000,
+        "p90": 3000000
+      },
+      "wallClock": {
+        "mean": 4980000,
+        "p50": 1500000,
+        "p90": 14400000
+      }
+    },
+    "dm": {
+      "answered": 120,
+      "businessHours": {
+        "mean": 1080000,
+        "p50": 780000,
+        "p90": 2580000
+      },
+      "wallClock": {
+        "mean": 3900000,
+        "p50": 1320000,
+        "p90": 10800000
+      }
+    },
+    "comments": {
+      "answered": 60,
+      "businessHours": {
+        "mean": 1620000,
+        "p50": 1200000,
+        "p90": 3600000
+      },
+      "wallClock": {
+        "mean": 7140000,
+        "p50": 2100000,
+        "p90": 21600000
+      }
+    }
+  }
+}
+```
+
+- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Unanswered items are not timed here; they lower the /engagement response rate instead.
+- Durations are milliseconds; null when nothing was timed. Means are exact. p50/p90 are the smallest value of the nearest-rank bucket: exact to the minute below a day, to the hour past it.
+- Items without a stored sla.firstResponseMs (not yet backfilled) count in wallClock but not businessHours, so the two answered populations can differ until both SLA backfills run.
+- Session reads hint {brandId, firstCustomerMessageAt}; comment reads hint {brandId, platform, commentedAt}. Production must build these indexes first or the read fails.
+
+### Validation declarations
+
+**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const brandParamSchema = z.object({
+  brandId: idSchema,
+});
+```
+
+**Query: rangeQuerySchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+  '/first-response',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getFirstResponseTime({
+      brandId: brand.id,
+      companyId: brand.companyId,
+      platform: query.platform,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
+```
+
+## GET /api/v1/brands/:brandId/overview/resolution-time
+
+**Source:** `server/src/modules/overview/api.ts:126`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
+
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+
+**Business logic:** Resolve a visible brand and the paired date range. Time DM sessions and customer-written comment roots whose status is resolved and whose resolvedAt falls in the range. Business time is the stored sla.resolutionMs: what the resolution clock charged, with hold and unresolved stretches excluded, stored whether or not the brand has a resolution target. Wall clock is first customer message (root) → resolvedAt with every stretch included.
+
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts:getResolutionTime; session/sla.ts:resolvedChargedMs`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/resolution-time?from=2026-10-01&to=2026-10-27" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "range": {
+      "from": "2026-10-01",
+      "to": "2026-10-27"
+    },
+    "all": {
+      "resolved": 150,
+      "businessHours": {
+        "mean": 15840000,
+        "p50": 10800000,
+        "p90": 43200000
+      },
+      "wallClock": {
+        "mean": 86400000,
+        "p50": 36000000,
+        "p90": 259200000
+      }
+    },
+    "dm": {
+      "resolved": 110,
+      "businessHours": {
+        "mean": 14400000,
+        "p50": 9600000,
+        "p90": 39600000
+      },
+      "wallClock": {
+        "mean": 72000000,
+        "p50": 32400000,
+        "p90": 216000000
+      }
+    },
+    "comments": {
+      "resolved": 40,
+      "businessHours": {
+        "mean": 19800000,
+        "p50": 14400000,
+        "p90": 50400000
+      },
+      "wallClock": {
+        "mean": 126000000,
+        "p50": 46800000,
+        "p90": 345600000
+      }
+    }
+  }
+}
+```
+
+- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- unresolved wrap-ups are not resolutions and are not timed.
+- Same duration shape and bucket rule as /first-response; the count field is resolved instead of answered.
+- Sessions the SLA sync never stamped (no firstCustomerMessageAt) are skipped.
+- Reads hint {brandId, status, resolvedAt} on sessions and comments.
+
+### Validation declarations
+
+**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const brandParamSchema = z.object({
+  brandId: idSchema,
+});
+```
+
+**Query: rangeQuerySchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+  '/resolution-time',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getResolutionTime({
+      brandId: brand.id,
+      platform: query.platform,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
+```
+
+## GET /api/v1/brands/:brandId/overview/customers
+
+**Source:** `server/src/modules/overview/api.ts:151`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
+
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+
+**Business logic:** Resolve a visible brand and the paired date range. Customers are DM conversations (one conversation = one customer) with a session opened in the range: repeat = two or more sessions in range; new = first session ever falls in range, returning = wrote before it. Customer ids are read in chunks of 50,000, four at a time. Top tags count tag ids on sessions plus customer comment roots (at most 10, most used first). Sentiment is the handler-recorded value per class.
+
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/customers.ts:getCustomerStats, readInChunks`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/customers?from=2026-10-01&to=2026-10-27" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "range": {
+      "from": "2026-10-01",
+      "to": "2026-10-27"
+    },
+    "customers": {
+      "total": 240,
+      "repeat": 36,
+      "repeatRate": 15,
+      "new": 150,
+      "returning": 90
+    },
+    "topTags": [
+      {
+        "id": "670000000000000000000021",
+        "name": "Complaint/Billing",
+        "sessions": 40,
+        "threads": 12,
+        "total": 52
+      },
+      {
+        "id": "670000000000000000000022",
+        "name": "Inquiry/Delivery",
+        "sessions": 31,
+        "threads": 9,
+        "total": 40
+      }
+    ],
+    "sentiment": [
+      {
+        "value": "POSITIVE",
+        "sessions": 60,
+        "threads": 14
+      },
+      {
+        "value": "NEUTRAL",
+        "sessions": 110,
+        "threads": 20
+      },
+      {
+        "value": "NEGATIVE",
+        "sessions": 45,
+        "threads": 11
+      },
+      {
+        "value": "MIXED",
+        "sessions": 5,
+        "threads": null
+      },
+      {
+        "value": "UNSET",
+        "sessions": null,
+        "threads": 7
+      }
+    ]
+  }
+}
+```
+
+- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- repeatRate is repeat ÷ total as a percentage with one decimal; null when there are no customers.
+- Customer counts are DM only; comment threads have no customer identity here.
+- Sentiment cells are null where a class cannot hold the value: sessions default NEUTRAL so never UNSET, comments are never MIXED.
+- Tag names are the slash-joined vocabulary path, resolved at read time.
+
+### Validation declarations
+
+**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const brandParamSchema = z.object({
+  brandId: idSchema,
+});
+```
+
+**Query: rangeQuerySchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+  '/customers',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getCustomerStats({
+      brandId: brand.id,
+      platform: query.platform,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
+```
+
+## GET /api/v1/brands/:brandId/overview/customer-trend
+
+**Source:** `server/src/modules/overview/api.ts:176`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
+
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+
+**Business logic:** Resolve a visible brand and the paired date range. Split the range into business weeks (Saturday to Friday), clipped at the range edges so the first and last weeks can be partial, and count DM customers per week with the same repeat / new / returning rules as /customers, scoped to each week.
+
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/customers.ts:getCustomerTrend`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/customer-trend?from=2026-10-01&to=2026-10-27" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "from": "2026-10-01",
+      "to": "2026-10-02",
+      "customers": 20,
+      "repeat": 1,
+      "repeatRate": 5,
+      "new": 14,
+      "returning": 6
+    },
+    {
+      "from": "2026-10-03",
+      "to": "2026-10-09",
+      "customers": 71,
+      "repeat": 9,
+      "repeatRate": 12.7,
+      "new": 44,
+      "returning": 27
+    }
+  ]
+}
+```
+
+- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- data is an array of weeks, not an object with range.
+- Someone who first wrote just before a partial first week counts as returning.
+- repeatRate is null for a week with no customers.
+
+### Validation declarations
+
+**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const brandParamSchema = z.object({
+  brandId: idSchema,
+});
+```
+
+**Query: rangeQuerySchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+  '/customer-trend',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getCustomerTrend({
+      brandId: brand.id,
+      platform: query.platform,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
+```
+
+## GET /api/v1/brands/:brandId/overview/peak-hours
+
+**Source:** `server/src/modules/overview/api.ts:201`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
+
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+
+**Business logic:** Resolve a visible brand and the paired date range. Count every inbound DM message (system notices excluded) and every customer comment, root or reply, grouped in MongoDB by Asia/Dhaka weekday and hour. Brand and agent replies are excluded. The response is always 7 × 24 numbers regardless of volume.
+
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/peak-hours.ts:getPeakHours; overview/indexes.ts`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/peak-hours?from=2026-10-01&to=2026-10-27" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "range": {
+      "from": "2026-10-01",
+      "to": "2026-10-27"
+    },
+    "days": [
+      "Sat",
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri"
+    ],
+    "cells": [
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        42,
+        37,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        55,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        18,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    ],
+    "total": 152,
+    "busiest": {
+      "day": "Mon",
+      "hour": 20,
+      "count": 55
+    }
+  }
+}
+```
+
+- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- cells[day][hour] follows days order (Saturday first) and hours 00–23 in business time.
+- busiest is null when nothing came in.
+- Messages use the partial {brandId, sentAt} index (direction: incoming only); comments hint {brandId, platform, commentedAt}.
+
+### Validation declarations
+
+**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const brandParamSchema = z.object({
+  brandId: idSchema,
+});
+```
+
+**Query: rangeQuerySchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+  '/peak-hours',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getPeakHours({ brandId: brand.id, platform: query.platform, ...range });
+    successResponse(res, { data });
+  }
+);
 ```
 
 ## GET /api/v1/brands/:brandId/overview/holds

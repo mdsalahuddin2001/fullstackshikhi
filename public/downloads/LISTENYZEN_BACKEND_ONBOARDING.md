@@ -1,6 +1,6 @@
 # Listenyzen backend — database-first learning guide
 
-Inspected 19 October 2026 at source revision `6516627`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
+Inspected 29 October 2026 at source revision `6a94138`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
 
 # Data models & relationships
 *Interactive illustration available in the website chapter.*
@@ -180,7 +180,8 @@ SLA state shape:
 
 ```typescript
 {
-  rulesVersion?: number; // current clock rules: 2 for sessions and comments
+  firstResponseMs?: number | null; // business ms to first reply; null while unanswered
+  resolutionMs?: number | null;    // business ms charged up to resolve; null until resolved
   slaVersion: number;
   hoursVersion: number;
   firstResponse: null | { minutes: number; atRiskAt: Date; dueAt: Date };
@@ -259,7 +260,7 @@ This is an embedded array, **not a sixteenth collection**. Both schemas reuse `s
 | `statusLog[].reason?` | Trimmed string, maximum 500 characters; optional, including for hold. |
 | `statusRevision?` | Incremented on an actual status transition; used to guard concurrent status writes. |
 | `statusChangedAt`, `statusChangedBy` | Latest transition metadata; comment roots now store these too. |
-| `sla.rulesVersion?` | Calculation version, currently 2 for both sources; distinct from historical setting versions. |
+| `sla.firstResponseMs?`, `sla.resolutionMs?` | Stored business-time results read by Overview. Missing on records not recomputed since `6a94138`; backfill fills them. There is no calculation-version field. |
 | `sla.statusChangesSeen` | Session calculation's count of log entries; guards against an older derived result overwriting a newer one. Comment SLA instead uses `slaRevision`. |
 
 The embedded entries have no `_id`. The chronological log records real transitions; re-saving the same status does not append an entry or change its original reason. History resolves user names at read time: a deleted user has an ID with a null name. This differs from `assignee.name` and `Setting.changedBy.name` snapshots.
@@ -278,12 +279,14 @@ Message adds optional `isAutomatic: boolean`, with no default. It marks an actua
 | BrandTag         | Unique brand+normalized path; company index.                                                                                                                    |
 | Customer         | Unique platform+page+external identity.                                                                                                                         |
 | Conversation     | Unique page+participant; brand+lastMessageAt+\_id cursor order; compound platform/status/sentiment/tag variants; partial assignee index.                        |
-| Message          | Sparse unique provider mid; conversation+sentAt, session+sentAt, individual reference indexes.                                                                  |
-| Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags. |
-| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes.   |
+| Message          | Sparse unique provider mid; conversation+sentAt, session+sentAt, individual reference indexes; partial brand+sentAt on `direction: 'incoming'` (peak hours).    |
+| Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags; conversation+firstCustomerMessageAt (new vs returning); partial brand+SLA-decision field ×4. |
+| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes; brand+platform+commentedAt (replaces brand+commentedAt); partial brand+SLA-decision field ×4. |
 | SessionNote      | Session+createdAt and reference indexes.                                                                                                                        |
 | Setting          | Unique scope+scopeId+type+version for history/concurrent-save protection.                                                                                       |
 | File             | Unique key; uploadedBy and createdAt indexes.                                                                                                                   |
+
+Overview range reads `.hint()` the indexes named in `server/src/modules/overview/indexes.ts`; `server/test/overview-indexes.test.ts` fails if a hint stops matching a schema index. A hinted index missing in production makes that read fail, not just run slowly.
 
 The schema files remain the exact index definitions. The cursor-index maintenance script creates a **selected** set of indexes, not every schema index. MongoDB production startup will not automatically create the rest.
 
@@ -943,6 +946,11 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=
 | GET | `/api/v1/brands/:brandId/overview/sla` |
 | GET | `/api/v1/brands/:brandId/overview/engagement` |
 | GET | `/api/v1/brands/:brandId/overview/inbound-trend` |
+| GET | `/api/v1/brands/:brandId/overview/first-response` |
+| GET | `/api/v1/brands/:brandId/overview/resolution-time` |
+| GET | `/api/v1/brands/:brandId/overview/customers` |
+| GET | `/api/v1/brands/:brandId/overview/customer-trend` |
+| GET | `/api/v1/brands/:brandId/overview/peak-hours` |
 | GET | `/api/v1/brands/:brandId/overview/sla-compliance` |
 | GET | `/api/v1/brands/:brandId/overview/holds` |
 
@@ -976,7 +984,7 @@ Read the code in dependency order, then trace a few complete workflows. Start wi
 
 This is a study order, not the order in which code executes. For example, schemas are easiest to understand first, but an HTTP request starts in middleware. Provider ingestion creates inbox records at runtime; studying the storage services first makes the provider adapters easier to follow.
 
-Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `6516627` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
+Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `6a94138` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
 
 ## How to read each module
 
@@ -1093,7 +1101,7 @@ Read **Fixed reply → Brand tags → Settings** before the larger inbox workflo
 - `server/src/modules/brand/tags/names.ts`, `validation.ts`, `service.ts`, `api.ts`: follow hierarchical names, subtree expansion, archive and ID resolution.
 - `server/src/modules/settings/definitions.ts`, `schema.ts`, `validation.ts`, `service.ts`, `api.ts`: follow virtual defaults, baseVersion, history and historical lookup. Read `server/test/settings-route.test.ts`.
 
-**Checkpoint:** explain local fixed replies versus provider WhatsApp templates, tag references versus names, and settings version versus SLA rulesVersion. Save the clock algorithm for step 9.
+**Checkpoint:** explain local fixed replies versus provider WhatsApp templates, tag references versus names, and settings version versus the stored SLA values (which have no version: backfills recompute everything). Save the clock algorithm for step 9.
 
 ## 7. Understand private inbox storage and queries
 
@@ -1134,9 +1142,9 @@ Read in this order:
 2. `server/src/modules/settings/service.ts` — revisit historical policy selection.
 3. `server/src/modules/session/sla.ts` — start timestamp, qualifying response, status intervals and guarded writes.
 4. `server/src/modules/comment/sla.ts` — adapt the same rules to a comment root and its descendants.
-5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts` — consume stored state and histories to build reports.
+5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts`, `customers.ts`, `peak-hours.ts`, `indexes.ts` — consume stored state and histories to build reports; `indexes.ts` names the index each range read hints.
 
-Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts` and `overview-sla-compliance.test.ts`.
+Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts`, `overview-sla-compliance.test.ts`, `overview-first-response.test.ts`, `overview-resolution-time.test.ts`, `overview-customers.test.ts`, `overview-peak-hours.test.ts` and `overview-indexes.test.ts`.
 
 **Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection. See [the SLA walkthrough](/docs/listenyzen/code-sla).
 
@@ -2276,6 +2284,13 @@ The UI mixes live API-backed metrics with illustrative data; not every visible c
 - `/inbound-trend`: incoming versus resolved counts per day; closure uses resolvedAt.
 - `/holds`: manager-only overlapping holds, newest first, at most 1,000; full wall-clock and historical-business-hour durations, with no pagination.
 - `/sla-compliance`: combines session and comment targets; met targets divided by decided targets, not a naive all-record denominator.
+- `/first-response`: DM sessions and customer comment roots **opened** in range that have a reply. Mean, p50 and p90 in business time (stored `sla.firstResponseMs`) and wall clock, pooled plus `dm` and `comments`.
+- `/resolution-time`: the same shape for items **resolved** in range, using stored `sla.resolutionMs` (hold and unresolved excluded). `unresolved` wrap-ups are not timed.
+- `/customers`: DM customers (one conversation = one customer) with repeat rate and new versus returning, the top 10 tags across sessions and comment roots, and handler sentiment per class.
+- `/customer-trend`: the same customer counts per Saturday-to-Friday week, clipped to the range.
+- `/peak-hours`: inbound DM messages plus customer comments (roots and replies) as a 7 × 24 Asia/Dhaka weekday × hour grid, with the busiest slot.
+
+Percentiles come from database buckets (minutes below a day, hours past it): means are exact, and a percentile is its bucket's smallest value. Items without stored SLA milliseconds count in the wall clock only until the SLA backfills run.
 
 Use `server/src/modules/overview/service.ts` and its date-boundary helpers when modifying reporting. Similar-looking metrics intentionally use different open/closed sets.
 
@@ -2794,7 +2809,7 @@ See [development](/docs/listenyzen/development) for the dry-run default-team mig
 
 A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
 
-Source snapshot: `6516627`, 19 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+Source snapshot: `6a94138`, 29 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
 
 ## One writer for both kinds of query
 
@@ -3145,7 +3160,10 @@ Walk through the return value:
 | `messagesSeen` | Number of message records included in this computation. |
 | `failedMessagesSeen` | Number whose known deliveryStatus is failed. |
 | `statusChangesSeen` | Number of status-log entries used for resolution. |
-| `rulesVersion` | Clock algorithm version; currently 2, separate from policy versions. |
+| `sla.firstResponseMs` | Business time from clock start to `firstResponseAt` under the hours in force at the clock start; null while unanswered. |
+| `sla.resolutionMs` | Business time the resolution clock charged up to the resolve (`resolvedChargedMs`), stored even without a resolution target; null until resolved. |
+
+There is no `rulesVersion` any more (removed in `6a94138`). Stored values follow the current rules only; after changing what the clock computes, run both SLA backfills, which recompute every record.
 
 The query selects only the fields needed for the calculation and uses lean objects. It still reads every message in the session. This trades bounded simplicity for work proportional to session history; do not assume a constant-cost update when sessions get large.
 
@@ -3567,7 +3585,7 @@ Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domai
 | Logo/avatar disappears after deploy              | Ephemeral local upload directory or incorrect BASE_URL.                                                                                             |
 | Long thread appears incomplete                   | `/conversations/:id/messages` returns the earliest 200 messages in ascending order; use grouped session thread reads appropriately.                 |
 | Large conversation response                      | Session thread pages cap session count, but fetch all messages/notes for selected sessions.                                                         |
-| SLA changes look surprising                      | Historical settings, business hours, status history, automatic-reply exclusion and SLA rulesVersion.              |
+| SLA changes look surprising                      | Historical settings, business hours, status history, automatic-reply exclusion, and whether both SLA backfills ran after the last clock change. |
 | SLA field missing although message saved         | SLA synchronization logs errors without failing the main write; inspect logs and use the relevant backfill.                                         |
 | Duplicate event/counter anomalies                | Non-atomic read-before-write dedupe and session creation; whole-entry retries; concurrent jobs and provider echoes.                                 |
 | Incorrect preview after late events              | Conversation upsert sets last-message values from the arriving event without a general monotonic timestamp guard.                                   |
@@ -3593,9 +3611,9 @@ Useful focused notes: `realtime-inbox-sockets.md`, `webhook-queue-bullmq.md`, `t
 
 ## October 17 SLA and index rollout
 
-Source revision `6516627` uses `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`. Backfill eligibility now includes stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
+*Superseded on 27 October (see below).* Revision `6516627` used `CLOCK_RULES_VERSION = { sessions: 2, comments: 2 }`, and backfill eligibility included stale rule versions as well as missing/older clock state. Both scripts select hidden status history for calculation; session repair also considers statusChangesSeen. Existing automatic replies must retain their isAutomatic flag for first-response exclusion to work.
 
-Run repair commands only against the intended Listenyzen environment, using the script options in `server/scripts/dev/backfill-session-sla.ts` and `backfill-comment-sla.ts`. A `--all` recomputation is useful when data already carries the current rulesVersion but a later first-response rule changed. Inspect the script first: these commands write derived database fields, and the documentation build does not execute them.
+Run repair commands only against the intended Listenyzen environment, using the script options in `server/scripts/dev/backfill-session-sla.ts` and `backfill-comment-sla.ts`. Inspect the script first: these commands write derived database fields, and the documentation build does not execute them.
 
 The source repository records a development backfill, but this review did not query that database or verify production completion. Production still needs the new `(brandId, statusChangedAt)` indexes on sessions and comments provisioned through the deployment process: production autoIndex is disabled. Greater charged resolution time after switching from the old customer-wait algorithm is expected.
 
@@ -3606,6 +3624,20 @@ Manager history is embedded in query records. Merging/deleting records can remov
 `server/scripts/dev/backfill-default-teams.ts` provides `pnpm backfill:default-teams` (dry run) and `pnpm backfill:default-teams --apply` from the Listenyzen server directory. It creates/reuses a General team per department, following department status, and moves team-less query managers into it. Agents without a valid department are reported for administrative correction. This documentation update does not run the migration.
 
 Production must provision the Team unique `(departmentId, name)` index with English strength-2 collation, plus schema-declared access indexes; autoIndex is disabled there. Existing company permission settings may remain in old documents but are no longer read. Refresh tokens after a membership change to update brand access; claims and mine filters already read current membership. Deployment and migration completion have not been verified against a live database.
+
+## October 27 Overview indexes and SLA recompute
+
+Revision `6a94138` removes `rulesVersion`: `pnpm backfill:session-sla --apply` and `pnpm backfill:comment-sla --apply` now recompute **every** session and thread. Run both after any change to what `session/sla.ts` computes or stores. Until they run, older items count in first-response and resolution wall-clock figures but not in business time.
+
+Before deploying the Overview reads to production (`autoIndex` is off there), per the Listenyzen `CLAUDE.md`:
+
+1. Atlas must run MongoDB 5.0 or later (`$dateTrunc`).
+2. Build the six hinted indexes first, or those reads return 500: sessions `{brandId, firstCustomerMessageAt}`, `{brandId, status, resolvedAt}`, `{conversationId, firstCustomerMessageAt}`; comments `{brandId, platform, commentedAt}`, `{brandId, status, resolvedAt}`; messages `{brandId, sentAt}` partial on `direction: 'incoming'`.
+3. Build the eight partial SLA-decision indexes (not hinted; missing means slow, not failing).
+4. Drop the old comments `{brandId, commentedAt}`.
+5. Run both SLA backfills.
+
+`libraries/business-time` caches one `Intl.DateTimeFormat` per timezone; building one per call measured 18× slower. This documentation update did not run these steps or verify a live database.
 
 ---
 
@@ -4041,4 +4073,4 @@ A portable test summary is saved in `docs/reviews/listenyzen-2026-10-19-test-sum
 
 ## Complete endpoint contracts
 
-See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 129 API operations and two health checks.
+See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 134 API operations and two health checks.

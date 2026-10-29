@@ -353,6 +353,26 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/first-response"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/resolution-time"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/customers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/customer-trend"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/peak-hours"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/holds"
   },
   {

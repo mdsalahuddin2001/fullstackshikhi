@@ -4,7 +4,7 @@ description: "Database first, then business requirements, prerequisites and code
 ---
 
 <Callout title="Current source snapshot">
-Based on Listenyzen revision `6516627`, inspected on 19 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 129 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
+Based on Listenyzen revision `6a94138`, inspected on 29 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 134 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
 </Callout>
 
 ## 1. Understand the database before the endpoints
@@ -51,7 +51,7 @@ Once company identity and brand access exist, settings, tags and reusable replie
 Every operation has an example request and response, access requirements, prerequisites, business context, validation declarations and handler code. Read the learning path first when a route depends on unfamiliar entities or workflows.
 
 <Cards>
-<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 131 operations, including session/comment history and the brand hold log.</Card>
+<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 136 operations, including session/comment history, the brand hold log and the Overview analytics reads.</Card>
 <Card title="Development & repair" href="/docs/listenyzen/development">Configure the processes, understand backfills and check production index requirements.</Card>
 </Cards>
 
@@ -68,7 +68,14 @@ The manager-only History tabs and Admin hold log expose who changed status, when
 
 [Download the complete Markdown guide](/downloads/LISTENYZEN_BACKEND_ONBOARDING.md) · [Download the API reference](/downloads/LISTENYZEN_API_REFERENCE.md)
 
-## Updated in this snapshot
+## Updated in this snapshot (29 October)
+
+- Five new manager-only Overview reads: `/first-response`, `/resolution-time`, `/customers`, `/customer-trend` and `/peak-hours`. All take the same paired `from`/`to` range and optional `platform`.
+- Sessions and comment roots now store `sla.firstResponseMs` and `sla.resolutionMs`, so first-response and resolution times are database sums, not a business-hours walk per item.
+- `sla.rulesVersion` and `CLOCK_RULES_VERSION` are gone. Stored SLA values follow the current rules only; both SLA backfills now recompute every session and thread.
+- Overview range reads `.hint()` named indexes. New indexes: comments `{brandId, platform, commentedAt}` (replaces `{brandId, commentedAt}`), sessions `{conversationId, firstCustomerMessageAt}`, partial inbound messages `{brandId, sentAt}`, and partial `{brandId, field}` SLA-decision indexes on sessions and comments.
+
+## Updated in the 19 October snapshot
 
 - Teams have a dedicated management page, member/brand counts and a brand-access detail endpoint.
 - Personal holders can forward queries with an internal note; managers can inspect separate assignment and wrap-up histories.

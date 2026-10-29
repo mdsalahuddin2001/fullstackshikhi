@@ -1,11 +1,11 @@
 ---
 title: "API route reference"
-description: "All 129 API routes and two health endpoints, with curl requests, example responses, access rules and source-level validation."
+description: "All 134 API routes and two health endpoints, with curl requests, example responses, access rules and source-level validation."
 ---
 
 ## Read the examples
 
-This reference covers **129 mounted API operations and two health endpoints**, inspected at revision `6516627` on October 19, 2026. Examples are derived from source; they are not captured live responses. Entity objects show a **compact selection of fields**. Audit fields, optional properties, virtuals and populated references may also appear in actual responses.
+This reference covers **134 mounted API operations and two health endpoints**, inspected at revision `6a94138` on October 29, 2026. Examples are derived from source; they are not captured live responses. Entity objects show a **compact selection of fields**. Audit fields, optional properties, virtuals and populated references may also appear in actual responses.
 
 [Download the complete API reference as Markdown](/downloads/LISTENYZEN_API_REFERENCE.md)
 
@@ -19,7 +19,7 @@ Login first. Examples save and reuse authentication cookies using `-b cookies.tx
 
 Replace fictional ObjectIds with records visible to your account. Provider codes, signatures, tokens and URLs are placeholders. The copy buttons only copy text; running a mutation command yourself performs a real operation.
 
-Start with [the dependency-ordered learning path](/docs/listenyzen/learning-path) if the entities are unfamiliar. Each operation’s **Business logic** tab explains prerequisites and feature behavior; **Handler code** shows the individual call sequence. New routes cover Team CRUD, brand team grants, agent claims and conversation assignment. The former GET/PATCH `/companies/me/settings` routes are removed; brand SLA/business-hour settings remain. See [teams and claims](/docs/listenyzen/code-assignment) for the workflow.
+Start with [the dependency-ordered learning path](/docs/listenyzen/learning-path) if the entities are unfamiliar. Each operation’s **Business logic** tab explains prerequisites and feature behavior; **Handler code** shows the individual call sequence. New routes cover Team CRUD, brand team grants, agent claims and conversation assignment. The former GET/PATCH `/companies/me/settings` routes are removed; brand SLA/business-hour settings remain. See [teams and claims](/docs/listenyzen/code-assignment) for the workflow. The 29 October update adds five Overview reads: first-response and resolution time, customers and tags, the weekly customer trend, and peak hours.
 
 <ApiReference />
 
