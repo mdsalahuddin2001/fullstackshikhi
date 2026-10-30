@@ -1,6 +1,6 @@
 # Listenyzen API endpoint reference
 
-Source-derived examples for all 134 mounted API operations and two health endpoints. Inspected on 2026-10-29. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
+Source-derived examples for all 136 mounted API operations and two health endpoints. Inspected on 2026-10-30. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
 
 Entity objects are compact projections: audit fields, virtuals and optional fields are omitted for readability. Envelopes, status codes and special response types follow the implementation. Optional fields, populated references and lean reads can change the returned entity fields. Read the linked source location for the complete handler.
 
@@ -7866,7 +7866,7 @@ router.delete(
 
 ## GET /api/v1/brands/:brandId/overview/stats
 
-**Source:** `server/src/modules/overview/api.ts:43`
+**Source:** `server/src/modules/overview/api.ts:49`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -7941,7 +7941,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/sla
 
-**Source:** `server/src/modules/overview/api.ts:62`
+**Source:** `server/src/modules/overview/api.ts:68`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -8057,7 +8057,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/engagement
 
-**Source:** `server/src/modules/overview/api.ts:94`
+**Source:** `server/src/modules/overview/api.ts:224`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -8195,7 +8195,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/inbound-trend
 
-**Source:** `server/src/modules/overview/api.ts:119`
+**Source:** `server/src/modules/overview/api.ts:249`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -8273,7 +8273,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/sla-compliance
 
-**Source:** `server/src/modules/overview/api.ts:140`
+**Source:** `server/src/modules/overview/api.ts:270`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -8369,7 +8369,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/first-response
 
-**Source:** `server/src/modules/overview/api.ts:99`
+**Source:** `server/src/modules/overview/api.ts:101`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -8494,7 +8494,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/resolution-time
 
-**Source:** `server/src/modules/overview/api.ts:126`
+**Source:** `server/src/modules/overview/api.ts:128`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -8569,7 +8569,7 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/resolution-
 - unresolved wrap-ups are not resolutions and are not timed.
 - Same duration shape and bucket rule as /first-response; the count field is resolved instead of answered.
 - Sessions the SLA sync never stamped (no firstCustomerMessageAt) are skipped.
-- Reads hint {brandId, status, resolvedAt} on sessions and comments.
+- Session reads hint {brandId, status, resolvedAt, platform}; comment reads hint {brandId, status, resolvedAt}.
 
 ### Validation declarations
 
@@ -8618,7 +8618,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/customers
 
-**Source:** `server/src/modules/overview/api.ts:151`
+**Source:** `server/src/modules/overview/api.ts:153`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -8753,7 +8753,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/customer-trend
 
-**Source:** `server/src/modules/overview/api.ts:176`
+**Source:** `server/src/modules/overview/api.ts:178`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -8851,7 +8851,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/peak-hours
 
-**Source:** `server/src/modules/overview/api.ts:201`
+**Source:** `server/src/modules/overview/api.ts:203`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
@@ -9128,9 +9128,420 @@ router.get(
 );
 ```
 
+## GET /api/v1/brands/:brandId/overview/handlers
+
+**Source:** `server/src/modules/overview/api.ts:298`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
+
+**Prerequisites:** Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill).
+
+**Business logic:** Resolve a visible brand and the paired date range. Read stored QueryHandling records with three hinted, covered range reads: handled by handledAt, first response by firstResponseAt, decisions by decidedAt. Each is grouped in MongoDB by (query manager, team, source); rows, team and department subtotals and the total are folded from those groups. Rules H1-H14 decide what a record holds; the read only counts.
+
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/handlers.ts:getHandlerStats; handling/schema.ts; overview/indexes.ts`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/handlers?from=2026-10-01&to=2026-10-30" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "range": {
+      "from": "2026-10-01",
+      "to": "2026-10-30"
+    },
+    "rows": [
+      {
+        "queryManagerId": "670000000000000000000031",
+        "name": "Rakib Hasan",
+        "teamId": "670000000000000000000041",
+        "teamName": "Care Day",
+        "all": {
+          "handled": 40,
+          "firstResponse": {
+            "answered": 34,
+            "meanMs": 720000
+          },
+          "resolution": {
+            "resolved": 30,
+            "unresolved": 6,
+            "percent": 83.3
+          }
+        },
+        "dm": {
+          "handled": 30,
+          "firstResponse": {
+            "answered": 26,
+            "meanMs": 600000
+          },
+          "resolution": {
+            "resolved": 23,
+            "unresolved": 4,
+            "percent": 85.2
+          }
+        },
+        "comments": {
+          "handled": 10,
+          "firstResponse": {
+            "answered": 8,
+            "meanMs": 1110000
+          },
+          "resolution": {
+            "resolved": 7,
+            "unresolved": 2,
+            "percent": 77.8
+          }
+        }
+      },
+      {
+        "queryManagerId": "670000000000000000000032",
+        "name": "Sadia Islam",
+        "teamId": "670000000000000000000041",
+        "teamName": "Care Day",
+        "all": {
+          "handled": 52,
+          "firstResponse": {
+            "answered": 47,
+            "meanMs": 540000
+          },
+          "resolution": {
+            "resolved": 41,
+            "unresolved": 5,
+            "percent": 89.1
+          }
+        },
+        "dm": {
+          "handled": 41,
+          "firstResponse": {
+            "answered": 38,
+            "meanMs": 480000
+          },
+          "resolution": {
+            "resolved": 33,
+            "unresolved": 3,
+            "percent": 91.7
+          }
+        },
+        "comments": {
+          "handled": 11,
+          "firstResponse": {
+            "answered": 9,
+            "meanMs": 793333
+          },
+          "resolution": {
+            "resolved": 8,
+            "unresolved": 2,
+            "percent": 80
+          }
+        }
+      }
+    ],
+    "teams": [
+      {
+        "teamId": "670000000000000000000041",
+        "name": "Care Day",
+        "departmentId": "670000000000000000000051",
+        "departmentName": "Customer Care",
+        "all": {
+          "handled": 92,
+          "firstResponse": {
+            "answered": 81,
+            "meanMs": 615556
+          },
+          "resolution": {
+            "resolved": 71,
+            "unresolved": 11,
+            "percent": 86.6
+          }
+        },
+        "dm": {
+          "handled": 71,
+          "firstResponse": {
+            "answered": 64,
+            "meanMs": 528750
+          },
+          "resolution": {
+            "resolved": 56,
+            "unresolved": 7,
+            "percent": 88.9
+          }
+        },
+        "comments": {
+          "handled": 21,
+          "firstResponse": {
+            "answered": 17,
+            "meanMs": 942353
+          },
+          "resolution": {
+            "resolved": 15,
+            "unresolved": 4,
+            "percent": 78.9
+          }
+        }
+      }
+    ],
+    "departments": [
+      {
+        "departmentId": "670000000000000000000051",
+        "name": "Customer Care",
+        "all": {
+          "handled": 92,
+          "firstResponse": {
+            "answered": 81,
+            "meanMs": 615556
+          },
+          "resolution": {
+            "resolved": 71,
+            "unresolved": 11,
+            "percent": 86.6
+          }
+        },
+        "dm": {
+          "handled": 71,
+          "firstResponse": {
+            "answered": 64,
+            "meanMs": 528750
+          },
+          "resolution": {
+            "resolved": 56,
+            "unresolved": 7,
+            "percent": 88.9
+          }
+        },
+        "comments": {
+          "handled": 21,
+          "firstResponse": {
+            "answered": 17,
+            "meanMs": 942353
+          },
+          "resolution": {
+            "resolved": 15,
+            "unresolved": 4,
+            "percent": 78.9
+          }
+        }
+      }
+    ],
+    "total": {
+      "all": {
+        "handled": 92,
+        "firstResponse": {
+          "answered": 81,
+          "meanMs": 615556
+        },
+        "resolution": {
+          "resolved": 71,
+          "unresolved": 11,
+          "percent": 86.6
+        }
+      },
+      "dm": {
+        "handled": 71,
+        "firstResponse": {
+          "answered": 64,
+          "meanMs": 528750
+        },
+        "resolution": {
+          "resolved": 56,
+          "unresolved": 7,
+          "percent": 88.9
+        }
+      },
+      "comments": {
+        "handled": 21,
+        "firstResponse": {
+          "answered": 17,
+          "meanMs": 942353
+        },
+        "resolution": {
+          "resolved": 15,
+          "unresolved": 4,
+          "percent": 78.9
+        }
+      }
+    }
+  }
+}
+```
+
+- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- handled counts records whose handledAt (first reply, else the decision) falls in range (H2).
+- firstResponse.meanMs is the business-hours mean of the final stint's first response (H13), counted by the reply's time; no percentiles and no wall clock in this read.
+- resolution.percent = resolved / (resolved + unresolved), one decimal, over decisions in range (H11, H12); null when none was decided. Undecided and routed-away records are not in the rate.
+- A row shows the query manager's current team. Team subtotals use each record's own stamped team (H14), so someone who moved teams feeds both.
+- Team-less records group under teamId/departmentId null and sort last. teams carry departmentName because names like General repeat.
+- Query managers receive 403. Records come from the sync; run pnpm backfill:query-handling --apply on data created before it existed.
+
+### Validation declarations
+
+**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const brandParamSchema = z.object({
+  brandId: idSchema,
+});
+```
+
+**Query: rangeQuerySchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+  '/handlers',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getHandlerStats({
+      brandId: brand.id,
+      platform: query.platform,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
+```
+
+## GET /api/v1/brands/:brandId/overview/team
+
+**Source:** `server/src/modules/overview/api.ts:324`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
+
+**Prerequisites:** Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill).
+
+**Business logic:** Resolve a visible brand and the paired date range. Count DM sessions and customer comment roots resolved in range (current resolvedAt), split by platform with zeros included; count items on hold now; and count QueryTurn records started in range with how many are still unanswered (T7).
+
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/team.ts:getTeamStats; handling/schema.ts:QueryTurnModel; overview/indexes.ts`
+
+### Request example
+
+```sh
+curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/team?from=2026-10-01&to=2026-10-30" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "range": {
+      "from": "2026-10-01",
+      "to": "2026-10-30"
+    },
+    "closed": {
+      "sessions": 118,
+      "threads": 37,
+      "total": 155,
+      "byPlatform": [
+        {
+          "platform": "facebook",
+          "sessions": 64,
+          "threads": 30
+        },
+        {
+          "platform": "instagram",
+          "sessions": 21,
+          "threads": 7
+        },
+        {
+          "platform": "whatsapp",
+          "sessions": 33,
+          "threads": 0
+        }
+      ]
+    },
+    "onHold": {
+      "sessions": 6,
+      "threads": 2,
+      "total": 8
+    },
+    "unansweredTurns": {
+      "turns": 640,
+      "unanswered": 19,
+      "percent": 3
+    }
+  }
+}
+```
+
+- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- closed.byPlatform lists every channel platform in CHANNEL_PLATFORMS order, zeros included.
+- onHold ignores the date range (it is a now figure) but honours platform.
+- unansweredTurns.percent = unanswered / turns started in range, one decimal; null when there were no turns. A query has at most one open turn, so unanswered is also the number of queries waiting.
+- An open turn on a resolved query is dropped by the sync, so it never counts as unanswered.
+- Reads hint the session status index, the partial resolved-customer-roots comment index and the {brandId, startedAt, platform, answeredAt} turn index.
+
+### Validation declarations
+
+**Params: brandParamSchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const brandParamSchema = z.object({
+  brandId: idSchema,
+});
+```
+
+**Query: rangeQuerySchema** — `server/src/modules/overview/validation.ts`
+
+```typescript
+export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));
+```
+
+### Error examples
+
+Shared authentication, validation and service errors apply.
+
+### Handler code
+
+```typescript
+router.get(
+  '/team',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getTeamStats({ brandId: brand.id, platform: query.platform, ...range });
+    successResponse(res, { data });
+  }
+);
+```
+
 ## GET /api/v1/brands/:brandId/overview/holds
 
-**Source:** `server/src/modules/overview/api.ts:167`
+**Source:** `server/src/modules/overview/api.ts:346`
 
 **Access:** Access-token cookie or Bearer token; active company required for tenant roles. Only super_admin, company_owner and company_admin; brand visibility still applies. Query managers receive 403.
 

@@ -537,6 +537,10 @@
       {
         "name": "sla?",
         "type": "ISessionSlaState"
+      },
+      {
+        "name": "handlingRevision?",
+        "type": "number"
       }
     ],
     "relations": [
@@ -742,6 +746,10 @@
       {
         "name": "slaRevision?",
         "type": "number"
+      },
+      {
+        "name": "handlingRevision?",
+        "type": "number"
       }
     ],
     "relations": [
@@ -874,6 +882,172 @@
       "Brand",
       "Company",
       "User"
+    ]
+  },
+  {
+    "name": "QueryHandling",
+    "source": "server/src/modules/handling/schema.ts",
+    "fields": [
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "source",
+        "type": "'session' | 'comment'"
+      },
+      {
+        "name": "queryId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "platform",
+        "type": "ChannelPlatform"
+      },
+      {
+        "name": "queryManagerId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "teamId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "departmentId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "handledAt",
+        "type": "Date"
+      },
+      {
+        "name": "firstReplyAt?",
+        "type": "Date"
+      },
+      {
+        "name": "stintStartedAt",
+        "type": "Date"
+      },
+      {
+        "name": "stintEndedAt?",
+        "type": "Date"
+      },
+      {
+        "name": "stintEndCause?",
+        "type": "AssignmentCause"
+      },
+      {
+        "name": "firstResponseAt?",
+        "type": "Date"
+      },
+      {
+        "name": "firstResponseMs?",
+        "type": "number"
+      },
+      {
+        "name": "firstResponseWallMs?",
+        "type": "number"
+      },
+      {
+        "name": "outcome",
+        "type": "'undecided' | 'resolved' | 'unresolved' | 'excluded'"
+      },
+      {
+        "name": "decidedAt?",
+        "type": "Date"
+      },
+      {
+        "name": "sourceRevision",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "Company",
+      "User",
+      "Team",
+      "Department",
+      "Session",
+      "Comment"
+    ]
+  },
+  {
+    "name": "QueryTurn",
+    "source": "server/src/modules/handling/schema.ts",
+    "fields": [
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "companyId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "source",
+        "type": "'session' | 'comment'"
+      },
+      {
+        "name": "queryId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "platform",
+        "type": "ChannelPlatform"
+      },
+      {
+        "name": "startedAt",
+        "type": "Date"
+      },
+      {
+        "name": "answeredAt?",
+        "type": "Date"
+      },
+      {
+        "name": "answeredBy?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "responseMs?",
+        "type": "number"
+      },
+      {
+        "name": "responseWallMs?",
+        "type": "number"
+      },
+      {
+        "name": "handlerResponseMs?",
+        "type": "number"
+      },
+      {
+        "name": "handlerResponseWallMs?",
+        "type": "number"
+      },
+      {
+        "name": "teamId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "departmentId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "sourceRevision",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "Company",
+      "User",
+      "Team",
+      "Department",
+      "Session",
+      "Comment"
     ]
   }
 ]

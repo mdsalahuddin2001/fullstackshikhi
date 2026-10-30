@@ -285,9 +285,26 @@ Revision `6a94138` removes `rulesVersion`: `pnpm backfill:session-sla --apply` a
 Before deploying the Overview reads to production (`autoIndex` is off there), per the Listenyzen `CLAUDE.md`:
 
 1. Atlas must run MongoDB 5.0 or later (`$dateTrunc`).
-2. Build the six hinted indexes first, or those reads return 500: sessions `{brandId, firstCustomerMessageAt}`, `{brandId, status, resolvedAt}`, `{conversationId, firstCustomerMessageAt}`; comments `{brandId, platform, commentedAt}`, `{brandId, status, resolvedAt}`; messages `{brandId, sentAt}` partial on `direction: 'incoming'`.
+2. Build the six hinted indexes first, or those reads return 500 (superseded on 30 October, see below): sessions `{brandId, firstCustomerMessageAt}`, `{brandId, status, resolvedAt}`, `{conversationId, firstCustomerMessageAt}`; comments `{brandId, platform, commentedAt}`, `{brandId, status, resolvedAt}`; messages `{brandId, sentAt}` partial on `direction: 'incoming'`.
 3. Build the eight partial SLA-decision indexes (not hinted; missing means slow, not failing).
 4. Drop the old comments `{brandId, commentedAt}`.
 5. Run both SLA backfills.
 
 `libraries/business-time` caches one `Intl.DateTimeFormat` per timezone; building one per call measured 18× slower. This documentation update did not run these steps or verify a live database.
+
+## October 30 handler performance rollout
+
+Revision `4f35c48` adds handler performance ([walkthrough](/docs/listenyzen/code-handling)). From the Listenyzen `server/` directory:
+
+- `pnpm backfill:query-handling` (dry run) and `pnpm backfill:query-handling --apply`. Every session and comment root gets its `QueryHandling` and `QueryTurn` records, and records of deleted queries are removed. Run it again after any change to what `deriveHandling` / `deriveTurns` compute.
+- `pnpm bench:team-performance` times the Team Performance reads on a seeded, throwaway `mongod`.
+- Run the worker. Failed handling syncs are retried there as `handling-sync` jobs. Without it they stay stale until the query's next change.
+
+The production index list in the Listenyzen `CLAUDE.md` changes:
+
+1. Seven hinted Overview indexes instead of six. The session status index becomes `{brandId, status, resolvedAt, platform}`, and comments add `{brandId, resolvedAt, platform}`, partial on resolved customer roots (`parentCommentId: null`).
+2. Handler indexes: `queryhandlings` unique `{source, queryId, queryManagerId}` (the sync's write guard depends on it) plus its three covering range indexes, and `queryturns` unique `{source, queryId, startedAt}` plus the covering `{brandId, startedAt, …}`. These are hinted, so a missing one makes `/handlers` or `/team` return 500.
+3. Then run both SLA backfills and the query-handling backfill.
+
+This documentation update did not run these steps or verify a live database.
+

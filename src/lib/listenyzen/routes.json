@@ -373,6 +373,14 @@
   },
   {
     "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/handlers"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/brands/:brandId/overview/team"
+  },
+  {
+    "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/holds"
   },
   {

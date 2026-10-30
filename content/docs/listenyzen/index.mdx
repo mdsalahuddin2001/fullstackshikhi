@@ -4,12 +4,12 @@ description: "Database first, then business requirements, prerequisites and code
 ---
 
 <Callout title="Current source snapshot">
-Based on Listenyzen revision `6a94138`, inspected on 29 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 134 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
+Based on Listenyzen revision `4f35c48`, inspected on 30 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 136 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
 </Callout>
 
 ## 1. Understand the database before the endpoints
 
-Start with all 15 base collections: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File and Setting. SLA and business-hour settings share the Setting collection through discriminators. Status, assignment and wrap-up history are embedded in Session and Comment, not a separate collection.
+Start with all 17 base collections: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File, Setting, and the derived QueryHandling and QueryTurn. SLA and business-hour settings share the Setting collection through discriminators. Status, assignment and wrap-up history are embedded in Session and Comment, not a separate collection.
 
 <Cards>
 <Card title="Entities, schemas & relationships" href="/docs/listenyzen/data-model">Read field types, defaults, references, indexes, embedded history and consistency boundaries.</Card>
@@ -44,6 +44,7 @@ Once company identity and brand access exist, settings, tags and reusable replie
 <Card title="Assignment & wrap-up history" href="/docs/listenyzen/code-history">Read embedded changes, actor resolution and manager-only history APIs.</Card>
 <Card title="Hold, reopen & history code" href="/docs/listenyzen/code-status">Status-write concurrency, reasons, automatic replies and manager reporting.</Card>
 <Card title="Settings & SLA code" href="/docs/listenyzen/code-sla">Historical policies, full pending-time accounting and guarded derived writes.</Card>
+<Card title="Handler performance" href="/docs/listenyzen/code-handling">Per-query-manager handled, first response and resolution rate, from stints to stored records, sync, retry and reads.</Card>
 </Cards>
 
 ## 4. Use the endpoint contracts
@@ -51,7 +52,7 @@ Once company identity and brand access exist, settings, tags and reusable replie
 Every operation has an example request and response, access requirements, prerequisites, business context, validation declarations and handler code. Read the learning path first when a route depends on unfamiliar entities or workflows.
 
 <Cards>
-<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 136 operations, including session/comment history, the brand hold log and the Overview analytics reads.</Card>
+<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 138 operations, including session/comment history, the brand hold log, the Overview analytics reads and Team Performance.</Card>
 <Card title="Development & repair" href="/docs/listenyzen/development">Configure the processes, understand backfills and check production index requirements.</Card>
 </Cards>
 
@@ -68,7 +69,15 @@ The manager-only History tabs and Admin hold log expose who changed status, when
 
 [Download the complete Markdown guide](/downloads/LISTENYZEN_BACKEND_ONBOARDING.md) · [Download the API reference](/downloads/LISTENYZEN_API_REFERENCE.md)
 
-## Updated in this snapshot (29 October)
+## Updated in this snapshot (30 October)
+
+- **Handler performance is live.** Two derived collections, `QueryHandling` (one record per query and query manager) and `QueryTurn` (one per customer turn), are rewritten by `syncQueryHandling` after every assignment, message, failed send and status change. Rules are H1–H14 and T1–T7. Read [the walkthrough](/docs/listenyzen/code-handling).
+- Two new manager-only reads: `/overview/handlers` (per query manager, team and department: handled, first-response mean, resolution rate) and `/overview/team` (queries closed by channel, on hold now, unanswered turns).
+- Assignment-log entries stamp the query manager's `teamId` / `departmentId` at assignment time. Sessions and comment roots gain `handlingRevision`.
+- A failed handling sync is queued as a `handling-sync` BullMQ job that the worker retries: 9 attempts, deduplicated per query. The worker now does more than webhooks.
+- New scripts: `pnpm backfill:query-handling --apply` and `pnpm bench:team-performance`. Production now needs 7 hinted Overview indexes (the session status index adds `platform`, plus a partial index on resolved customer comment roots) and the handling indexes.
+
+## Updated in the 29 October snapshot
 
 - Five new manager-only Overview reads: `/first-response`, `/resolution-time`, `/customers`, `/customer-trend` and `/peak-hours`. All take the same paired `from`/`to` range and optional `platform`.
 - Sessions and comment roots now store `sla.firstResponseMs` and `sla.resolutionMs`, so first-response and resolution times are database sums, not a business-hours walk per item.

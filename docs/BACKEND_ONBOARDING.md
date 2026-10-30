@@ -1,6 +1,6 @@
 # Listenyzen backend — database-first learning guide
 
-Inspected 29 October 2026 at source revision `6a94138`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
+Inspected 30 October 2026 at source revision `4f35c48`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
 
 # Data models & relationships
 *Interactive illustration available in the website chapter.*
@@ -8,7 +8,7 @@ Inspected 29 October 2026 at source revision `6a94138`. Source-derived examples;
 
 ## Persistence fundamentals
 
-Mongoose models live beside features. There are **14 base domain models**: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply and File, plus **Setting** with two discriminator models. In total this is **15 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
+Mongoose models live beside features. There are **16 base domain models**: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File, and the derived QueryHandling and QueryTurn, plus **Setting** with two discriminator models. In total this is **17 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
 
 ObjectId references are application links, not relational foreign-key constraints. Mongoose `ref` enables population; it does not enforce existence, company membership, cascading deletion, or relationship cardinality. Several references are deliberately polymorphic or use external string IDs.
 
@@ -51,6 +51,12 @@ erDiagram
     BRAND ||--o{ SETTING : versioned_brand_settings
     USER ||--o{ SETTING : changedBy
     USER o|--o{ FILE : uploadedBy
+    USER ||--o{ QUERY_HANDLING : queryManagerId
+    SESSION ||--o{ QUERY_HANDLING : derived_queryId
+    COMMENT ||--o{ QUERY_HANDLING : derived_root_queryId
+    SESSION ||--o{ QUERY_TURN : derived_queryId
+    COMMENT ||--o{ QUERY_TURN : derived_root_queryId
+    TEAM o|--o{ QUERY_HANDLING : teamId_at_stint
 ```
 
 A Session/Comment can additionally point to a User, Team **or** Department through `assignee.kind` and `assignee.id`. These polymorphic links are omitted from the diagram to avoid implying both are populated simultaneously. Settings also support a company scope in the schema; currently mounted settings routes are brand-scoped.
@@ -246,6 +252,17 @@ Source: `server/src/modules/settings/schema.ts`, `server/src/modules/settings/de
 - Each save inserts another document. Version 0 is a synthesized default and need not exist in MongoDB.
 
 
+### QueryHandling and QueryTurn (derived)
+
+Source: `server/src/modules/handling/schema.ts`. Both are derived from a query's assignment log, status timeline and messages, and the sync rewrites them. They can always be rebuilt with `pnpm backfill:query-handling --apply`.
+
+- `QueryHandling`: one record per `(source, queryId, queryManagerId)` (unique). `source` is `session | comment`; `queryId` is the session or the comment root. Fields: `handledAt`, `firstReplyAt?`, `stintStartedAt`, `stintEndedAt?`, `stintEndCause?`, `firstResponseAt?` / `firstResponseMs?` / `firstResponseWallMs?`, `outcome` (`undecided | resolved | unresolved | excluded`), `decidedAt?` (only when resolved / unresolved), `teamId?`, `departmentId?`, `sourceRevision`.
+- `QueryTurn`: one record per `(source, queryId, startedAt)` (unique). `answeredAt?`, `answeredBy?`, brand `responseMs?` / `responseWallMs?`, query manager `handlerResponseMs?` / `handlerResponseWallMs?`, `teamId?`, `departmentId?`, `sourceRevision`. An unanswered turn has `startedAt` only.
+- Both denormalize `brandId`, `companyId` and `platform`. `queryId` has no Mongoose `ref` because it is polymorphic. Timestamps are kept but not indexed.
+- Session and Comment add `handlingRevision`, bumped by every sync. Assignment-log entries add `teamId?` / `departmentId?`, the membership stamped at assignment time.
+
+See [handler performance](/docs/listenyzen/code-handling) for the rules and the concurrency guard.
+
 ### Embedded status history (Session and Comment)
 
 This is an embedded array, **not a sixteenth collection**. Both schemas reuse `statusChangeSchema` from `server/src/modules/session/schema.ts`.
@@ -279,9 +296,11 @@ Message adds optional `isAutomatic: boolean`, with no default. It marks an actua
 | BrandTag         | Unique brand+normalized path; company index.                                                                                                                    |
 | Customer         | Unique platform+page+external identity.                                                                                                                         |
 | Conversation     | Unique page+participant; brand+lastMessageAt+\_id cursor order; compound platform/status/sentiment/tag variants; partial assignee index.                        |
+| QueryHandling    | Unique source+query+query manager (the sync's write guard); three covering, partially filtered range indexes by handledAt, decidedAt and firstResponseAt (hinted). |
+| QueryTurn        | Unique source+query+startedAt; covering brand+startedAt+platform+answeredAt (hinted). |
 | Message          | Sparse unique provider mid; conversation+sentAt, session+sentAt, individual reference indexes; partial brand+sentAt on `direction: 'incoming'` (peak hours).    |
-| Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags; conversation+firstCustomerMessageAt (new vs returning); partial brand+SLA-decision field ×4. |
-| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes; brand+platform+commentedAt (replaces brand+commentedAt); partial brand+SLA-decision field ×4. |
+| Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags; brand+status+resolvedAt+platform (hinted, replaces brand+status+resolvedAt); conversation+firstCustomerMessageAt (new vs returning); partial brand+SLA-decision field ×4. |
+| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes; brand+platform+commentedAt (replaces brand+commentedAt); partial brand+resolvedAt+platform on resolved customer roots (Team Performance); partial brand+SLA-decision field ×4. |
 | SessionNote      | Session+createdAt and reference indexes.                                                                                                                        |
 | Setting          | Unique scope+scopeId+type+version for history/concurrent-save protection.                                                                                       |
 | File             | Unique key; uploadedBy and createdAt indexes.                                                                                                                   |
@@ -951,6 +970,8 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=
 | GET | `/api/v1/brands/:brandId/overview/customers` |
 | GET | `/api/v1/brands/:brandId/overview/customer-trend` |
 | GET | `/api/v1/brands/:brandId/overview/peak-hours` |
+| GET | `/api/v1/brands/:brandId/overview/handlers` |
+| GET | `/api/v1/brands/:brandId/overview/team` |
 | GET | `/api/v1/brands/:brandId/overview/sla-compliance` |
 | GET | `/api/v1/brands/:brandId/overview/holds` |
 
@@ -984,7 +1005,7 @@ Read the code in dependency order, then trace a few complete workflows. Start wi
 
 This is a study order, not the order in which code executes. For example, schemas are easiest to understand first, but an HTTP request starts in middleware. Provider ingestion creates inbox records at runtime; studying the storage services first makes the provider adapters easier to follow.
 
-Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `6a94138` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
+Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `4f35c48` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
 
 ## How to read each module
 
@@ -1142,9 +1163,9 @@ Read in this order:
 2. `server/src/modules/settings/service.ts` — revisit historical policy selection.
 3. `server/src/modules/session/sla.ts` — start timestamp, qualifying response, status intervals and guarded writes.
 4. `server/src/modules/comment/sla.ts` — adapt the same rules to a comment root and its descendants.
-5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts`, `customers.ts`, `peak-hours.ts`, `indexes.ts` — consume stored state and histories to build reports; `indexes.ts` names the index each range read hints.
+5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts`, `customers.ts`, `peak-hours.ts`, `handlers.ts`, `team.ts`, `durations.ts`, `indexes.ts`, then `server/src/modules/handling/` (`derive.ts`, `sync.ts`, `schema.ts`) — consume stored state and histories to build reports; `indexes.ts` names the index each range read hints.
 
-Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts`, `overview-sla-compliance.test.ts`, `overview-first-response.test.ts`, `overview-resolution-time.test.ts`, `overview-customers.test.ts`, `overview-peak-hours.test.ts` and `overview-indexes.test.ts`.
+Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts`, `overview-sla-compliance.test.ts`, `overview-first-response.test.ts`, `overview-resolution-time.test.ts`, `overview-customers.test.ts`, `overview-peak-hours.test.ts`, `overview-handlers.test.ts`, `overview-team.test.ts`, `handling-derive.test.ts` (named by rule IDs H1–H14 and T1–T7), `handling-sync.test.ts`, `backfill-query-handling.test.ts` and `overview-indexes.test.ts`.
 
 **Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection. See [the SLA walkthrough](/docs/listenyzen/code-sla).
 
@@ -1295,7 +1316,7 @@ flowchart LR
 ```
 
 - **API:** `src/app.ts` connects MongoDB, builds Express, and delegates HTTP/realtime startup to `src/server.ts`.
-- **Worker:** `src/worker.ts` independently connects MongoDB, configures a Redis socket emitter, registers webhook handlers, and starts BullMQ. It has no HTTP listener.
+- **Worker:** `src/worker.ts` independently connects MongoDB, configures a Redis socket emitter, registers webhook handlers and the `handling-sync` retry handler, and starts BullMQ. It has no HTTP listener.
 - **Redis:** durable webhook work plus cross-process realtime transport. It is not an HTTP session store; application authentication uses JWTs.
 - **MongoDB:** persistent domain records. API and worker share the database.
 - **Meta:** Facebook Page/Messenger, Instagram through two login paths, and WhatsApp Cloud API. `FACEBOOK_GRAPH_VERSION` defaults to `v25.0` in this checkout; that is a code default, not a statement about the provider's current preferred version.
@@ -2288,6 +2309,8 @@ The UI mixes live API-backed metrics with illustrative data; not every visible c
 - `/resolution-time`: the same shape for items **resolved** in range, using stored `sla.resolutionMs` (hold and unresolved excluded). `unresolved` wrap-ups are not timed.
 - `/customers`: DM customers (one conversation = one customer) with repeat rate and new versus returning, the top 10 tags across sessions and comment roots, and handler sentiment per class.
 - `/customer-trend`: the same customer counts per Saturday-to-Friday week, clipped to the range.
+- `/handlers`: per query manager, with team and department subtotals and a total: queries handled, the business-hours mean first response over time they held the query, and resolution rate = resolved ÷ decided. Read from stored `QueryHandling` records (rules H1–H14, [walkthrough](/docs/listenyzen/code-handling)).
+- `/team`: queries closed in range (sessions, threads, by platform), on hold now, and unanswered turns ÷ turns started in range (T7).
 - `/peak-hours`: inbound DM messages plus customer comments (roots and replies) as a 7 × 24 Asia/Dhaka weekday × hour grid, with the busiest slot.
 
 Percentiles come from database buckets (minutes below a day, hours past it): means are exact, and a percentile is its bucket's smallest value. Items without stored SLA milliseconds count in the wall clock only until the SLA backfills run.
@@ -2313,7 +2336,7 @@ Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `
 
 The API emits through Socket.IO; worker operations emit through Redis. `emitToRoom` selects the available transport and skips with a debug log if neither exists. Persistence can therefore succeed without a live event. Client consumers live in `features/inbox/use-inbox-realtime.ts`, `features/comments/use-comments-realtime.ts` and associated cache helpers.
 
-Active background work is the BullMQ webhook consumer and process heartbeat intervals. No active general-purpose cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
+Active background work is the BullMQ consumer (webhook jobs, plus `handling-sync` retries of failed handler-performance syncs) and process heartbeat intervals. No active general-purpose cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
 
 ---
 
@@ -2324,7 +2347,7 @@ The webhook router verifies the signature, creates one queue job per provider en
 
 For a direct message, the domain write path is `recordIncomingMessage`. Its input includes brand/company IDs, platform, channel ID, participant ID, provider mid, sender identity, text/attachments and sentAt. These are supplied by the trusted processing path, not copied from an authenticated browser body.
 
-Source: `server/src/modules/conversation/service.ts:371`
+Source: `server/src/modules/conversation/service.ts:372`
 
 ```typescript
 export const recordIncomingMessage = async (
@@ -2809,7 +2832,7 @@ See [development](/docs/listenyzen/development) for the dry-run default-team mig
 
 A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
 
-Source snapshot: `6a94138`, 29 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+Source snapshot: `4f35c48`, 30 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
 
 ## One writer for both kinds of query
 
@@ -3349,6 +3372,114 @@ Return to [business workflows](/docs/listenyzen/workflows) for the complete doma
 
 ---
 
+# Code walkthrough: handler performance
+## Dependencies and business requirement
+
+Read [teams, routing and forwarding](/docs/listenyzen/code-assignment), [assignment history](/docs/listenyzen/code-history), [status changes](/docs/listenyzen/code-status) and [SLA](/docs/listenyzen/code-sla) first. Handler performance combines all four.
+
+Owners and admins need figures per query manager on Overview → Team Performance: queries handled, first response time and resolution rate. Sessions and customer-written comment threads are scored the same way. The escalation rate was dropped. The rules are H1–H14 and T1–T7 in the Listenyzen `docs/handler-performance-rules.md`, and each one has a named test in `server/test/handling-derive.test.ts`. That document replaces R11 ("no per-agent speed metric") in the resolution-time rules.
+
+Source snapshot: `4f35c48`, 30 October 2026. Examples are illustrative, not live responses.
+
+## Vocabulary
+
+| Term | Meaning |
+| --- | --- |
+| Held period | From an assignment-log entry that gives the query to a query manager up to the next entry, whatever its cause. |
+| Stint | A query manager's held periods with no **other person** holding the query in between. A pool or unassigned gap does not break the stint, but no time or status in the gap counts for them. Forwarding to your own team and claiming it back is not a hand-over. |
+| Reply | An outgoing message or comment carrying their `senderUserId`, not `failed` and not automatic (H3). Notes, reactions and moderation are not replies. |
+| Turn | One or more customer messages in a row, ended by the first reply from the brand side (T1). A native page reply also ends it. |
+
+## Storage comes first
+
+Two derived collections live in `server/src/modules/handling/schema.ts`. Both are rewritten from the query's own history, so they can always be rebuilt.
+
+| Collection | One record per | Key fields |
+| --- | --- | --- |
+| `QueryHandling` | (query, query manager), unique on `{source, queryId, queryManagerId}` | `handledAt`, `firstReplyAt`, final stint start/end/cause, `firstResponseAt` / `firstResponseMs` / `firstResponseWallMs` (H13), `outcome` (`undecided`, `resolved`, `unresolved`, `excluded`), `decidedAt`, `teamId` / `departmentId` (H14), `sourceRevision` |
+| `QueryTurn` | turn, unique on `{source, queryId, startedAt}` | `answeredAt`, `answeredBy`, brand `responseMs` (T3, the customer's whole wait), `handlerResponseMs` (T5, only time the answering query manager held it), team at the reply (T6), `sourceRevision` |
+
+`source` is `session` or `comment`, and `queryId` is the session id or the thread's root id. Both collections denormalize `brandId`, `companyId` and `platform` for tenant-scoped range reads. Timestamps are kept but not indexed, because nothing reads by them.
+
+Three supporting changes on existing models:
+
+- Assignment-log entries now stamp the query manager's `teamId` and `departmentId` at assignment time (`assigneeMembership` in `team/membership.ts`, passed as the third argument of `assignmentUpdate`). They go on the log entry only, never on `assignee`. That stamp is what lets team figures follow the team someone was in at the time.
+- Sessions and comment roots gain `handlingRevision`, the concurrency guard described below.
+- `QueryHandling` has three covering, partially filtered range indexes: by `handledAt`, `decidedAt` and `firstResponseAt`. `QueryTurn` has `{brandId, startedAt, platform, answeredAt}`. Each read is answered from its index without fetching documents.
+
+## The rules in one table
+
+| Figure | Rule |
+| --- | --- |
+| Handled (H2) | They replied at least once in any stint, or their final stint was decided. Counted on the day of `handledAt`: the first reply, else the decision. |
+| Outcome (H4–H10) | Decided by the **final stint**. Resolved during it → resolved, whoever pressed the button. Wrapped up unresolved → unresolved. A forward after a reply → unresolved at the forward. A forward without ever replying → no effect. A manager routing it away or unassigning → excluded from the rate. Still open → undecided. A customer reopen makes it undecided again. |
+| Resolution rate (H11–H12) | resolved ÷ (resolved + unresolved), over decisions whose `decidedAt` is in range. |
+| First response (H13) | The final stint's first reply that answers a waiting customer. It is timed from the earliest unanswered customer message, **counting only time they held the query**. Anyone's reply stops the wait, so if an admin answered first there is no sample. Business time uses the hours in force at the query's clock start. |
+| Team (H14) | The membership stamped on their latest assignment entry in the final stint. |
+| Turns (T1–T7) | Brand time = turn start → reply, pool and hold time included. The query manager's own time counts only time they held it. Admins, owners and native replies count for the brand only. A turn still open is stored with its start only, however old. It is dropped once the query is resolved and kept on hold, unresolved or pending. |
+
+Worked example (H13-b): the customer writes at 10:00, Rakib replies at 10:05, the query is forwarded to Sadia at 10:30, the customer writes again at 11:00 and Sadia replies at 11:04. Sadia's first response is **4 minutes**: the 10:00 message was already answered, so her sample starts at 11:00.
+
+## Follow the write
+
+1. **Pure derivation.** `deriveHandling(input)` and `deriveTurns(input)` in `handling/derive.ts` take the assignment log, status timeline and messages, and return records. They have no I/O, which is why every rule can be tested from a timeline alone.
+2. **Sync.** `rewriteQueryHandling(source, queryId)` in `handling/sync.ts`:
+   - Bumps `handlingRevision` in the same atomic `findOneAndUpdate` that reads the logs, with timestamps off so `updatedAt` does not move. A higher revision has seen every change a lower one saw.
+   - Reads messages, the SLA policy and membership, then derives.
+   - Writes each record with `replaceOne` + upsert, filtered on `sourceRevision <= revision`, so fields that disappear go with the replacement. A duplicate-key refusal (code 11000) means a racing insert; it is retried once, and if refused again a newer record exists and it is skipped.
+   - Deletes records it no longer derives, where `sourceRevision < revision`.
+   - Re-reads the revision afterwards. If a newer sync has started, it retracts its own writes. If the query is gone, it removes everything.
+3. **Triggers.** `syncQueryHandling` runs after every change that can move a figure:
+   - Sessions: status change and wrap-up, every stored message (including hold end and reopen), a send later marked failed, and every assignment.
+   - Comments: `refreshThread` wraps every thread SLA refresh (comment stored or removed, status change), plus assignment and root deletion.
+   - Our own echo stored before our send's response (`conversation/service.ts`): the duplicate branch now stamps `senderUserId` and rescores, so the agent's reply is no longer counted as a native reply.
+4. **Never blocks, always retried.** `syncQueryHandling` never throws, because handler figures must not block ingestion, assignment or status changes. On failure it logs and enqueues a `handling-sync` BullMQ job: 9 attempts, exponential from 5 seconds (about 20 minutes of database outage), deduplicated per query until it runs. `registerHandlingHandlers()` in `worker.ts` processes it and drops malformed jobs. The worker must run, or failed syncs stay stale until the query's next change.
+
+A sync costs about 9 serial round trips per event. The source notes this is acceptable at current volumes, and that passing the messages and policy over from the SLA sync is the next step if it ever matters.
+
+## Manager-only reads
+
+Both routes use `rangeQuerySchema`: paired `from`/`to` Asia/Dhaka dates (default 30 days, at most a year) and optional `platform`. Query managers receive 403.
+
+| Endpoint | Returns |
+| --- | --- |
+| GET `/brands/:brandId/overview/handlers` | `{ range, rows, teams, departments, total }`. Each has `all`, `dm` and `comments`, each holding `{ handled, firstResponse: {answered, meanMs}, resolution: {resolved, unresolved, percent} }`. |
+| GET `/brands/:brandId/overview/team` | Queries closed in range (sessions, threads, by platform), on hold now, and unanswered turns ÷ turns started in range. |
+
+`getHandlerStats` (`overview/handlers.ts`) runs three hinted, covered reads grouped by (query manager, team, source), then folds them into rows and subtotals. A row shows the query manager's **current** team. Team subtotals use each record's own team, so someone who moved teams feeds both. Departments come through the team, because a team never changes department. Team-less records group under null and sort last.
+
+The read returns counts and a sum for the mean only, with no percentiles or turn response times. Dropping them took a year on 1M records from 6.1 s to 1.1 s. Turn records still store their response times for a later per-handler view, which will need its own index.
+
+```json title="Illustrative /handlers row"
+{
+  "queryManagerId": "670000000000000000000032",
+  "name": "Sadia Islam",
+  "teamId": "670000000000000000000041",
+  "teamName": "Care Day",
+  "all": {
+    "handled": 52,
+    "firstResponse": { "answered": 47, "meanMs": 540000 },
+    "resolution": { "resolved": 41, "unresolved": 5, "percent": 89.1 }
+  }
+}
+```
+
+The full `/handlers` and `/team` examples, validation and handler code are in [the API reference](/docs/listenyzen/api-reference).
+
+## Repair and operations
+
+- `pnpm backfill:query-handling` (dry run) / `--apply`, run from the Listenyzen `server/` directory. It runs the same sync on every session and comment root, then removes records whose query no longer exists. It recomputes everything under the current rules, so run it after changing what the derivation computes. A run that stops partway starts over. Log entries from before membership stamping fall back to the current team (development data only).
+- `pnpm bench:team-performance` times these reads on a seeded, throwaway `mongod` (1M records).
+- Production (`autoIndex` off): build the unique `queryhandlings {source, queryId, queryManagerId}` index first, since the sync's write guard depends on it. Then build its three covering range indexes and `queryturns` unique `{source, queryId, startedAt}` plus `{brandId, startedAt, …}`. The reads are hinted, so a missing index makes them fail with 500. See [development](/docs/listenyzen/development).
+
+## Follow the response into the interface
+
+The client's `team-performance.tsx` reads `/team` through `useTeamStats` (`components/team-stat-tiles.tsx`) and `/handlers` through `useHandlerStats` (`components/handler-tiles.tsx`), filtered by the Overview header. The Escalation column and sparkline are gone. The separate Team view still shows sample data.
+
+To study one complete trace, take H6-a: Sadia replies at 10:05 and forwards at 10:20. Follow it through forward → assignment-log entry with membership → `syncQueryHandling('session', …)` → `deriveHandling` (unresolved at 10:20) → `QueryHandling` upsert → `/handlers` decision read for a range containing 10:20.
+
+---
+
 # Local development & operations
 **Two processes, one backend**
 
@@ -3632,12 +3763,28 @@ Revision `6a94138` removes `rulesVersion`: `pnpm backfill:session-sla --apply` a
 Before deploying the Overview reads to production (`autoIndex` is off there), per the Listenyzen `CLAUDE.md`:
 
 1. Atlas must run MongoDB 5.0 or later (`$dateTrunc`).
-2. Build the six hinted indexes first, or those reads return 500: sessions `{brandId, firstCustomerMessageAt}`, `{brandId, status, resolvedAt}`, `{conversationId, firstCustomerMessageAt}`; comments `{brandId, platform, commentedAt}`, `{brandId, status, resolvedAt}`; messages `{brandId, sentAt}` partial on `direction: 'incoming'`.
+2. Build the six hinted indexes first, or those reads return 500 (superseded on 30 October, see below): sessions `{brandId, firstCustomerMessageAt}`, `{brandId, status, resolvedAt}`, `{conversationId, firstCustomerMessageAt}`; comments `{brandId, platform, commentedAt}`, `{brandId, status, resolvedAt}`; messages `{brandId, sentAt}` partial on `direction: 'incoming'`.
 3. Build the eight partial SLA-decision indexes (not hinted; missing means slow, not failing).
 4. Drop the old comments `{brandId, commentedAt}`.
 5. Run both SLA backfills.
 
 `libraries/business-time` caches one `Intl.DateTimeFormat` per timezone; building one per call measured 18× slower. This documentation update did not run these steps or verify a live database.
+
+## October 30 handler performance rollout
+
+Revision `4f35c48` adds handler performance ([walkthrough](/docs/listenyzen/code-handling)). From the Listenyzen `server/` directory:
+
+- `pnpm backfill:query-handling` (dry run) and `pnpm backfill:query-handling --apply`. Every session and comment root gets its `QueryHandling` and `QueryTurn` records, and records of deleted queries are removed. Run it again after any change to what `deriveHandling` / `deriveTurns` compute.
+- `pnpm bench:team-performance` times the Team Performance reads on a seeded, throwaway `mongod`.
+- Run the worker. Failed handling syncs are retried there as `handling-sync` jobs. Without it they stay stale until the query's next change.
+
+The production index list in the Listenyzen `CLAUDE.md` changes:
+
+1. Seven hinted Overview indexes instead of six. The session status index becomes `{brandId, status, resolvedAt, platform}`, and comments add `{brandId, resolvedAt, platform}`, partial on resolved customer roots (`parentCommentId: null`).
+2. Handler indexes: `queryhandlings` unique `{source, queryId, queryManagerId}` (the sync's write guard depends on it) plus its three covering range indexes, and `queryturns` unique `{source, queryId, startedAt}` plus the covering `{brandId, startedAt, …}`. These are hinted, so a missing one makes `/handlers` or `/team` return 500.
+3. Then run both SLA backfills and the query-handling backfill.
+
+This documentation update did not run these steps or verify a live database.
 
 ---
 
@@ -4073,4 +4220,4 @@ A portable test summary is saved in `docs/reviews/listenyzen-2026-10-19-test-sum
 
 ## Complete endpoint contracts
 
-See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 134 API operations and two health checks.
+See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 136 API operations and two health checks.

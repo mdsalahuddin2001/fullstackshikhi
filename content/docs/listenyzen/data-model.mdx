@@ -1,6 +1,6 @@
 ---
 title: "Data models & relationships"
-description: "Explore all 15 collections, references, indexes and consistency rules."
+description: "Explore all 17 collections, references, indexes and consistency rules."
 ---
 
 <EntityExplorer />
@@ -8,7 +8,7 @@ description: "Explore all 15 collections, references, indexes and consistency ru
 
 ## Persistence fundamentals
 
-Mongoose models live beside features. There are **14 base domain models**: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply and File, plus **Setting** with two discriminator models. In total this is **15 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
+Mongoose models live beside features. There are **16 base domain models**: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File, and the derived QueryHandling and QueryTurn, plus **Setting** with two discriminator models. In total this is **17 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
 
 ObjectId references are application links, not relational foreign-key constraints. Mongoose `ref` enables population; it does not enforce existence, company membership, cascading deletion, or relationship cardinality. Several references are deliberately polymorphic or use external string IDs.
 
@@ -51,6 +51,12 @@ erDiagram
     BRAND ||--o{ SETTING : versioned_brand_settings
     USER ||--o{ SETTING : changedBy
     USER o|--o{ FILE : uploadedBy
+    USER ||--o{ QUERY_HANDLING : queryManagerId
+    SESSION ||--o{ QUERY_HANDLING : derived_queryId
+    COMMENT ||--o{ QUERY_HANDLING : derived_root_queryId
+    SESSION ||--o{ QUERY_TURN : derived_queryId
+    COMMENT ||--o{ QUERY_TURN : derived_root_queryId
+    TEAM o|--o{ QUERY_HANDLING : teamId_at_stint
 ```
 
 A Session/Comment can additionally point to a User, Team **or** Department through `assignee.kind` and `assignee.id`. These polymorphic links are omitted from the diagram to avoid implying both are populated simultaneously. Settings also support a company scope in the schema; currently mounted settings routes are brand-scoped.
@@ -246,6 +252,17 @@ Source: `server/src/modules/settings/schema.ts`, `server/src/modules/settings/de
 - Each save inserts another document. Version 0 is a synthesized default and need not exist in MongoDB.
 
 
+### QueryHandling and QueryTurn (derived)
+
+Source: `server/src/modules/handling/schema.ts`. Both are derived from a query's assignment log, status timeline and messages, and the sync rewrites them. They can always be rebuilt with `pnpm backfill:query-handling --apply`.
+
+- `QueryHandling`: one record per `(source, queryId, queryManagerId)` (unique). `source` is `session | comment`; `queryId` is the session or the comment root. Fields: `handledAt`, `firstReplyAt?`, `stintStartedAt`, `stintEndedAt?`, `stintEndCause?`, `firstResponseAt?` / `firstResponseMs?` / `firstResponseWallMs?`, `outcome` (`undecided | resolved | unresolved | excluded`), `decidedAt?` (only when resolved / unresolved), `teamId?`, `departmentId?`, `sourceRevision`.
+- `QueryTurn`: one record per `(source, queryId, startedAt)` (unique). `answeredAt?`, `answeredBy?`, brand `responseMs?` / `responseWallMs?`, query manager `handlerResponseMs?` / `handlerResponseWallMs?`, `teamId?`, `departmentId?`, `sourceRevision`. An unanswered turn has `startedAt` only.
+- Both denormalize `brandId`, `companyId` and `platform`. `queryId` has no Mongoose `ref` because it is polymorphic. Timestamps are kept but not indexed.
+- Session and Comment add `handlingRevision`, bumped by every sync. Assignment-log entries add `teamId?` / `departmentId?`, the membership stamped at assignment time.
+
+See [handler performance](/docs/listenyzen/code-handling) for the rules and the concurrency guard.
+
 ### Embedded status history (Session and Comment)
 
 This is an embedded array, **not a sixteenth collection**. Both schemas reuse `statusChangeSchema` from `server/src/modules/session/schema.ts`.
@@ -279,9 +296,11 @@ Message adds optional `isAutomatic: boolean`, with no default. It marks an actua
 | BrandTag         | Unique brand+normalized path; company index.                                                                                                                    |
 | Customer         | Unique platform+page+external identity.                                                                                                                         |
 | Conversation     | Unique page+participant; brand+lastMessageAt+\_id cursor order; compound platform/status/sentiment/tag variants; partial assignee index.                        |
+| QueryHandling    | Unique source+query+query manager (the sync's write guard); three covering, partially filtered range indexes by handledAt, decidedAt and firstResponseAt (hinted). |
+| QueryTurn        | Unique source+query+startedAt; covering brand+startedAt+platform+answeredAt (hinted). |
 | Message          | Sparse unique provider mid; conversation+sentAt, session+sentAt, individual reference indexes; partial brand+sentAt on `direction: 'incoming'` (peak hours).    |
-| Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags; conversation+firstCustomerMessageAt (new vs returning); partial brand+SLA-decision field ×4. |
-| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes; brand+platform+commentedAt (replaces brand+commentedAt); partial brand+SLA-decision field ×4. |
+| Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags; brand+status+resolvedAt+platform (hinted, replaces brand+status+resolvedAt); conversation+firstCustomerMessageAt (new vs returning); partial brand+SLA-decision field ×4. |
+| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes; brand+platform+commentedAt (replaces brand+commentedAt); partial brand+resolvedAt+platform on resolved customer roots (Team Performance); partial brand+SLA-decision field ×4. |
 | SessionNote      | Session+createdAt and reference indexes.                                                                                                                        |
 | Setting          | Unique scope+scopeId+type+version for history/concurrent-save protection.                                                                                       |
 | File             | Unique key; uploadedBy and createdAt indexes.                                                                                                                   |

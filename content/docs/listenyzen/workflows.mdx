@@ -161,6 +161,8 @@ The UI mixes live API-backed metrics with illustrative data; not every visible c
 - `/resolution-time`: the same shape for items **resolved** in range, using stored `sla.resolutionMs` (hold and unresolved excluded). `unresolved` wrap-ups are not timed.
 - `/customers`: DM customers (one conversation = one customer) with repeat rate and new versus returning, the top 10 tags across sessions and comment roots, and handler sentiment per class.
 - `/customer-trend`: the same customer counts per Saturday-to-Friday week, clipped to the range.
+- `/handlers`: per query manager, with team and department subtotals and a total: queries handled, the business-hours mean first response over time they held the query, and resolution rate = resolved ÷ decided. Read from stored `QueryHandling` records (rules H1–H14, [walkthrough](/docs/listenyzen/code-handling)).
+- `/team`: queries closed in range (sessions, threads, by platform), on hold now, and unanswered turns ÷ turns started in range (T7).
 - `/peak-hours`: inbound DM messages plus customer comments (roots and replies) as a 7 × 24 Asia/Dhaka weekday × hour grid, with the busiest slot.
 
 Percentiles come from database buckets (minutes below a day, hours past it): means are exact, and a percentile is its bucket's smallest value. Items without stored SLA milliseconds count in the wall clock only until the SLA backfills run.
@@ -186,5 +188,5 @@ Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `
 
 The API emits through Socket.IO; worker operations emit through Redis. `emitToRoom` selects the available transport and skips with a debug log if neither exists. Persistence can therefore succeed without a live event. Client consumers live in `features/inbox/use-inbox-realtime.ts`, `features/comments/use-comments-realtime.ts` and associated cache helpers.
 
-Active background work is the BullMQ webhook consumer and process heartbeat intervals. No active general-purpose cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
+Active background work is the BullMQ consumer (webhook jobs, plus `handling-sync` retries of failed handler-performance syncs) and process heartbeat intervals. No active general-purpose cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
 
