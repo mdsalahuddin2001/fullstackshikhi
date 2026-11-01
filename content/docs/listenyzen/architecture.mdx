@@ -77,7 +77,7 @@ No active cron directory/scheduler was found under `server/src`, despite referen
 | `comment`       | Public thread reconstruction, replies, moderation, tags, assignment, wrap-up and SLA.                                                    |
 | `fixed-reply`   | Brand-specific reusable reply title/body records.                                                                                        |
 | `settings`      | Versioned SLA/business-hours values, defaults, validation and history.                                                                   |
-| `overview`      | Aggregated current workload, engagement, trends and SLA statistics.                                                                      |
+| `overview`      | Current workload plus engagement, trend, SLA and team figures read from daily rollups (`overview/rollup/`), with the nightly rollup jobs. |
 | `webhook`       | Signed ingress and queued Facebook/Instagram/WhatsApp event processing.                                                                  |
 | `file`          | Generic S3 upload/metadata endpoints; has important access-control exceptions described below.                                           |
 
@@ -145,7 +145,8 @@ All paths below have `/api/v1` prepended, except health and uploads. The complet
 | `/brands`                         | CRUD, department/team/agent grants, tags, channel connection, template administration.                                          |
 | `/brands/:brandId/fixed-replies`  | Reusable reply CRUD.                                                                                                           |
 | `/brands/:brandId/settings`       | Get/save `sla` and `business-hours`; per-type history.                                                                         |
-| `/brands/:brandId/overview`       | `stats`, `sla`, `engagement`, `inbound-trend`, `sla-compliance`.                                                               |
+| `/brands/:brandId/overview`       | `stats`, `sla`, `engagement`, `inbound-trend`, `sla-compliance`, `first-response`, `resolution-time`, `customers`, `customer-trend`, `peak-hours`, `handlers`, `team`, `holds`. |
+| `/admin/overview-rollups`         | Super-admin `rebuild`, `runs` and `status` for the precalculated Overview figures.                                              |
 | `/conversations`                  | Cursor inbox list, thread messages/session groups/stats, customer details, send/upload/react, media retrieval, template sends. |
 | `/sessions`                       | Session listing/detail, status/sentiment/wrap-up, assignees, assignment, tags and notes.                                       |
 | `/comments`                       | Root-thread list, post grouping, detail, replies, assignment, tags, wrap-up, hide/like/delete.                                 |

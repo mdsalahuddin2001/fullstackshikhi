@@ -73,9 +73,9 @@ flowchart LR
 ```
 
 - **API:** `src/app.ts` connects MongoDB, builds Express, and delegates HTTP/realtime startup to `src/server.ts`.
-- **Worker:** `src/worker.ts` independently connects MongoDB, configures a Redis socket emitter, registers webhook handlers and the `handling-sync` retry handler, and starts BullMQ. It has no HTTP listener.
-- **Redis:** durable webhook work plus cross-process realtime transport. It is not an HTTP session store; application authentication uses JWTs.
-- **MongoDB:** persistent domain records. API and worker share the database.
+- **Worker:** `src/worker.ts` independently connects MongoDB, configures a Redis socket emitter, registers webhook handlers and the `handling-sync` retry handler, and starts BullMQ on the `webhooks` queue. It also starts a second consumer on the `overview-rollups` queue (concurrency 2) and upserts the nightly rollup schedule, once the rollup indexes exist; until then it retries every 5 minutes without affecting webhooks. It has no HTTP listener.
+- **Redis:** durable webhook work, Overview rollup jobs and their nightly schedule, plus cross-process realtime transport. It is not an HTTP session store; application authentication uses JWTs.
+- **MongoDB:** persistent domain records and the precalculated Overview rollups. API and worker share the database. Rollup writes use transactions, so MongoDB must run as a replica set.
 - **Meta:** Facebook Page/Messenger, Instagram through two login paths, and WhatsApp Cloud API. `FACEBOOK_GRAPH_VERSION` defaults to `v25.0` in this checkout; that is a code default, not a statement about the provider's current preferred version.
 - **S3-compatible storage:** AWS S3 or an endpoint such as R2; credentials are application-level. Public media URLs are optional; private reads use presigned URLs.
 - **Local uploads:** brand/company logos and user avatars. Public `/uploads` URLs are built with `BASE_URL`.

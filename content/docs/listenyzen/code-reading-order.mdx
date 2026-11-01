@@ -9,7 +9,7 @@ Read the code in dependency order, then trace a few complete workflows. Start wi
 
 This is a study order, not the order in which code executes. For example, schemas are easiest to understand first, but an HTTP request starts in middleware. Provider ingestion creates inbox records at runtime; studying the storage services first makes the provider adapters easier to follow.
 
-Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `4f35c48` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
+Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `4f35c48` snapshot plus the uncommitted overview-rollups work (1 November). Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
 
 ## How to read each module
 
@@ -167,11 +167,12 @@ Read in this order:
 2. `server/src/modules/settings/service.ts` — revisit historical policy selection.
 3. `server/src/modules/session/sla.ts` — start timestamp, qualifying response, status intervals and guarded writes.
 4. `server/src/modules/comment/sla.ts` — adapt the same rules to a comment root and its descendants.
-5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts`, `customers.ts`, `peak-hours.ts`, `handlers.ts`, `team.ts`, `durations.ts`, `indexes.ts`, then `server/src/modules/handling/` (`derive.ts`, `sync.ts`, `schema.ts`) — consume stored state and histories to build reports; `indexes.ts` names the index each range read hints.
+5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts`, `customers.ts`, `peak-hours.ts`, `handlers.ts`, `team.ts`, `durations.ts`, `indexes.ts`, then `server/src/modules/handling/` (`derive.ts`, `sync.ts`, `schema.ts`) — consume stored state and histories to build reports; `indexes.ts` names the index each source read hints.
+6. `server/src/modules/overview/reads.ts`, then `rollup/` in this order: `schema.ts`, `compute.ts` (the only source read for range figures), `figures.ts`, `store.ts`, `read.ts`, `dirty.ts`, `jobs.ts`, `api.ts`. Then `server/src/libraries/queue/index.ts` (named queues, `scheduleRepeating`) and `server/src/worker.ts` (`startRollups`).
 
-Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts`, `overview-sla-compliance.test.ts`, `overview-first-response.test.ts`, `overview-resolution-time.test.ts`, `overview-customers.test.ts`, `overview-peak-hours.test.ts`, `overview-handlers.test.ts`, `overview-team.test.ts`, `handling-derive.test.ts` (named by rule IDs H1–H14 and T1–T7), `handling-sync.test.ts`, `backfill-query-handling.test.ts` and `overview-indexes.test.ts`.
+Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts`, `overview-sla-compliance.test.ts`, `overview-first-response.test.ts`, `overview-resolution-time.test.ts`, `overview-customers.test.ts`, `overview-peak-hours.test.ts`, `overview-handlers.test.ts`, `overview-team.test.ts`, `handling-derive.test.ts` (named by rule IDs H1–H14 and T1–T7), `handling-sync.test.ts`, `backfill-query-handling.test.ts`, `overview-indexes.test.ts`, then `overview-rollup.test.ts` (live = stored = mixed), `overview-rollup-jobs.test.ts`, `overview-rollup-admin.test.ts` and `test/support/overview-indexes.ts`.
 
-**Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection. See [the SLA walkthrough](/docs/listenyzen/code-sla).
+**Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection, and why a resolved query reopened 10 days later needs a dirty day while one reopened tomorrow does not. See [Overview rollups](/docs/listenyzen/code-rollups). See [the SLA walkthrough](/docs/listenyzen/code-sla).
 
 ## 10. Connect providers to the domain you already know
 
@@ -208,6 +209,8 @@ For each screen, read **page → feature API hook → backend route → response
 | Assignment | `client/src/features/inbox/assignment-card.tsx`, `claim-button.tsx`, `reply-access.ts` | Claim/routing endpoints and the server's action guard. |
 | Comments | `client/src/pages/comments/components/comment-thread.tsx` | `client/src/features/comments/api.ts` and Comment routes. |
 | History and reporting | `client/src/features/status-history/api.ts`, `client/src/pages/admin/hold-log.tsx` | Status-log and overview/holds endpoints. |
+| Overview range filter | `client/src/features/overview/filters.ts`, `client/src/pages/overview/components/overview-filter.tsx`, `blocks.tsx` | Presets ending yesterday, "Data through", and the `from`/`to` every range read takes. |
+| Overview figures (super admin) | `client/src/pages/system/rollups.tsx` | `client/src/features/rollups/api.ts` and `/admin/overview-rollups`. |
 
 Finally connect realtime: `server/src/libraries/socket/index.ts` and `emit.ts` → `client/src/lib/socket.ts` → `client/src/features/inbox/use-inbox-realtime.ts` and `client/src/features/comments/use-comments-realtime.ts`. Follow which event changes cached data and which triggers a refetch.
 
@@ -217,7 +220,7 @@ Finally connect realtime: `server/src/libraries/socket/index.ts` and `emit.ts` �
 
 Read `DEPLOY.md`, `RELEASE.md`, root `docker-compose.yml`, `docker-compose.prod.yml` and `docker-bake.hcl`. Return to startup/shutdown, logging, Redis, queue and health libraries with those deployment boundaries in mind.
 
-Read `server/scripts/dev/backfill-default-teams.ts`, `backfill-session-sla.ts` and `backfill-comment-sla.ts` as code, then their relevant tests. Understand the migration before considering execution; a study session does not require writing to a database. The [development chapter](/docs/listenyzen/development) explains the operational context.
+Read `server/scripts/dev/backfill-default-teams.ts`, `backfill-session-sla.ts`, `backfill-comment-sla.ts`, `backfill-query-handling.ts` and `backfill-overview-rollups.ts` as code, then their relevant tests. Understand the migration before considering execution; a study session does not require writing to a database. The [development chapter](/docs/listenyzen/development) explains the operational context.
 
 For complete coverage, now revisit each feature directory's remaining files and the remaining tests. On the client, use router.tsx to enumerate screens, then follow each screen's imports into feature hooks, components and utilities. Read reusable visual components after you understand the screens that use them. Separate fixtures/mock data from live API wiring.
 

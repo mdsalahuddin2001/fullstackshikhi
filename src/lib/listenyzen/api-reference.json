@@ -44,7 +44,7 @@
     "handler": "router.post(\n    '/register-company',\n    authLimiter,\n    validateBody(registerCompanySchema),\n    async (req: Request, res: Response) => {\n      const { companyName, name, email, password } = req.body;\n      const user = await registerCompany({ companyName, name, email, password });\n      const { accessToken, refreshToken } = loginUser({\n        id: user.id,\n        email: user.email,\n        name: user.name,\n        role: user.role,\n        companyId: user.companyId?.toString(),\n        departmentId: user.departmentId?.toString(),\n        teamId: user.teamId?.toString(),\n      });\n      setAuthCookies(res, { accessToken, refreshToken });\n      successResponse(res, {\n        data: { user },\n        message: 'Company registered successfully',\n      });\n    }\n  )",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "POST",
@@ -82,13 +82,13 @@
         "kind": "Body",
         "name": "loginSchema",
         "file": "server/src/auth/validation.ts",
-        "code": "const loginSchema = z.strictObject({\n  email: z.email('Invalid email format').min(1, 'Email is required'),\n  // Length-only on purpose \u2014 see `password-policy.ts`. Checking a password is not setting one.\n  password: z.string().min(1, 'Password is required'),\n});"
+        "code": "const loginSchema = z.strictObject({\n  email: z.email('Invalid email format').min(1, 'Email is required'),\n  // Length-only on purpose — see `password-policy.ts`. Checking a password is not setting one.\n  password: z.string().min(1, 'Password is required'),\n});"
       }
     ],
     "handler": "router.post(\n    '/login',\n    authLimiter,\n    validateBody(loginSchema),\n    async (req: Request, res: Response, next: NextFunction) => {\n      passport.authenticate(\n        'local',\n        { session: false },\n        async (err: Error, user: IUser, info: { message: string }) => {\n          if (err) return next(err);\n          if (!user) return res.status(401).json({ message: info?.message });\n          const { accessToken, refreshToken } = loginUser({\n            id: user.id,\n            email: user.email,\n            name: user.name,\n            role: user.role,\n            companyId: user.companyId?.toString(),\n            departmentId: user.departmentId?.toString(),\n            teamId: user.teamId?.toString(),\n          });\n          setAuthCookies(res, { accessToken, refreshToken });\n          successResponse(res, {\n            data: { user },\n            message: 'User logged in successfully',\n          });\n        }\n      )(req, res, next);\n    }\n  )",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "POST",
@@ -115,7 +115,7 @@
     "handler": "router.post('/logout', (_req: Request, res: Response) => {\n    clearAuthCookies(res);\n    successResponse(res, { message: 'User logged out successfully' });\n  })",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "POST",
@@ -147,7 +147,7 @@
     "handler": "router.post('/refresh', authLimiter, async (req: Request, res: Response) => {\n    const refresh_token = req.cookies?.refresh_token;\n    if (!refresh_token)\n      throw new BadRequestError('Refresh token is required', 'auth POST /refresh');\n    const { accessToken, refreshToken } = await refresh(refresh_token);\n    setAuthCookies(res, { accessToken, refreshToken });\n    successResponse(res, { message: 'Tokens refreshed successfully' });\n  })",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "GET",
@@ -643,7 +643,7 @@
         "code": "export const updateBrandSchema = z.strictObject({\n  name: z.string().min(1, NAME_REQUIRED).optional(),\n  email: z.email('Invalid email').optional(),\n  status: z.enum(BRAND_STATUS).optional(),\n});"
       }
     ],
-    "handler": "router.patch(\n    '/:id',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    upload({ fieldName: 'logo' }),\n    validateBody(updateBrandSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, email, status } = req.body;\n      if (!name && !email && !status && !req.file) {\n        throw new BadRequestError('Invalid request body', `module/brand/api.ts - /:id`);\n      }\n\n      const scope = getTenantScope(req.user);\n      const existing = await getById(String(req.params.id ?? ''), scope);\n      if (!existing) {\n        throw new NotFoundError(`${model} not found`, `module/brand/api.ts - /:id`);\n      }\n\n      const update: Partial<IBrand> = { name, email, status };\n\n      let newKey: string | undefined;\n      if (req.file) {\n        const saved = await saveLocal({\n          buffer: req.file.buffer,\n          originalname: req.file.originalname,\n          subdir: 'brands',\n        });\n        newKey = saved.key;\n        update.logo = newKey;\n      }\n\n      try {\n        const item = await updateById(String(req.params.id ?? ''), update, scope);\n        if (!item) {\n          throw new NotFoundError(`${model} not found`, `module/brand/api.ts - /:id`);\n        }\n        // Remove the old logo only after the update succeeded.\n        if (newKey) {\n          await deleteLocal(existing.logo);\n        }\n        successResponse(res, { data: item, message: 'Brand updated successfully' });\n      } catch (error) {\n        // The update failed after writing the new file \u2014 clean it up.\n        if (newKey) {\n          await deleteLocal(newKey);\n        }\n        throw error;\n      }\n    }\n  )",
+    "handler": "router.patch(\n    '/:id',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    upload({ fieldName: 'logo' }),\n    validateBody(updateBrandSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, email, status } = req.body;\n      if (!name && !email && !status && !req.file) {\n        throw new BadRequestError('Invalid request body', `module/brand/api.ts - /:id`);\n      }\n\n      const scope = getTenantScope(req.user);\n      const existing = await getById(String(req.params.id ?? ''), scope);\n      if (!existing) {\n        throw new NotFoundError(`${model} not found`, `module/brand/api.ts - /:id`);\n      }\n\n      const update: Partial<IBrand> = { name, email, status };\n\n      let newKey: string | undefined;\n      if (req.file) {\n        const saved = await saveLocal({\n          buffer: req.file.buffer,\n          originalname: req.file.originalname,\n          subdir: 'brands',\n        });\n        newKey = saved.key;\n        update.logo = newKey;\n      }\n\n      try {\n        const item = await updateById(String(req.params.id ?? ''), update, scope);\n        if (!item) {\n          throw new NotFoundError(`${model} not found`, `module/brand/api.ts - /:id`);\n        }\n        // Remove the old logo only after the update succeeded.\n        if (newKey) {\n          await deleteLocal(existing.logo);\n        }\n        successResponse(res, { data: item, message: 'Brand updated successfully' });\n      } catch (error) {\n        // The update failed after writing the new file — clean it up.\n        if (newKey) {\n          await deleteLocal(newKey);\n        }\n        throw error;\n      }\n    }\n  )",
     "prerequisites": "Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.",
     "businessLogic": "Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.",
     "implementation": "server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts"
@@ -750,7 +750,7 @@
         "code": "export const connectFacebookSchema = z.strictObject({\n  pageId: z.string().min(1, 'pageId is required'),\n  pageName: z.string().min(1, 'pageName is required'),\n  userAccessToken: z.string().min(1, 'userAccessToken is required'),\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/facebook/connect',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    validateBody(connectFacebookSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      if (!isFacebookConfigured()) {\n        throw new BadRequestError(\n          'Facebook integration is not configured on the server',\n          `module/brand/meta-channels.ts - /:id/facebook/connect`\n        );\n      }\n\n      const scope = getTenantScope(req.user);\n      const brand = await getById(String(req.params.id ?? ''), scope);\n      if (!brand) {\n        throw new NotFoundError(\n          `${model} not found`,\n          `module/brand/meta-channels.ts - /:id/facebook/connect`\n        );\n      }\n\n      const { pageId, pageName, userAccessToken } = req.body as {\n        pageId: string;\n        pageName: string;\n        userAccessToken: string;\n      };\n\n      // A page can only belong to one brand at a time (unless it's already this brand's).\n      const owner = await getByFacebookPageId(pageId);\n      if (owner && owner.id !== brand.id) {\n        throw new BadRequestError(\n          'This Facebook page is already connected to another brand',\n          `module/brand/meta-channels.ts - /:id/facebook/connect`\n        );\n      }\n\n      // Short-lived user token -> long-lived user token -> long-lived (non-expiring) page token.\n      const longLivedUserToken = await exchangeForLongLivedUserToken(userAccessToken);\n      const page = await getPageAccessToken(pageId, longLivedUserToken);\n\n      // Subscribe the page to our webhook so Meta actually delivers its messaging events, and keep\n      // the verified result: a failure here shouldn't block the connect (the token is still worth\n      // storing), but it must not be swallowed either \u2014 an unsubscribed page receives nothing.\n      const subscription = await subscribePageToWebhook(pageId, page.accessToken);\n\n      const item = await setFacebook(\n        String(req.params.id ?? ''),\n        {\n          pageId,\n          pageName: page.name ?? pageName,\n          accessToken: page.accessToken,\n          userAccessToken: longLivedUserToken,\n          connected: true,\n          connectedAt: new Date(),\n          ...persistedSubscription(subscription, new Date()),\n        },\n        scope\n      );\n      if (!item) {\n        throw new NotFoundError(\n          `${model} not found`,\n          `module/brand/meta-channels.ts - /:id/facebook/connect`\n        );\n      }\n      const note = subscriptionNote(subscription);\n      successResponse(res, {\n        data: item,\n        message: note\n          ? `Facebook page connected, but ${note}`\n          : 'Facebook page connected successfully',\n      });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/facebook/connect',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    validateBody(connectFacebookSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      if (!isFacebookConfigured()) {\n        throw new BadRequestError(\n          'Facebook integration is not configured on the server',\n          `module/brand/meta-channels.ts - /:id/facebook/connect`\n        );\n      }\n\n      const scope = getTenantScope(req.user);\n      const brand = await getById(String(req.params.id ?? ''), scope);\n      if (!brand) {\n        throw new NotFoundError(\n          `${model} not found`,\n          `module/brand/meta-channels.ts - /:id/facebook/connect`\n        );\n      }\n\n      const { pageId, pageName, userAccessToken } = req.body as {\n        pageId: string;\n        pageName: string;\n        userAccessToken: string;\n      };\n\n      // A page can only belong to one brand at a time (unless it's already this brand's).\n      const owner = await getByFacebookPageId(pageId);\n      if (owner && owner.id !== brand.id) {\n        throw new BadRequestError(\n          'This Facebook page is already connected to another brand',\n          `module/brand/meta-channels.ts - /:id/facebook/connect`\n        );\n      }\n\n      // Short-lived user token -> long-lived user token -> long-lived (non-expiring) page token.\n      const longLivedUserToken = await exchangeForLongLivedUserToken(userAccessToken);\n      const page = await getPageAccessToken(pageId, longLivedUserToken);\n\n      // Subscribe the page to our webhook so Meta actually delivers its messaging events, and keep\n      // the verified result: a failure here shouldn't block the connect (the token is still worth\n      // storing), but it must not be swallowed either — an unsubscribed page receives nothing.\n      const subscription = await subscribePageToWebhook(pageId, page.accessToken);\n\n      const item = await setFacebook(\n        String(req.params.id ?? ''),\n        {\n          pageId,\n          pageName: page.name ?? pageName,\n          accessToken: page.accessToken,\n          userAccessToken: longLivedUserToken,\n          connected: true,\n          connectedAt: new Date(),\n          ...persistedSubscription(subscription, new Date()),\n        },\n        scope\n      );\n      if (!item) {\n        throw new NotFoundError(\n          `${model} not found`,\n          `module/brand/meta-channels.ts - /:id/facebook/connect`\n        );\n      }\n      const note = subscriptionNote(subscription);\n      successResponse(res, {\n        data: item,\n        message: note\n          ? `Facebook page connected, but ${note}`\n          : 'Facebook page connected successfully',\n      });\n    }\n  )",
     "prerequisites": "Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.",
     "businessLogic": "Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.",
     "implementation": "server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts"
@@ -847,7 +847,7 @@
         "code": "export const deleteBrandSchema = z.object({\n  id: idSchema,\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/instagram/connect',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const scope = getTenantScope(req.user);\n      const brand = await getById(String(req.params.id ?? ''), scope);\n      if (!brand) {\n        throw new NotFoundError(\n          `${model} not found`,\n          `module/brand/meta-channels.ts - /:id/instagram/connect`\n        );\n      }\n      if (!brand.facebook?.connected || !brand.facebook.pageId || !brand.facebook.accessToken) {\n        throw new BadRequestError(\n          'Connect a Facebook page before connecting Instagram',\n          `module/brand/meta-channels.ts - /:id/instagram/connect`\n        );\n      }\n\n      const account = await getInstagramBusinessAccount(\n        brand.facebook.pageId,\n        brand.facebook.accessToken\n      );\n      if (!account) {\n        throw new BadRequestError(\n          'No Instagram Business account is linked to this Facebook page',\n          `module/brand/meta-channels.ts - /:id/instagram/connect`\n        );\n      }\n\n      // No webhook subscription step, and that is not an omission. Instagram webhooks cannot be\n      // subscribed through any API in this flow \u2014 Meta's Page reference: \"You must use your app\n      // dashboard to subscribe to Instagram Webhooks\", and the app-level `/{app-id}/subscriptions`\n      // edge says the same. Delivery comes from two places, neither of them here: the `instagram`\n      // object subscribed in the App Dashboard (once per app, by hand) and this app being installed\n      // on the linked Page (done at `/facebook/connect`).\n      //\n      // So this endpoint's job is only to tell US which Instagram account belongs to which brand,\n      // so the webhook handler can route an incoming `entry.id` through `getByInstagramAccountId`.\n      const item = await setInstagram(\n        String(req.params.id ?? ''),\n        {\n          accountId: account.id,\n          username: account.username,\n          // Instagram messaging/comments use the page access token.\n          accessToken: brand.facebook.accessToken,\n          connected: true,\n          connectedAt: new Date(),\n        },\n        scope\n      );\n      if (!item) {\n        throw new NotFoundError(\n          `${model} not found`,\n          `module/brand/meta-channels.ts - /:id/instagram/connect`\n        );\n      }\n      successResponse(res, { data: item, message: 'Instagram connected successfully' });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/instagram/connect',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const scope = getTenantScope(req.user);\n      const brand = await getById(String(req.params.id ?? ''), scope);\n      if (!brand) {\n        throw new NotFoundError(\n          `${model} not found`,\n          `module/brand/meta-channels.ts - /:id/instagram/connect`\n        );\n      }\n      if (!brand.facebook?.connected || !brand.facebook.pageId || !brand.facebook.accessToken) {\n        throw new BadRequestError(\n          'Connect a Facebook page before connecting Instagram',\n          `module/brand/meta-channels.ts - /:id/instagram/connect`\n        );\n      }\n\n      const account = await getInstagramBusinessAccount(\n        brand.facebook.pageId,\n        brand.facebook.accessToken\n      );\n      if (!account) {\n        throw new BadRequestError(\n          'No Instagram Business account is linked to this Facebook page',\n          `module/brand/meta-channels.ts - /:id/instagram/connect`\n        );\n      }\n\n      // No webhook subscription step, and that is not an omission. Instagram webhooks cannot be\n      // subscribed through any API in this flow — Meta's Page reference: \"You must use your app\n      // dashboard to subscribe to Instagram Webhooks\", and the app-level `/{app-id}/subscriptions`\n      // edge says the same. Delivery comes from two places, neither of them here: the `instagram`\n      // object subscribed in the App Dashboard (once per app, by hand) and this app being installed\n      // on the linked Page (done at `/facebook/connect`).\n      //\n      // So this endpoint's job is only to tell US which Instagram account belongs to which brand,\n      // so the webhook handler can route an incoming `entry.id` through `getByInstagramAccountId`.\n      const item = await setInstagram(\n        String(req.params.id ?? ''),\n        {\n          accountId: account.id,\n          username: account.username,\n          // Instagram messaging/comments use the page access token.\n          accessToken: brand.facebook.accessToken,\n          connected: true,\n          connectedAt: new Date(),\n        },\n        scope\n      );\n      if (!item) {\n        throw new NotFoundError(\n          `${model} not found`,\n          `module/brand/meta-channels.ts - /:id/instagram/connect`\n        );\n      }\n      successResponse(res, { data: item, message: 'Instagram connected successfully' });\n    }\n  )",
     "prerequisites": "Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.",
     "businessLogic": "Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.",
     "implementation": "server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts"
@@ -1235,10 +1235,10 @@
         "kind": "Body",
         "name": "whatsAppTemplateDraftSchema",
         "file": "server/src/modules/brand/validation.ts",
-        "code": "export const whatsAppTemplateDraftSchema = z.strictObject({\n  // Meta's own rule, and it is unforgiving: lowercase letters, digits and underscores, nothing else.\n  // Enforced here rather than silently slugified, because the name is the template's identity and a\n  // name the admin did not type is a name they cannot find again.\n  name: z\n    .string()\n    .min(1, NAME_REQUIRED)\n    .max(WA_LIMITS.name)\n    .regex(/^[a-z0-9_]+$/, 'Use lowercase letters, numbers and underscores only'),\n  // Language AND locale, e.g. 'en_US' or 'pt_BR'. Half of the template's identity \u2014 sends match on\n  // (name, language) with no fallback, so 'en' will never resolve an 'en_US' template.\n  language: z\n    .string()\n    .min(2, 'Language is required')\n    .regex(/^[a-z]{2,3}(_[A-Z]{2})?$/, 'Use a code like en or en_US'),\n  category: z.enum(WA_DRAFT_CATEGORIES),\n  parameterFormat: z.enum(['POSITIONAL', 'NAMED']),\n  headerText: z.string().max(WA_LIMITS.headerText).optional(),\n  bodyText: z.string().min(1, 'Message body is required').max(WA_LIMITS.bodyText),\n  footerText: z.string().max(WA_LIMITS.footerText).optional(),\n  buttons: z.array(whatsAppButtonSchema).max(WA_BUTTON_LIMITS.total).default([]),\n  examples: z.record(z.string(), z.string()).default({}),\n});"
+        "code": "export const whatsAppTemplateDraftSchema = z.strictObject({\n  // Meta's own rule, and it is unforgiving: lowercase letters, digits and underscores, nothing else.\n  // Enforced here rather than silently slugified, because the name is the template's identity and a\n  // name the admin did not type is a name they cannot find again.\n  name: z\n    .string()\n    .min(1, NAME_REQUIRED)\n    .max(WA_LIMITS.name)\n    .regex(/^[a-z0-9_]+$/, 'Use lowercase letters, numbers and underscores only'),\n  // Language AND locale, e.g. 'en_US' or 'pt_BR'. Half of the template's identity — sends match on\n  // (name, language) with no fallback, so 'en' will never resolve an 'en_US' template.\n  language: z\n    .string()\n    .min(2, 'Language is required')\n    .regex(/^[a-z]{2,3}(_[A-Z]{2})?$/, 'Use a code like en or en_US'),\n  category: z.enum(WA_DRAFT_CATEGORIES),\n  parameterFormat: z.enum(['POSITIONAL', 'NAMED']),\n  headerText: z.string().max(WA_LIMITS.headerText).optional(),\n  bodyText: z.string().min(1, 'Message body is required').max(WA_LIMITS.bodyText),\n  footerText: z.string().max(WA_LIMITS.footerText).optional(),\n  buttons: z.array(whatsAppButtonSchema).max(WA_BUTTON_LIMITS.total).default([]),\n  examples: z.record(z.string(), z.string()).default({}),\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/whatsapp/templates',\n    authenticate,\n    authorize(...MANAGE_ROLES),\n    validateParams(deleteBrandSchema),\n    validateBody(whatsAppTemplateDraftSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { wabaId, token } = await requireConnectedBrand(req);\n      const draft = draftFromBody(req.body);\n      assertDraftIsValid(draft);\n\n      const created = await cloudApi.createMessageTemplate(wabaId, token, draft);\n      // A PENDING template is not sendable, so this cannot affect the picker today \u2014 but it will the\n      // moment Meta approves it, and invalidating on every write is the rule that has no exceptions\n      // to remember.\n      invalidateTemplates(wabaId);\n\n      logger.info('createTemplate(): template submitted', {\n        brandId: String(req.params.id ?? ''),\n        name: draft.name,\n        language: draft.language,\n        requested: draft.category,\n        assigned: created.category,\n      });\n\n      successResponse(res, {\n        statusCode: 201,\n        data: created,\n        message:\n          created.category === draft.category\n            ? 'Template submitted for approval'\n            : `Template submitted for approval. WhatsApp filed it under ${created.category} rather than ${draft.category}, which is what it will be billed as.`,\n      });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/whatsapp/templates',\n    authenticate,\n    authorize(...MANAGE_ROLES),\n    validateParams(deleteBrandSchema),\n    validateBody(whatsAppTemplateDraftSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { wabaId, token } = await requireConnectedBrand(req);\n      const draft = draftFromBody(req.body);\n      assertDraftIsValid(draft);\n\n      const created = await cloudApi.createMessageTemplate(wabaId, token, draft);\n      // A PENDING template is not sendable, so this cannot affect the picker today — but it will the\n      // moment Meta approves it, and invalidating on every write is the rule that has no exceptions\n      // to remember.\n      invalidateTemplates(wabaId);\n\n      logger.info('createTemplate(): template submitted', {\n        brandId: String(req.params.id ?? ''),\n        name: draft.name,\n        language: draft.language,\n        requested: draft.category,\n        assigned: created.category,\n      });\n\n      successResponse(res, {\n        statusCode: 201,\n        data: created,\n        message:\n          created.category === draft.category\n            ? 'Template submitted for approval'\n            : `Template submitted for approval. WhatsApp filed it under ${created.category} rather than ${draft.category}, which is what it will be billed as.`,\n      });\n    }\n  )",
     "prerequisites": "Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.",
     "businessLogic": "Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.",
     "implementation": "server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts"
@@ -1286,7 +1286,7 @@
         "kind": "Body",
         "name": "whatsAppTemplateDraftSchema",
         "file": "server/src/modules/brand/validation.ts",
-        "code": "export const whatsAppTemplateDraftSchema = z.strictObject({\n  // Meta's own rule, and it is unforgiving: lowercase letters, digits and underscores, nothing else.\n  // Enforced here rather than silently slugified, because the name is the template's identity and a\n  // name the admin did not type is a name they cannot find again.\n  name: z\n    .string()\n    .min(1, NAME_REQUIRED)\n    .max(WA_LIMITS.name)\n    .regex(/^[a-z0-9_]+$/, 'Use lowercase letters, numbers and underscores only'),\n  // Language AND locale, e.g. 'en_US' or 'pt_BR'. Half of the template's identity \u2014 sends match on\n  // (name, language) with no fallback, so 'en' will never resolve an 'en_US' template.\n  language: z\n    .string()\n    .min(2, 'Language is required')\n    .regex(/^[a-z]{2,3}(_[A-Z]{2})?$/, 'Use a code like en or en_US'),\n  category: z.enum(WA_DRAFT_CATEGORIES),\n  parameterFormat: z.enum(['POSITIONAL', 'NAMED']),\n  headerText: z.string().max(WA_LIMITS.headerText).optional(),\n  bodyText: z.string().min(1, 'Message body is required').max(WA_LIMITS.bodyText),\n  footerText: z.string().max(WA_LIMITS.footerText).optional(),\n  buttons: z.array(whatsAppButtonSchema).max(WA_BUTTON_LIMITS.total).default([]),\n  examples: z.record(z.string(), z.string()).default({}),\n});"
+        "code": "export const whatsAppTemplateDraftSchema = z.strictObject({\n  // Meta's own rule, and it is unforgiving: lowercase letters, digits and underscores, nothing else.\n  // Enforced here rather than silently slugified, because the name is the template's identity and a\n  // name the admin did not type is a name they cannot find again.\n  name: z\n    .string()\n    .min(1, NAME_REQUIRED)\n    .max(WA_LIMITS.name)\n    .regex(/^[a-z0-9_]+$/, 'Use lowercase letters, numbers and underscores only'),\n  // Language AND locale, e.g. 'en_US' or 'pt_BR'. Half of the template's identity — sends match on\n  // (name, language) with no fallback, so 'en' will never resolve an 'en_US' template.\n  language: z\n    .string()\n    .min(2, 'Language is required')\n    .regex(/^[a-z]{2,3}(_[A-Z]{2})?$/, 'Use a code like en or en_US'),\n  category: z.enum(WA_DRAFT_CATEGORIES),\n  parameterFormat: z.enum(['POSITIONAL', 'NAMED']),\n  headerText: z.string().max(WA_LIMITS.headerText).optional(),\n  bodyText: z.string().min(1, 'Message body is required').max(WA_LIMITS.bodyText),\n  footerText: z.string().max(WA_LIMITS.footerText).optional(),\n  buttons: z.array(whatsAppButtonSchema).max(WA_BUTTON_LIMITS.total).default([]),\n  examples: z.record(z.string(), z.string()).default({}),\n});"
       }
     ],
     "handler": "router.post(\n    '/:id/whatsapp/templates/:templateId',\n    authenticate,\n    authorize(...MANAGE_ROLES),\n    validateParams(whatsAppTemplateParamsSchema),\n    validateBody(whatsAppTemplateDraftSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { wabaId, token } = await requireConnectedBrand(req);\n      const templateId = String(req.params.templateId ?? '');\n      const existing = await requireTemplate(wabaId, token, templateId);\n\n      if (!cloudApi.isEditableStatus(existing.status)) {\n        // Graph would say the same thing with code 2388039, but only after a round-trip and without\n        // naming the status the admin is actually looking at.\n        throw new BadRequestError(\n          `This template cannot be edited while it is ${existing.status}. Only approved and rejected templates can be changed.`,\n          comingFrom\n        );\n      }\n\n      // The identity fields are Meta's, not the client's: a body claiming a different name or\n      // language would otherwise look like it had been applied when Graph silently ignored it.\n      const draft = {\n        ...draftFromBody(req.body),\n        name: existing.name,\n        language: existing.language,\n      };\n      assertDraftIsValid(draft);\n\n      await cloudApi.updateMessageTemplate(templateId, token, draft);\n      // This one matters: the template was APPROVED a moment ago and is now back in review, so the\n      // cached picker list is holding something agents must stop sending.\n      invalidateTemplates(wabaId);\n\n      successResponse(res, {\n        data: { id: templateId },\n        message: 'Template updated and sent back to WhatsApp for review',\n      });\n    }\n  )",
@@ -1387,7 +1387,7 @@
         "code": "export const connectWhatsAppSchema = z.strictObject({\n  code: z.string().min(1, 'code is required'),\n  wabaId: z.string().min(1, 'wabaId is required'),\n  phoneNumberId: z.string().min(1, 'phoneNumberId is required'),\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/whatsapp/connect',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    validateBody(connectWhatsAppSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      if (!cloudApi.isConfigured()) {\n        throw new BadRequestError(\n          'WhatsApp integration is not configured on the server',\n          comingFrom\n        );\n      }\n\n      const id = String(req.params.id ?? '');\n      const scope = getTenantScope(req.user);\n      const brand = await getById(id, scope);\n      if (!brand) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      const { code, wabaId, phoneNumberId } = req.body as {\n        code: string;\n        wabaId: string;\n        phoneNumberId: string;\n      };\n\n      // First \u2014 the code expires ~30 seconds after the client's FB.login callback fired.\n      const accessToken = await cloudApi.exchangeCodeForBusinessToken(code);\n\n      // `wabaId` and `phoneNumberId` came from a browser postMessage, so treat them as untrusted.\n      // Reading the phone number IS the authorization check: the call only succeeds if the token we\n      // just exchanged is scoped to this number, and the subscribe below is the same check for the\n      // WABA. Both must stay ahead of the write \u2014 this is not a cosmetic metadata fetch.\n      const phone = await cloudApi.getPhoneNumber(phoneNumberId, accessToken);\n\n      // Blocking, unlike the best-effort page/Instagram subscriptions: without it Meta delivers no\n      // webhooks for this WABA, leaving a connection that looks healthy and hears nothing.\n      await cloudApi.subscribeAppToWaba(wabaId, accessToken);\n\n      // The step that moves the number off PENDING in WhatsApp Manager. Non-fatal \u2014 see above.\n      const { registered, registrationPin } = await registerNumber(\n        brand.whatsapp,\n        phoneNumberId,\n        accessToken,\n        phone.status === 'CONNECTED'\n      );\n\n      const item = await persistConnection(\n        id,\n        brand.id,\n        {\n          wabaId,\n          phoneNumberId,\n          displayPhoneNumber: phone.displayPhoneNumber,\n          verifiedName: phone.verifiedName,\n          accessToken,\n          registered,\n          registrationPin,\n        },\n        scope\n      );\n      successResponse(res, {\n        data: item,\n        message: registered ? 'WhatsApp connected successfully' : PENDING_MSG,\n      });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/whatsapp/connect',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    validateBody(connectWhatsAppSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      if (!cloudApi.isConfigured()) {\n        throw new BadRequestError(\n          'WhatsApp integration is not configured on the server',\n          comingFrom\n        );\n      }\n\n      const id = String(req.params.id ?? '');\n      const scope = getTenantScope(req.user);\n      const brand = await getById(id, scope);\n      if (!brand) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      const { code, wabaId, phoneNumberId } = req.body as {\n        code: string;\n        wabaId: string;\n        phoneNumberId: string;\n      };\n\n      // First — the code expires ~30 seconds after the client's FB.login callback fired.\n      const accessToken = await cloudApi.exchangeCodeForBusinessToken(code);\n\n      // `wabaId` and `phoneNumberId` came from a browser postMessage, so treat them as untrusted.\n      // Reading the phone number IS the authorization check: the call only succeeds if the token we\n      // just exchanged is scoped to this number, and the subscribe below is the same check for the\n      // WABA. Both must stay ahead of the write — this is not a cosmetic metadata fetch.\n      const phone = await cloudApi.getPhoneNumber(phoneNumberId, accessToken);\n\n      // Blocking, unlike the best-effort page/Instagram subscriptions: without it Meta delivers no\n      // webhooks for this WABA, leaving a connection that looks healthy and hears nothing.\n      await cloudApi.subscribeAppToWaba(wabaId, accessToken);\n\n      // The step that moves the number off PENDING in WhatsApp Manager. Non-fatal — see above.\n      const { registered, registrationPin } = await registerNumber(\n        brand.whatsapp,\n        phoneNumberId,\n        accessToken,\n        phone.status === 'CONNECTED'\n      );\n\n      const item = await persistConnection(\n        id,\n        brand.id,\n        {\n          wabaId,\n          phoneNumberId,\n          displayPhoneNumber: phone.displayPhoneNumber,\n          verifiedName: phone.verifiedName,\n          accessToken,\n          registered,\n          registrationPin,\n        },\n        scope\n      );\n      successResponse(res, {\n        data: item,\n        message: registered ? 'WhatsApp connected successfully' : PENDING_MSG,\n      });\n    }\n  )",
     "prerequisites": "Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.",
     "businessLogic": "Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.",
     "implementation": "server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts"
@@ -1450,7 +1450,7 @@
         "code": "export const manualConnectWhatsAppSchema = z.strictObject({\n  wabaId: z.string().min(1, 'wabaId is required'),\n  phoneNumberId: z.string().min(1, 'phoneNumberId is required'),\n  accessToken: z.string().min(1, 'accessToken is required'),\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/whatsapp/connect-manual',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    validateBody(manualConnectWhatsAppSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      if (!configs.WHATSAPP_ALLOW_MANUAL_CONNECT) {\n        throw new NotFoundError('Not found', comingFrom);\n      }\n\n      const id = String(req.params.id ?? '');\n      const scope = getTenantScope(req.user);\n      const brand = await getById(id, scope);\n      if (!brand) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      const { wabaId, phoneNumberId, accessToken } = req.body as {\n        wabaId: string;\n        phoneNumberId: string;\n        accessToken: string;\n      };\n\n      // Same read as the Embedded Signup path, and for the same reason: it proves the pasted token\n      // is actually scoped to this number before we store anything. A typo'd id fails here.\n      const phone = await cloudApi.getPhoneNumber(phoneNumberId, accessToken);\n\n      // Best-effort here, unlike the Embedded Signup path. The test WABA belongs to our own app and\n      // is already subscribed via the dashboard's webhook configuration, so this call is usually\n      // redundant and sometimes rejected \u2014 not a reason to fail the connect.\n      const subscribed = await cloudApi.trySubscribeAppToWaba(wabaId, accessToken);\n\n      // The app's test number arrives already registered, so this is normally the CONNECTED\n      // short-circuit rather than a real /register call.\n      const { registered, registrationPin } = await registerNumber(\n        brand.whatsapp,\n        phoneNumberId,\n        accessToken,\n        phone.status === 'CONNECTED'\n      );\n\n      const item = await persistConnection(\n        id,\n        brand.id,\n        {\n          wabaId,\n          phoneNumberId,\n          displayPhoneNumber: phone.displayPhoneNumber,\n          verifiedName: phone.verifiedName,\n          accessToken,\n          registered,\n          registrationPin,\n        },\n        scope\n      );\n\n      logger.warn('connect-manual(): WhatsApp connected via the development bypass', {\n        id,\n        phoneNumberId,\n        subscribed,\n        registered,\n      });\n      successResponse(res, {\n        data: item,\n        message: subscribed\n          ? 'WhatsApp connected (development bypass)'\n          : 'WhatsApp connected (development bypass). The WABA subscription call did not succeed \u2014 check the webhook configuration in the App Dashboard if messages do not arrive.',\n      });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/whatsapp/connect-manual',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    validateBody(manualConnectWhatsAppSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      if (!configs.WHATSAPP_ALLOW_MANUAL_CONNECT) {\n        throw new NotFoundError('Not found', comingFrom);\n      }\n\n      const id = String(req.params.id ?? '');\n      const scope = getTenantScope(req.user);\n      const brand = await getById(id, scope);\n      if (!brand) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      const { wabaId, phoneNumberId, accessToken } = req.body as {\n        wabaId: string;\n        phoneNumberId: string;\n        accessToken: string;\n      };\n\n      // Same read as the Embedded Signup path, and for the same reason: it proves the pasted token\n      // is actually scoped to this number before we store anything. A typo'd id fails here.\n      const phone = await cloudApi.getPhoneNumber(phoneNumberId, accessToken);\n\n      // Best-effort here, unlike the Embedded Signup path. The test WABA belongs to our own app and\n      // is already subscribed via the dashboard's webhook configuration, so this call is usually\n      // redundant and sometimes rejected — not a reason to fail the connect.\n      const subscribed = await cloudApi.trySubscribeAppToWaba(wabaId, accessToken);\n\n      // The app's test number arrives already registered, so this is normally the CONNECTED\n      // short-circuit rather than a real /register call.\n      const { registered, registrationPin } = await registerNumber(\n        brand.whatsapp,\n        phoneNumberId,\n        accessToken,\n        phone.status === 'CONNECTED'\n      );\n\n      const item = await persistConnection(\n        id,\n        brand.id,\n        {\n          wabaId,\n          phoneNumberId,\n          displayPhoneNumber: phone.displayPhoneNumber,\n          verifiedName: phone.verifiedName,\n          accessToken,\n          registered,\n          registrationPin,\n        },\n        scope\n      );\n\n      logger.warn('connect-manual(): WhatsApp connected via the development bypass', {\n        id,\n        phoneNumberId,\n        subscribed,\n        registered,\n      });\n      successResponse(res, {\n        data: item,\n        message: subscribed\n          ? 'WhatsApp connected (development bypass)'\n          : 'WhatsApp connected (development bypass). The WABA subscription call did not succeed — check the webhook configuration in the App Dashboard if messages do not arrive.',\n      });\n    }\n  )",
     "prerequisites": "Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.",
     "businessLogic": "Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.",
     "implementation": "server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts"
@@ -1498,7 +1498,7 @@
         "code": "export const deleteBrandSchema = z.object({\n  id: idSchema,\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/whatsapp/register',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const id = String(req.params.id ?? '');\n      const scope = getTenantScope(req.user);\n      const brand = await getById(id, scope);\n      if (!brand) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      const wa = brand.whatsapp;\n      if (!wa?.connected || !wa.phoneNumberId || !wa.accessToken) {\n        throw new BadRequestError(NOT_CONNECTED_MSG, comingFrom);\n      }\n\n      // Read the live status first: the number may have been registered elsewhere since we stored\n      // it, and this also catches a token revoked in the meantime before we report success.\n      const phone = await cloudApi.getPhoneNumber(wa.phoneNumberId, wa.accessToken);\n\n      const { registered, registrationPin, error } = await registerNumber(\n        wa,\n        wa.phoneNumberId,\n        wa.accessToken,\n        phone.status === 'CONNECTED'\n      );\n\n      // Field by field rather than a spread: `brand.whatsapp` is a Mongoose subdocument, and\n      // spreading one carries its internals ($__, _doc) into the update.\n      const item = await setWhatsApp(\n        id,\n        {\n          wabaId: wa.wabaId,\n          phoneNumberId: wa.phoneNumberId,\n          // Refreshed while we were here \u2014 the display name in particular changes when Meta\n          // approves it, and this is the only place that re-reads it after connect.\n          displayPhoneNumber: phone.displayPhoneNumber,\n          verifiedName: phone.verifiedName,\n          accessToken: wa.accessToken,\n          registered,\n          registrationPin: registrationPin ?? wa.registrationPin,\n          connected: wa.connected,\n          connectedAt: wa.connectedAt,\n        },\n        scope\n      );\n      if (!item) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      // Graph's own text is the only thing that says WHY \u2014 surface it rather than a generic retry\n      // message the admin can do nothing with.\n      const reason = error ?? `the number is ${phone.status || 'not ready'}`;\n      successResponse(res, {\n        data: item,\n        message: registered\n          ? 'WhatsApp number registered and ready to send'\n          : `Registration still failing: ${reason}`,\n      });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/whatsapp/register',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const id = String(req.params.id ?? '');\n      const scope = getTenantScope(req.user);\n      const brand = await getById(id, scope);\n      if (!brand) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      const wa = brand.whatsapp;\n      if (!wa?.connected || !wa.phoneNumberId || !wa.accessToken) {\n        throw new BadRequestError(NOT_CONNECTED_MSG, comingFrom);\n      }\n\n      // Read the live status first: the number may have been registered elsewhere since we stored\n      // it, and this also catches a token revoked in the meantime before we report success.\n      const phone = await cloudApi.getPhoneNumber(wa.phoneNumberId, wa.accessToken);\n\n      const { registered, registrationPin, error } = await registerNumber(\n        wa,\n        wa.phoneNumberId,\n        wa.accessToken,\n        phone.status === 'CONNECTED'\n      );\n\n      // Field by field rather than a spread: `brand.whatsapp` is a Mongoose subdocument, and\n      // spreading one carries its internals ($__, _doc) into the update.\n      const item = await setWhatsApp(\n        id,\n        {\n          wabaId: wa.wabaId,\n          phoneNumberId: wa.phoneNumberId,\n          // Refreshed while we were here — the display name in particular changes when Meta\n          // approves it, and this is the only place that re-reads it after connect.\n          displayPhoneNumber: phone.displayPhoneNumber,\n          verifiedName: phone.verifiedName,\n          accessToken: wa.accessToken,\n          registered,\n          registrationPin: registrationPin ?? wa.registrationPin,\n          connected: wa.connected,\n          connectedAt: wa.connectedAt,\n        },\n        scope\n      );\n      if (!item) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      // Graph's own text is the only thing that says WHY — surface it rather than a generic retry\n      // message the admin can do nothing with.\n      const reason = error ?? `the number is ${phone.status || 'not ready'}`;\n      successResponse(res, {\n        data: item,\n        message: registered\n          ? 'WhatsApp number registered and ready to send'\n          : `Registration still failing: ${reason}`,\n      });\n    }\n  )",
     "prerequisites": "Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.",
     "businessLogic": "Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.",
     "implementation": "server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts"
@@ -1539,7 +1539,7 @@
         "code": "export const deleteBrandSchema = z.object({\n  id: idSchema,\n});"
       }
     ],
-    "handler": "router.delete(\n    '/:id/whatsapp',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const id = String(req.params.id ?? '');\n      const scope = getTenantScope(req.user);\n      const brand = await getById(id, scope);\n      if (!brand) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      // Stop receiving events for a WABA we no longer serve \u2014 otherwise we keep ingesting messages\n      // for a former client. Skipped when another brand still holds a number under the same WABA,\n      // because the subscription is WABA-scoped and would take theirs down too. Best-effort by\n      // design (see unsubscribeAppFromWaba), and before clearWhatsApp, which drops the token.\n      const wa = brand.whatsapp;\n      if (wa?.wabaId && wa.accessToken && !(await otherBrandHasWaba(wa.wabaId, id))) {\n        await cloudApi.unsubscribeAppFromWaba(wa.wabaId, wa.accessToken);\n      }\n\n      const item = await clearWhatsApp(id, scope);\n      if (!item) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n      successResponse(res, { data: item, message: 'WhatsApp disconnected' });\n    }\n  )",
+    "handler": "router.delete(\n    '/:id/whatsapp',\n    authenticate,\n    authorize(ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    validateParams(deleteBrandSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const id = String(req.params.id ?? '');\n      const scope = getTenantScope(req.user);\n      const brand = await getById(id, scope);\n      if (!brand) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n\n      // Stop receiving events for a WABA we no longer serve — otherwise we keep ingesting messages\n      // for a former client. Skipped when another brand still holds a number under the same WABA,\n      // because the subscription is WABA-scoped and would take theirs down too. Best-effort by\n      // design (see unsubscribeAppFromWaba), and before clearWhatsApp, which drops the token.\n      const wa = brand.whatsapp;\n      if (wa?.wabaId && wa.accessToken && !(await otherBrandHasWaba(wa.wabaId, id))) {\n        await cloudApi.unsubscribeAppFromWaba(wa.wabaId, wa.accessToken);\n      }\n\n      const item = await clearWhatsApp(id, scope);\n      if (!item) {\n        throw new NotFoundError(`${model} not found`, comingFrom);\n      }\n      successResponse(res, { data: item, message: 'WhatsApp disconnected' });\n    }\n  )",
     "prerequisites": "Company and identity. Department/agent assignment additionally needs those records; social connection needs provider credentials and the selected brand.",
     "businessLogic": "Brand departmentIds, teamIds and queryManagerIds grant alternative visibility paths inside the tenant scope. Provider identifiers and secrets live in channel subdocuments. Connections, provider templates and tags have different prerequisites: local tags need only a visible brand, while provider calls need a connected operational channel. Archived tags preserve existing references.",
     "implementation": "server/src/modules/brand/service.ts; brand/assignees.ts; brand/channel-access.ts; brand/tags/service.ts; auth/tenant.ts"
@@ -1611,10 +1611,10 @@
         "kind": "Query",
         "name": "listCommentsSchema",
         "file": "server/src/modules/comment/validation.ts",
-        "code": "export const listCommentsSchema = cursorPaginationQuerySchema.extend({\n  brandId: idSchema,\n  platform: z.enum(COMMENT_PLATFORMS).optional(),\n  status: z.enum(COMMENT_STATUSES).optional(),\n  sentiment: z.enum(COMMENT_SENTIMENTS).optional(),\n  // \"Assigned to me\" \u2014 narrows to comments assigned to the caller or their department. The ids are\n  // resolved from the auth token in the API layer, so the client just sends the flag.\n  mine: z.enum(['true', 'false']).optional(),\n  // Narrow to a single post \u2014 its platform post/media id (what comments store as `platformPostId`).\n  // Not a Mongo id, so a plain non-empty string.\n  postId: z.string().trim().min(1).optional(),\n  // Narrow to threads carrying at least one of these brand tags. Arrives as a comma-separated list\n  // of ids (`tagIds=a,b`) since it rides in the query string; empty/absent means \"any tag\".\n  tagIds: z\n    .string()\n    .trim()\n    .optional()\n    .transform(v => (v ? v.split(',').filter(Boolean) : undefined))\n    .pipe(z.array(idSchema).max(MAX_TAGS_PER_RECORD).optional()),\n});"
+        "code": "export const listCommentsSchema = cursorPaginationQuerySchema.extend({\n  brandId: idSchema,\n  platform: z.enum(COMMENT_PLATFORMS).optional(),\n  status: z.enum(COMMENT_STATUSES).optional(),\n  sentiment: z.enum(COMMENT_SENTIMENTS).optional(),\n  // \"Assigned to me\" — narrows to comments assigned to the caller or their department. The ids are\n  // resolved from the auth token in the API layer, so the client just sends the flag.\n  mine: z.enum(['true', 'false']).optional(),\n  // Narrow to a single post — its platform post/media id (what comments store as `platformPostId`).\n  // Not a Mongo id, so a plain non-empty string.\n  postId: z.string().trim().min(1).optional(),\n  // Narrow to threads carrying at least one of these brand tags. Arrives as a comma-separated list\n  // of ids (`tagIds=a,b`) since it rides in the query string; empty/absent means \"any tag\".\n  tagIds: z\n    .string()\n    .trim()\n    .optional()\n    .transform(v => (v ? v.split(',').filter(Boolean) : undefined))\n    .pipe(z.array(idSchema).max(MAX_TAGS_PER_RECORD).optional()),\n});"
       }
     ],
-    "handler": "router.get(\n    '/',\n    authenticate,\n    authorize(...READ_ROLES),\n    validateQuery(listCommentsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { brandId, platform, status, sentiment, mine, postId, tagIds, cursor, limit } =\n        req.query as unknown as ListCommentsQuery;\n      // Confirm the caller may see this brand before returning any of its comments.\n      const brand = await getBrandById(String(brandId), getBrandScope(req.user));\n      if (!brand) {\n        throw new NotFoundError('Brand not found', `${comingFrom} - GET /`);\n      }\n      // \"Assigned to me\" \u2192 held by the caller, or pooled on their department or team.\n      const assigneeIds =\n        mine === 'true' ? await assignedToMeIds(req.user as Express.User) : undefined;\n      const data = await listCommentThreads(String(brandId), {\n        platform,\n        status,\n        sentiment,\n        assigneeIds,\n        postId,\n        // Filtering by a parent tag means \"and everything under it\" \u2014 picking `complaint` returns\n        // `complaint/billing` threads too, so a level isn't a dead end just because agents tag deeper.\n        tagIds: tagIds?.length ? await expandTagIdsToSubtrees(brand._id, tagIds) : undefined,\n        cursor,\n        limit,\n      });\n      paginatedSuccessResponse(res, { data });\n    }\n  )",
+    "handler": "router.get(\n    '/',\n    authenticate,\n    authorize(...READ_ROLES),\n    validateQuery(listCommentsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { brandId, platform, status, sentiment, mine, postId, tagIds, cursor, limit } =\n        req.query as unknown as ListCommentsQuery;\n      // Confirm the caller may see this brand before returning any of its comments.\n      const brand = await getBrandById(String(brandId), getBrandScope(req.user));\n      if (!brand) {\n        throw new NotFoundError('Brand not found', `${comingFrom} - GET /`);\n      }\n      // \"Assigned to me\" → held by the caller, or pooled on their department or team.\n      const assigneeIds =\n        mine === 'true' ? await assignedToMeIds(req.user as Express.User) : undefined;\n      const data = await listCommentThreads(String(brandId), {\n        platform,\n        status,\n        sentiment,\n        assigneeIds,\n        postId,\n        // Filtering by a parent tag means \"and everything under it\" — picking `complaint` returns\n        // `complaint/billing` threads too, so a level isn't a dead end just because agents tag deeper.\n        tagIds: tagIds?.length ? await expandTagIdsToSubtrees(brand._id, tagIds) : undefined,\n        cursor,\n        limit,\n      });\n      paginatedSuccessResponse(res, { data });\n    }\n  )",
     "prerequisites": "Brand/channel and ingested comment tree. Uses the shared access, tag, status and SLA concepts; no Conversation or Session document is required.",
     "businessLogic": "Provider parentCommentId joins replies to a root within brand/post scope. The root owns thread status and SLA. Page replies end hold, and root-author replies reopen unresolved roots. Resolved roots do not automatically reopen. Replies, hiding, liking and deletion can call the provider; local wrap-up and classification update domain state. Reading history using a reply ID resolves the root first.",
     "implementation": "server/src/modules/comment/api.ts; comment/service.ts; comment/sla.ts; modules/session/status-log.ts"
@@ -1779,7 +1779,7 @@
         "code": "export const replyCommentSchema = z.strictObject({\n  text: z.string().trim().min(1, 'Reply text is required').max(8000, 'Reply is too long'),\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/replies',\n    markInitiated,\n    authenticate,\n    authorize(...READ_ROLES),\n    validateParams(commentIdSchema),\n    validateBody(replyCommentSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { comment, pageId, pageName, accessToken } = await ensureReplyableComment(\n        String(req.params.id ?? ''),\n        req.user\n      );\n      if (!comment.commentId) {\n        throw new BadRequestError('This comment can no longer be replied to', comingFrom);\n      }\n\n      const { text } = req.body as { text: string };\n\n      // Facebook/Instagram threads are two levels deep: replying to a reply posts under the same\n      // top-level comment, not a third level. Target that top-level comment \u2014 the comment itself\n      // when it's top-level, otherwise its parent (which the platform would re-parent to anyway).\n      const parentCommentId = comment.parentCommentId ?? comment.commentId;\n\n      // Post first; only persist once Graph accepts it, so the thread never shows a reply that\n      // wasn't actually published. The echoed webhook folds into this row by commentId.\n      const sent = await replyToComment(comment.platform, parentCommentId, accessToken, text);\n      const reply = await recordOutgoingComment({\n        brandId: comment.brandId,\n        companyId: comment.companyId,\n        platform: comment.platform,\n        // Post context copied from the comment we're replying under (no Post collection).\n        pageId: comment.pageId,\n        platformPostId: comment.platformPostId,\n        permalinkUrl: comment.permalinkUrl,\n        commentId: sent.commentId,\n        parentCommentId,\n        authorId: pageId,\n        authorName: pageName,\n        senderUserId: req.user?.id,\n        text,\n        commentedAt: new Date(),\n        initiatedAt: res.locals.initiatedAt as Date,\n      });\n\n      successResponse(res, { statusCode: 201, data: reply, message: 'Reply posted' });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/replies',\n    markInitiated,\n    authenticate,\n    authorize(...READ_ROLES),\n    validateParams(commentIdSchema),\n    validateBody(replyCommentSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { comment, pageId, pageName, accessToken } = await ensureReplyableComment(\n        String(req.params.id ?? ''),\n        req.user\n      );\n      if (!comment.commentId) {\n        throw new BadRequestError('This comment can no longer be replied to', comingFrom);\n      }\n\n      const { text } = req.body as { text: string };\n\n      // Facebook/Instagram threads are two levels deep: replying to a reply posts under the same\n      // top-level comment, not a third level. Target that top-level comment — the comment itself\n      // when it's top-level, otherwise its parent (which the platform would re-parent to anyway).\n      const parentCommentId = comment.parentCommentId ?? comment.commentId;\n\n      // Post first; only persist once Graph accepts it, so the thread never shows a reply that\n      // wasn't actually published. The echoed webhook folds into this row by commentId.\n      const sent = await replyToComment(comment.platform, parentCommentId, accessToken, text);\n      const reply = await recordOutgoingComment({\n        brandId: comment.brandId,\n        companyId: comment.companyId,\n        platform: comment.platform,\n        // Post context copied from the comment we're replying under (no Post collection).\n        pageId: comment.pageId,\n        platformPostId: comment.platformPostId,\n        permalinkUrl: comment.permalinkUrl,\n        commentId: sent.commentId,\n        parentCommentId,\n        authorId: pageId,\n        authorName: pageName,\n        senderUserId: req.user?.id,\n        text,\n        commentedAt: new Date(),\n        initiatedAt: res.locals.initiatedAt as Date,\n      });\n\n      successResponse(res, { statusCode: 201, data: reply, message: 'Reply posted' });\n    }\n  )",
     "prerequisites": "Brand/channel and ingested comment tree. Uses the shared access, tag, status and SLA concepts; no Conversation or Session document is required.",
     "businessLogic": "Provider parentCommentId joins replies to a root within brand/post scope. The root owns thread status and SLA. Page replies end hold, and root-author replies reopen unresolved roots. Resolved roots do not automatically reopen. Replies, hiding, liking and deletion can call the provider; local wrap-up and classification update domain state. Reading history using a reply ID resolves the root first.",
     "implementation": "server/src/modules/comment/api.ts; comment/service.ts; comment/sla.ts; modules/session/status-log.ts"
@@ -2510,7 +2510,7 @@
     "handler": "router.get('/me', authenticate, logRequest({}), async (req: Request, res: Response) => {\n    const companyId = req.user?.companyId;\n    if (!companyId) {\n      throw new NotFoundError(`${model} not found`, `module/company/api.ts - /me`);\n    }\n    const item = await getById(companyId);\n    if (!item) {\n      throw new NotFoundError(`${model} not found`, `module/company/api.ts - /me`);\n    }\n    successResponse(res, { data: item });\n  })",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "GET",
@@ -2561,7 +2561,7 @@
     "handler": "router.get(\n    '/',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN),\n    validateQuery(listCompaniesSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const data = await search(req.query);\n      paginatedSuccessResponse(res, { data });\n    }\n  )",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "POST",
@@ -2607,7 +2607,7 @@
     "handler": "router.post(\n    '/',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN),\n    // multer must run before validateBody so the multipart text fields populate req.body.\n    upload({ fieldName: 'logo' }),\n    validateBody(createCompanySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, status, ownerName, ownerEmail, ownerPassword } = req.body;\n\n      const logoKey = await saveLogoIfPresent(req.file);\n\n      try {\n        const { company } = await provisionCompany({\n          companyName: name,\n          status,\n          owner: { name: ownerName, email: ownerEmail, password: ownerPassword },\n          logo: logoKey,\n        });\n        successResponse(res, { data: company, message: 'Company created successfully' });\n      } catch (error) {\n        // Avoid orphaned files if provisioning fails (e.g. duplicate name/email).\n        if (logoKey) await deleteLocal(logoKey);\n        throw error;\n      }\n    }\n  )",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "GET",
@@ -2638,7 +2638,7 @@
     "handler": "router.get(\n    '/:id',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const item = await getById(String(req.params.id ?? ''));\n      if (!item) {\n        throw new NotFoundError(`${model} not found`, `module/company/api.ts - /:id`);\n      }\n      successResponse(res, { data: item });\n    }\n  )",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "PATCH",
@@ -2679,13 +2679,13 @@
         "kind": "Body",
         "name": "updateCompanySchema",
         "file": "server/src/modules/company/validation.ts",
-        "code": "export const updateCompanySchema = z.strictObject({\n  name: z.string().min(1, 'Name is required').optional(),\n  status: z.enum(COMPANY_STATUS).optional(),\n  // Owner login edits. All optional \u2014 an empty password means \"keep the current one\".\n  ownerName: z.string().min(1, 'Owner name is required').optional(),\n  ownerEmail: z.email('Invalid email format').optional(),\n  ownerPassword: z.string().min(8, 'Password must be at least 8 characters').optional(),\n});"
+        "code": "export const updateCompanySchema = z.strictObject({\n  name: z.string().min(1, 'Name is required').optional(),\n  status: z.enum(COMPANY_STATUS).optional(),\n  // Owner login edits. All optional — an empty password means \"keep the current one\".\n  ownerName: z.string().min(1, 'Owner name is required').optional(),\n  ownerEmail: z.email('Invalid email format').optional(),\n  ownerPassword: z.string().min(8, 'Password must be at least 8 characters').optional(),\n});"
       }
     ],
-    "handler": "router.patch(\n    '/:id',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN),\n    upload({ fieldName: 'logo' }),\n    validateBody(updateCompanySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, status, ownerName, ownerEmail, ownerPassword } = req.body;\n      if (!name && !status && !ownerName && !ownerEmail && !ownerPassword && !req.file) {\n        throw new BadRequestError('Invalid request body', `module/company/api.ts - /:id`);\n      }\n\n      const existing = await getById(String(req.params.id ?? ''));\n      if (!existing) {\n        throw new NotFoundError(`${model} not found`, `module/company/api.ts - /:id`);\n      }\n\n      const newKey = await saveLogoIfPresent(req.file);\n      try {\n        const data = await performCompanyUpdate(\n          existing,\n          { name, status, owner: { ownerName, ownerEmail, ownerPassword } },\n          newKey\n        );\n        successResponse(res, { data, message: 'Company updated successfully' });\n      } catch (error) {\n        // The update failed after writing the new file \u2014 clean it up.\n        if (newKey) await deleteLocal(newKey);\n        throw error;\n      }\n    }\n  )",
+    "handler": "router.patch(\n    '/:id',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN),\n    upload({ fieldName: 'logo' }),\n    validateBody(updateCompanySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, status, ownerName, ownerEmail, ownerPassword } = req.body;\n      if (!name && !status && !ownerName && !ownerEmail && !ownerPassword && !req.file) {\n        throw new BadRequestError('Invalid request body', `module/company/api.ts - /:id`);\n      }\n\n      const existing = await getById(String(req.params.id ?? ''));\n      if (!existing) {\n        throw new NotFoundError(`${model} not found`, `module/company/api.ts - /:id`);\n      }\n\n      const newKey = await saveLogoIfPresent(req.file);\n      try {\n        const data = await performCompanyUpdate(\n          existing,\n          { name, status, owner: { ownerName, ownerEmail, ownerPassword } },\n          newKey\n        );\n        successResponse(res, { data, message: 'Company updated successfully' });\n      } catch (error) {\n        // The update failed after writing the new file — clean it up.\n        if (newKey) await deleteLocal(newKey);\n        throw error;\n      }\n    }\n  )",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "DELETE",
@@ -2723,7 +2723,7 @@
     "handler": "router.delete(\n    '/:id',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN),\n    validateParams(deleteCompanySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const item = await deleteById(String(req.params.id ?? ''));\n      if (!item) {\n        throw new NotFoundError(`${model} not found`, `module/company/api.ts - /:id`);\n      }\n      await deleteLocal(item.logo);\n      successResponse(res, { data: item, message: 'Company deleted successfully' });\n    }\n  )",
     "prerequisites": "Database foundation. Registration bootstraps Company and User together; login needs an existing user. Company administration needs an authenticated permitted role.",
     "businessLogic": "A company is the tenant boundary. Registration creates the company and owner, links ownerId and uses compensating cleanup on failure. Password verification precedes issuing access/refresh cookies. Query-manager writes require personal assignment; suspension is checked separately from role permission.",
-    "implementation": "server/src/auth/api.ts \u2192 auth/service.ts; auth/company-access.ts; modules/company/service.ts"
+    "implementation": "server/src/auth/api.ts → auth/service.ts; auth/company-access.ts; modules/company/service.ts"
   },
   {
     "method": "GET",
@@ -2781,7 +2781,7 @@
         "code": "export const listConversationsSchema = cursorListQuerySchema.extend({\n  brandId: idSchema,\n  platform: z.enum(CHANNEL_PLATFORMS).optional(),\n  status: z.enum(SESSION_STATUSES).optional(),\n  sentiment: z.enum(SESSION_SENTIMENTS).optional(),\n  // \"Assigned to me / my department\" pill. When 'true', the API narrows to the caller's own\n  // assignments (ids resolved from the auth token, never trusted from the client).\n  mine: z.enum(['true', 'false']).optional(),\n  // Narrow to conversations carrying at least one of these brand tags. Same shape as the comment\n  // list: a comma-separated list of ids (`tagIds=a,b`), since it rides in the query string.\n  // Empty/absent means \"any tag\". Tags sit on sessions, so the API resolves this to conversation ids.\n  tagIds: z\n    .string()\n    .trim()\n    .optional()\n    .transform(v => (v ? v.split(',').filter(Boolean) : undefined))\n    .pipe(z.array(idSchema).max(MAX_TAGS_PER_RECORD).optional()),\n});"
       }
     ],
-    "handler": "router.get(\n    '/',\n    authenticate,\n    authorize(...READ_ROLES),\n    validateQuery(listConversationsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const brandId = String(req.query.brandId ?? '');\n      // Confirm the caller may see this brand before returning any of its conversations.\n      const brand = await getBrandById(brandId, getBrandScope(req.user));\n      if (!brand) {\n        throw new NotFoundError('Brand not found', `module/conversation/api.ts - GET /`);\n      }\n      // \"Assigned to me\" \u2192 held by the caller, or pooled on their department or team.\n      const assigneeIds =\n        req.query.mine === 'true' ? await assignedToMeIds(req.user as Express.User) : undefined;\n      // Tag filter, matched against the conversation's denormalized `tags` (its latest session's).\n      // Filtering by a parent tag means \"and everything under it\" \u2014 picking `complaint` returns\n      // `complaint/billing` threads too, exactly as in the comment list.\n      const { tagIds } = req.query as unknown as ListConversationsQuery;\n      const data = await listConversations(brandId, req.query, {\n        assigneeIds,\n        tagIds: tagIds?.length ? await expandTagIdsToSubtrees(brand._id, tagIds) : undefined,\n      });\n      paginatedSuccessResponse(res, { data });\n    }\n  )",
+    "handler": "router.get(\n    '/',\n    authenticate,\n    authorize(...READ_ROLES),\n    validateQuery(listConversationsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const brandId = String(req.query.brandId ?? '');\n      // Confirm the caller may see this brand before returning any of its conversations.\n      const brand = await getBrandById(brandId, getBrandScope(req.user));\n      if (!brand) {\n        throw new NotFoundError('Brand not found', `module/conversation/api.ts - GET /`);\n      }\n      // \"Assigned to me\" → held by the caller, or pooled on their department or team.\n      const assigneeIds =\n        req.query.mine === 'true' ? await assignedToMeIds(req.user as Express.User) : undefined;\n      // Tag filter, matched against the conversation's denormalized `tags` (its latest session's).\n      // Filtering by a parent tag means \"and everything under it\" — picking `complaint` returns\n      // `complaint/billing` threads too, exactly as in the comment list.\n      const { tagIds } = req.query as unknown as ListConversationsQuery;\n      const data = await listConversations(brandId, req.query, {\n        assigneeIds,\n        tagIds: tagIds?.length ? await expandTagIdsToSubtrees(brand._id, tagIds) : undefined,\n      });\n      paginatedSuccessResponse(res, { data });\n    }\n  )",
     "prerequisites": "Visible brand and stored conversation; provider sends additionally need channel access, action policy and provider configuration. Session/message knowledge is needed to interpret summaries.",
     "businessLogic": "Conversation is the long-lived thread, Message is the event and Session is the support episode. List routes use stable compound cursors. Customer lookup/editing can resolve the external identity and lazily link a Customer. A send checks access before provider work and local storage. Attachments can partially succeed; template re-engagement can start a new episode after resolved work.",
     "implementation": "server/src/modules/conversation/api.ts; conversation/access.ts; conversation/service.ts; conversation/send-channel.ts; conversation/whatsapp-templates.ts"
@@ -3358,9 +3358,9 @@
     "status": 200,
     "contentType": "application/json",
     "requestType": "application/json",
-    "request": "curl -i -X POST \"${BASE_URL}/api/v1/conversations/670000000000000000000005/messages/670000000000000000000007/reaction\" \\\n  -b cookies.txt -c cookies.txt \\\n  -H \"Content-Type: application/json\" \\\n  --data '{\"emoji\":\"\ud83d\udc4d\"}'",
+    "request": "curl -i -X POST \"${BASE_URL}/api/v1/conversations/670000000000000000000005/messages/670000000000000000000007/reaction\" \\\n  -b cookies.txt -c cookies.txt \\\n  -H \"Content-Type: application/json\" \\\n  --data '{\"emoji\":\"👍\"}'",
     "body": {
-      "emoji": "\ud83d\udc4d"
+      "emoji": "👍"
     },
     "response": {
       "success": true,
@@ -3498,7 +3498,7 @@
         "code": "export const messageReactionParamsSchema = z.object({\n  id: idSchema,\n  messageId: idSchema,\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/messages/:messageId/media',\n    authenticate,\n    authorize(...READ_ROLES),\n    validateParams(messageReactionParamsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const conversationId = String(req.params.id ?? '');\n      const messageId = String(req.params.messageId ?? '');\n\n      // Through the same seam as every other conversation read (./access.ts), not a hand-rolled\n      // copy of it: this route hands back attachment bytes, so it has to answer \"may this caller\n      // see this thread\" exactly as the message reads do.\n      const { conversation, brand } = await loadVisibleConversation(\n        conversationId,\n        req.user,\n        comingFrom,\n        model\n      );\n\n      const message = await getConversationMessageById(conversation.id, messageId);\n      if (!message) {\n        throw new NotFoundError('Message not found', comingFrom);\n      }\n\n      const pending = fetchable(message);\n      // Nothing to do \u2014 already fetched, or an attachment that never had a media id (a Messenger one,\n      // or a WhatsApp media object that arrived without an id). Returned rather than rejected so the\n      // client's on-open sweep can be naive.\n      if (pending.length === 0) {\n        successResponse(res, { data: message, message: 'Media already available' });\n        return;\n      }\n\n      if (conversation.platform !== 'whatsapp' || !brand.whatsapp?.accessToken) {\n        throw new BadRequestError(\n          'This brand no longer has a connected WhatsApp number',\n          comingFrom\n        );\n      }\n\n      // Meta's 7-day webhook-media window. Checked against the message's own timestamp, so no sweep\n      // has to write an `expired` state \u2014 and the attachment keeps `pending`, which is the truth: we\n      // never fetched it, and now cannot.\n      const age = Date.now() - new Date(message.sentAt).getTime();\n      if (age > MEDIA_ID_TTL_MS) {\n        logger.info('fetchMedia(): media id past its 7-day window', {\n          comingFrom,\n          conversationId,\n          messageId,\n          ageDays: Math.floor(age / (24 * 60 * 60 * 1000)),\n        });\n        throw new BadRequestError(EXPIRED_MSG, comingFrom);\n      }\n\n      const channel = {\n        phoneNumberId: conversation.pageId,\n        token: brand.whatsapp.accessToken,\n      };\n\n      // Collapse concurrent requests for the same message onto one fetch (see `inFlight`).\n      let work = inFlight.get(messageId);\n      if (!work) {\n        work = fetchMessageMedia(message, channel).finally(() => inFlight.delete(messageId));\n        inFlight.set(messageId, work);\n      }\n      const updated = await work;\n\n      successResponse(res, {\n        data: updated ?? message,\n        message: 'Media fetched',\n      });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/messages/:messageId/media',\n    authenticate,\n    authorize(...READ_ROLES),\n    validateParams(messageReactionParamsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const conversationId = String(req.params.id ?? '');\n      const messageId = String(req.params.messageId ?? '');\n\n      // Through the same seam as every other conversation read (./access.ts), not a hand-rolled\n      // copy of it: this route hands back attachment bytes, so it has to answer \"may this caller\n      // see this thread\" exactly as the message reads do.\n      const { conversation, brand } = await loadVisibleConversation(\n        conversationId,\n        req.user,\n        comingFrom,\n        model\n      );\n\n      const message = await getConversationMessageById(conversation.id, messageId);\n      if (!message) {\n        throw new NotFoundError('Message not found', comingFrom);\n      }\n\n      const pending = fetchable(message);\n      // Nothing to do — already fetched, or an attachment that never had a media id (a Messenger one,\n      // or a WhatsApp media object that arrived without an id). Returned rather than rejected so the\n      // client's on-open sweep can be naive.\n      if (pending.length === 0) {\n        successResponse(res, { data: message, message: 'Media already available' });\n        return;\n      }\n\n      if (conversation.platform !== 'whatsapp' || !brand.whatsapp?.accessToken) {\n        throw new BadRequestError(\n          'This brand no longer has a connected WhatsApp number',\n          comingFrom\n        );\n      }\n\n      // Meta's 7-day webhook-media window. Checked against the message's own timestamp, so no sweep\n      // has to write an `expired` state — and the attachment keeps `pending`, which is the truth: we\n      // never fetched it, and now cannot.\n      const age = Date.now() - new Date(message.sentAt).getTime();\n      if (age > MEDIA_ID_TTL_MS) {\n        logger.info('fetchMedia(): media id past its 7-day window', {\n          comingFrom,\n          conversationId,\n          messageId,\n          ageDays: Math.floor(age / (24 * 60 * 60 * 1000)),\n        });\n        throw new BadRequestError(EXPIRED_MSG, comingFrom);\n      }\n\n      const channel = {\n        phoneNumberId: conversation.pageId,\n        token: brand.whatsapp.accessToken,\n      };\n\n      // Collapse concurrent requests for the same message onto one fetch (see `inFlight`).\n      let work = inFlight.get(messageId);\n      if (!work) {\n        work = fetchMessageMedia(message, channel).finally(() => inFlight.delete(messageId));\n        inFlight.set(messageId, work);\n      }\n      const updated = await work;\n\n      successResponse(res, {\n        data: updated ?? message,\n        message: 'Media fetched',\n      });\n    }\n  )",
     "prerequisites": "Visible brand and stored conversation; provider sends additionally need channel access, action policy and provider configuration. Session/message knowledge is needed to interpret summaries.",
     "businessLogic": "Conversation is the long-lived thread, Message is the event and Session is the support episode. List routes use stable compound cursors. Customer lookup/editing can resolve the external identity and lazily link a Customer. A send checks access before provider work and local storage. Attachments can partially succeed; template re-engagement can start a new episode after resolved work.",
     "implementation": "server/src/modules/conversation/api.ts; conversation/access.ts; conversation/service.ts; conversation/send-channel.ts; conversation/whatsapp-templates.ts"
@@ -3589,7 +3589,7 @@
       },
       {
         "status": 400,
-        "message": "That template cannot be sent from here \u2014 it needs an image or file attachment, or it has been paused for quality."
+        "message": "That template cannot be sent from here — it needs an image or file attachment, or it has been paused for quality."
       }
     ],
     "validation": [
@@ -3606,7 +3606,7 @@
         "code": "export const sendTemplateSchema = z.strictObject({\n  name: z.string().trim().min(1, 'A template name is required'),\n  language: z.string().trim().min(1, 'A template language is required'),\n  values: z\n    .record(z.string(), z.string().trim().min(1, 'Every field needs a value').max(1024, 'Too long'))\n    .default({}),\n});"
       }
     ],
-    "handler": "router.post(\n    '/:id/whatsapp/templates',\n    markInitiated,\n    authenticate,\n    authorize(...READ_ROLES),\n    validateParams(conversationIdSchema),\n    validateBody(sendTemplateSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { conversation, brand, accessToken, channel } = await ensureSendableConversation(\n        String(req.params.id ?? ''),\n        req.user\n      );\n      if (channel !== SEND_CHANNELS.whatsapp) {\n        throw new BadRequestError(NOT_WHATSAPP_MSG, comingFrom);\n      }\n\n      const initiatedAt = res.locals.initiatedAt as Date;\n      const { name, language, values } = req.body as {\n        name: string;\n        language: string;\n        values: Record<string, string>;\n      };\n\n      // Resolved from Meta's own list rather than trusted from the body, so an agent cannot send a\n      // template that is unapproved, paused, or needs media \u2014 the same filter the picker applied.\n      const template = (await loadTemplates(brand)).find(\n        t => t.name === name && t.language === language\n      );\n      if (!template) {\n        throw new BadRequestError(\n          'That template is no longer available. Reopen the template picker to see the current list.',\n          comingFrom\n        );\n      }\n      if (!isSendable(template)) {\n        throw new BadRequestError(\n          'That template cannot be sent from here \u2014 it needs an image or file attachment, or it has been paused for quality.',\n          comingFrom\n        );\n      }\n\n      assertValuesMatchSpec(template, values);\n\n      // Send before persisting, matching deliverText in ./api.ts: the thread must never show a message\n      // WhatsApp did not accept. `pageId` holds the phone number id and `participantId` the wa_id \u2014\n      // sent verbatim, never reformatted (it can be an opaque business-scoped id).\n      const sent = await sendTemplateMessage(\n        conversation.pageId,\n        accessToken,\n        conversation.participantId,\n        {\n          name: template.name,\n          language: template.language,\n          components: buildTemplateComponents(template, values),\n        }\n      );\n\n      const message = await persistTemplateSend(conversation, template, values, sent.messageId, {\n        userId: req.user?.id,\n        name: req.user?.name,\n        initiatedAt,\n      });\n\n      successResponse(res, {\n        statusCode: 201,\n        data: message,\n        message: 'Template sent',\n      });\n    }\n  )",
+    "handler": "router.post(\n    '/:id/whatsapp/templates',\n    markInitiated,\n    authenticate,\n    authorize(...READ_ROLES),\n    validateParams(conversationIdSchema),\n    validateBody(sendTemplateSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { conversation, brand, accessToken, channel } = await ensureSendableConversation(\n        String(req.params.id ?? ''),\n        req.user\n      );\n      if (channel !== SEND_CHANNELS.whatsapp) {\n        throw new BadRequestError(NOT_WHATSAPP_MSG, comingFrom);\n      }\n\n      const initiatedAt = res.locals.initiatedAt as Date;\n      const { name, language, values } = req.body as {\n        name: string;\n        language: string;\n        values: Record<string, string>;\n      };\n\n      // Resolved from Meta's own list rather than trusted from the body, so an agent cannot send a\n      // template that is unapproved, paused, or needs media — the same filter the picker applied.\n      const template = (await loadTemplates(brand)).find(\n        t => t.name === name && t.language === language\n      );\n      if (!template) {\n        throw new BadRequestError(\n          'That template is no longer available. Reopen the template picker to see the current list.',\n          comingFrom\n        );\n      }\n      if (!isSendable(template)) {\n        throw new BadRequestError(\n          'That template cannot be sent from here — it needs an image or file attachment, or it has been paused for quality.',\n          comingFrom\n        );\n      }\n\n      assertValuesMatchSpec(template, values);\n\n      // Send before persisting, matching deliverText in ./api.ts: the thread must never show a message\n      // WhatsApp did not accept. `pageId` holds the phone number id and `participantId` the wa_id —\n      // sent verbatim, never reformatted (it can be an opaque business-scoped id).\n      const sent = await sendTemplateMessage(\n        conversation.pageId,\n        accessToken,\n        conversation.participantId,\n        {\n          name: template.name,\n          language: template.language,\n          components: buildTemplateComponents(template, values),\n        }\n      );\n\n      const message = await persistTemplateSend(conversation, template, values, sent.messageId, {\n        userId: req.user?.id,\n        name: req.user?.name,\n        initiatedAt,\n      });\n\n      successResponse(res, {\n        statusCode: 201,\n        data: message,\n        message: 'Template sent',\n      });\n    }\n  )",
     "prerequisites": "Visible brand and stored conversation; provider sends additionally need channel access, action policy and provider configuration. Session/message knowledge is needed to interpret summaries.",
     "businessLogic": "Conversation is the long-lived thread, Message is the event and Session is the support episode. List routes use stable compound cursors. Customer lookup/editing can resolve the external identity and lazily link a Customer. A send checks access before provider work and local storage. Attachments can partially succeed; template re-engagement can start a new episode after resolved work.",
     "implementation": "server/src/modules/conversation/api.ts; conversation/access.ts; conversation/service.ts; conversation/send-channel.ts; conversation/whatsapp-templates.ts"
@@ -4152,7 +4152,7 @@
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/stats",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:49",
+    "source": "server/src/modules/overview/api.ts:48",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4168,6 +4168,7 @@
       }
     },
     "notes": [
+      "Optional platform narrows to one channel. from/to are not accepted.",
       "Record visibility and tenant checks still apply; a valid role alone does not grant access."
     ],
     "errors": [],
@@ -4185,16 +4186,16 @@
         "code": "export const statsQuerySchema = z.strictObject({\n  platform: z.enum(CHANNEL_PLATFORMS).optional(),\n});"
       }
     ],
-    "handler": "router.get(\n    '/stats',\n    authenticate,\n    authorize(...overviewRoles),\n    validateParams(brandParamSchema),\n    validateQuery(statsQuerySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n      const { platform } = req.query as { platform?: ChannelPlatform };\n      successResponse(res, { data: await getSessionStats(brand.id, platform) });\n    }\n  )",
+    "handler": "router.get(\n  '/stats',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(statsQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const { platform } = req.query as { platform?: ChannelPlatform };\n    successResponse(res, { data: await getSessionStats(brand.id, platform) });\n  }\n);",
     "prerequisites": "Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.",
-    "implementation": "server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts"
+    "businessLogic": "Resolve a visible brand and count DM sessions that are pending now, and those of them with no assignee (a department assignment counts as assigned). Live counts; no date range and no rollup.",
+    "implementation": "server/src/modules/overview/api.ts; overview/service.ts:getSessionStats"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/sla",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:68",
+    "source": "server/src/modules/overview/api.ts:67",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4209,6 +4210,7 @@
           "from": "2026-10-15",
           "to": "2026-10-15"
         },
+        "asOf": "2026-10-15",
         "firstResponse": {
           "enabled": true,
           "pending": 0,
@@ -4238,7 +4240,10 @@
       }
     },
     "notes": [
-      "Record visibility and tenant checks still apply; a valid role alone does not grant access."
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "The open half ignores the range (a now figure); only the resolved half is clamped to yesterday. Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
+      "Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.",
+      "enabled reflects the brand's current SLA settings."
     ],
     "errors": [],
     "validation": [
@@ -4255,16 +4260,16 @@
         "code": "export const slaQuerySchema = withRangeChecks(\n  z.strictObject({ source: z.enum(SLA_SOURCES).optional(), ...rangeFields })\n);"
       }
     ],
-    "handler": "router.get(\n    '/sla',\n    authenticate,\n    authorize(...overviewRoles),\n    validateParams(brandParamSchema),\n    validateQuery(slaQuerySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n      const query = req.query as {\n        source?: SlaSource;\n        platform?: ChannelPlatform;\n        from?: string;\n        to?: string;\n      };\n      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n      const data = await getSlaStats({\n        brandId: brand.id,\n        companyId: brand.companyId,\n        source: query.source,\n        platform: query.platform,\n        ...range,\n      });\n      successResponse(res, { data });\n    }\n  )",
+    "handler": "router.get(\n  '/sla',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(slaQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as {\n      source?: SlaSource;\n      platform?: ChannelPlatform;\n      from?: string;\n      to?: string;\n    };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getSlaStats({\n      brandId: brand.id,\n      companyId: brand.companyId,\n      source: query.source,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
     "prerequisites": "Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.",
-    "implementation": "server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts"
+    "businessLogic": "Resolve a visible brand and the paired date range. For sessions (default) or comment threads (source=comments), per metric: pending = measured items open now (pending, unresolved or hold), read live; resolved = measured items resolved on the range's finished days, read from the rollups (slaResolved). atRisk = open items past 80% of the target and not yet breached, as a share of pending; breached = open items past the target plus resolved items that missed it, as a share of pending + resolved. A stopped resolution clock is never at risk but keeps an earlier breach.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getSlaStats; overview/service.ts:slaOpenCounts, slaFigures; overview/rollup/figures.ts:slaFromRows"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/engagement",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:224",
+    "source": "server/src/modules/overview/api.ts:222",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4279,6 +4284,7 @@
           "from": "2026-10-15",
           "to": "2026-10-15"
         },
+        "asOf": "2026-10-15",
         "inbound": {
           "sessions": 0,
           "threads": 0,
@@ -4339,7 +4345,10 @@
       }
     },
     "notes": [
-      "Record visibility and tenant checks still apply; a valid role alone does not grant access."
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
+      "Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.",
+      "responded is filed under the opening day. Once that day leaves the 7-day nightly window, a later first reply is not counted until the day is rebuilt (accepted gap)."
     ],
     "errors": [],
     "validation": [
@@ -4356,16 +4365,16 @@
         "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
       }
     ],
-    "handler": "router.get(\n    '/engagement',\n    authenticate,\n    authorize(...overviewRoles),\n    validateParams(brandParamSchema),\n    validateQuery(rangeQuerySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n      const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n      const data = await getEngagementStats({\n        brandId: brand.id,\n        platform: query.platform,\n        ...range,\n      });\n      successResponse(res, { data });\n    }\n  )",
+    "handler": "router.get(\n  '/engagement',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getEngagementStats({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
     "prerequisites": "Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.",
-    "implementation": "server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts"
+    "businessLogic": "Resolve a visible brand and the paired date range. inbound = DM sessions (by first customer message) and customer-written comment roots (by commentedAt) opened on the range's finished days, by platform; responseRate = those with a brand reply when the day was last computed. Both come from the rollups (inbound, responded). backlog is live: items open now (pending or unresolved; hold excluded) bucketed by wall-clock age, ignoring the range.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getEngagementStats; overview/service.ts:getBacklog, inboundFigures"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/inbound-trend",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:249",
+    "source": "server/src/modules/overview/api.ts:247",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4384,7 +4393,9 @@
       ]
     },
     "notes": [
-      "Record visibility and tenant checks still apply; a valid role alone does not grant access."
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "data is an array of days, not an object with range or asOf. Days after yesterday are left out, so a range of only today returns [].",
+      "Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it."
     ],
     "errors": [],
     "validation": [
@@ -4401,16 +4412,16 @@
         "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
       }
     ],
-    "handler": "router.get(\n    '/inbound-trend',\n    authenticate,\n    authorize(...overviewRoles),\n    validateParams(brandParamSchema),\n    validateQuery(rangeQuerySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n      const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n      const data = await getInboundTrend({ brandId: brand.id, platform: query.platform, ...range });\n      successResponse(res, { data });\n    }\n  )",
-    "prerequisites": "Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.",
-    "implementation": "server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts"
+    "handler": "router.get(\n  '/inbound-trend',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getInboundTrend({ brandId: brand.id, platform: query.platform, ...range });\n    successResponse(res, { data });\n  }\n);",
+    "prerequisites": "Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.",
+    "businessLogic": "Resolve a visible brand and the paired date range. One entry per finished day of the range, oldest first, zero-filled: inbound (opened that day, as /engagement) and closed (resolved that day, by resolvedAt), read from the rollups.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getInboundTrend; overview/rollup/figures.ts:inboundTrendFromRows"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/sla-compliance",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:270",
+    "source": "server/src/modules/overview/api.ts:268",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4425,6 +4436,7 @@
           "from": "2026-10-15",
           "to": "2026-10-15"
         },
+        "asOf": "2026-10-15",
         "firstResponse": {
           "enabled": true,
           "met": 0,
@@ -4442,7 +4454,10 @@
       }
     },
     "notes": [
-      "Record visibility and tenant checks still apply; a valid role alone does not grant access."
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
+      "Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.",
+      "enabled reflects the brand's current SLA settings."
     ],
     "errors": [],
     "validation": [
@@ -4459,16 +4474,16 @@
         "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
       }
     ],
-    "handler": "router.get(\n    '/sla-compliance',\n    authenticate,\n    authorize(...overviewRoles),\n    validateParams(brandParamSchema),\n    validateQuery(rangeQuerySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n      const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n      const data = await getSlaCompliance({\n        brandId: brand.id,\n        companyId: brand.companyId,\n        platform: query.platform,\n        ...range,\n      });\n      successResponse(res, { data });\n    }\n  )",
+    "handler": "router.get(\n  '/sla-compliance',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getSlaCompliance({\n      brandId: brand.id,\n      companyId: brand.companyId,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
     "prerequisites": "Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.",
-    "implementation": "server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts"
+    "businessLogic": "Resolve a visible brand and the paired date range. Count SLA targets decided on the range's finished days, sessions and comment roots together: first response met by the reply or breached at the due time; resolution met by the resolve or breached at the due time. percent = met ÷ (met + breached); null when nothing was decided. Read from the rollups (slaCompliance), each decision filed under the day it happened.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getSlaCompliance; overview/service.ts:complianceFigures"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/first-response",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:101",
+    "source": "server/src/modules/overview/api.ts:100",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4483,6 +4498,7 @@
           "from": "2026-10-01",
           "to": "2026-10-27"
         },
+        "asOf": "2026-10-27",
         "all": {
           "answered": 180,
           "businessHours": {
@@ -4525,11 +4541,13 @@
       }
     },
     "notes": [
-      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
+      "Filed under the opening day: a first reply that lands after that day has left the 7-day nightly window is missing until the day is rebuilt.",
       "Unanswered items are not timed here; they lower the /engagement response rate instead.",
       "Durations are milliseconds; null when nothing was timed. Means are exact. p50/p90 are the smallest value of the nearest-rank bucket: exact to the minute below a day, to the hour past it.",
       "Items without a stored sla.firstResponseMs (not yet backfilled) count in wallClock but not businessHours, so the two answered populations can differ until both SLA backfills run.",
-      "Session reads hint {brandId, firstCustomerMessageAt}; comment reads hint {brandId, platform, commentedAt}. Production must build these indexes first or the read fails."
+      "Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it."
     ],
     "errors": [],
     "validation": [
@@ -4546,16 +4564,16 @@
         "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
       }
     ],
-    "handler": "router.get(\n  '/first-response',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getFirstResponseTime({\n      brandId: brand.id,\n      companyId: brand.companyId,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
-    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Resolve a visible brand and the paired date range. Time DM sessions opened in the range (firstCustomerMessageAt) and customer-written comment roots (commentedAt) that have a firstResponseAt. Business time is the stored sla.firstResponseMs (hours in force at the clock start), summed in the database into minute buckets below a day and hour buckets past it. Wall clock is clock start \u2192 firstResponseAt. Return pooled all plus dm and comments.",
-    "implementation": "server/src/modules/overview/api.ts; overview/service.ts:getFirstResponseTime; overview/indexes.ts; session/sla.ts"
+    "handler": "router.get(\n  '/first-response',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getFirstResponseTime({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Time DM sessions opened on the range's finished days (firstCustomerMessageAt) and customer-written comment roots (commentedAt) that have a firstResponseAt. Business time is the stored sla.firstResponseMs (hours in force at the clock start); wall clock is clock start → firstResponseAt. Both are stored per day as minute buckets below a day and hour buckets past it (overviewdays.firstResponse), which merge exactly across days. Return pooled all plus dm and comments.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getFirstResponseTime; overview/rollup/compute.ts; overview/service.ts:firstResponseFigures; session/sla.ts"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/resolution-time",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:128",
+    "source": "server/src/modules/overview/api.ts:126",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4570,6 +4588,7 @@
           "from": "2026-10-01",
           "to": "2026-10-27"
         },
+        "asOf": "2026-10-27",
         "all": {
           "resolved": 150,
           "businessHours": {
@@ -4612,11 +4631,12 @@
       }
     },
     "notes": [
-      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
       "unresolved wrap-ups are not resolutions and are not timed.",
       "Same duration shape and bucket rule as /first-response; the count field is resolved instead of answered.",
       "Sessions the SLA sync never stamped (no firstCustomerMessageAt) are skipped.",
-      "Session reads hint {brandId, status, resolvedAt, platform}; comment reads hint {brandId, status, resolvedAt}."
+      "Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it."
     ],
     "errors": [],
     "validation": [
@@ -4634,15 +4654,15 @@
       }
     ],
     "handler": "router.get(\n  '/resolution-time',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getResolutionTime({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
-    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Resolve a visible brand and the paired date range. Time DM sessions and customer-written comment roots whose status is resolved and whose resolvedAt falls in the range. Business time is the stored sla.resolutionMs: what the resolution clock charged, with hold and unresolved stretches excluded, stored whether or not the brand has a resolution target. Wall clock is first customer message (root) \u2192 resolvedAt with every stretch included.",
-    "implementation": "server/src/modules/overview/api.ts; overview/service.ts:getResolutionTime; session/sla.ts:resolvedChargedMs"
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Time DM sessions and customer-written comment roots resolved on the range's finished days (by resolvedAt). Business time is the stored sla.resolutionMs: what the resolution clock charged, with hold and unresolved stretches excluded. Wall clock is first customer message (root) → resolvedAt with every stretch included. Stored per resolve day as duration buckets (overviewdays.resolution).",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getResolutionTime; overview/service.ts:resolutionTimeFigures; session/sla.ts:resolvedChargedMs"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/customers",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:153",
+    "source": "server/src/modules/overview/api.ts:151",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4657,10 +4677,11 @@
           "from": "2026-10-01",
           "to": "2026-10-27"
         },
+        "asOf": "2026-10-27",
         "customers": {
           "total": 240,
           "repeat": 36,
-          "repeatRate": 15.0,
+          "repeatRate": 15,
           "new": 150,
           "returning": 90
         },
@@ -4710,8 +4731,10 @@
       }
     },
     "notes": [
-      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
-      "repeatRate is repeat \u00f7 total as a percentage with one decimal; null when there are no customers.",
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
+      "customers is read live over the finished days (distinct customers do not add up across days); topTags and sentiment come from the rollups, filed under the opening day. A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.",
+      "repeatRate is repeat ÷ total as a percentage with one decimal; null when there are no customers.",
       "Customer counts are DM only; comment threads have no customer identity here.",
       "Sentiment cells are null where a class cannot hold the value: sessions default NEUTRAL so never UNSET, comments are never MIXED.",
       "Tag names are the slash-joined vocabulary path, resolved at read time."
@@ -4732,15 +4755,15 @@
       }
     ],
     "handler": "router.get(\n  '/customers',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getCustomerStats({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
-    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Resolve a visible brand and the paired date range. Customers are DM conversations (one conversation = one customer) with a session opened in the range: repeat = two or more sessions in range; new = first session ever falls in range, returning = wrote before it. Customer ids are read in chunks of 50,000, four at a time. Top tags count tag ids on sessions plus customer comment roots (at most 10, most used first). Sentiment is the handler-recorded value per class.",
-    "implementation": "server/src/modules/overview/api.ts; overview/customers.ts:getCustomerStats, readInChunks"
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Customers are DM conversations (one conversation = one customer) with a session opened on the range's finished days: repeat = two or more sessions in range; new = first session ever falls in range, returning = wrote before it. Read live, customer ids in chunks of 50,000, four at a time. Top tags count tag ids on sessions plus customer comment roots (at most 10, most used first) and sentiment is the handler-recorded value per class; both are summed from the rollups.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getCustomerStats; overview/customers.ts:getCustomerCounts, readInChunks; overview/rollup/figures.ts:tagsAndSentimentFromRows"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/customer-trend",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:178",
+    "source": "server/src/modules/overview/api.ts:176",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4756,7 +4779,7 @@
           "to": "2026-10-02",
           "customers": 20,
           "repeat": 1,
-          "repeatRate": 5.0,
+          "repeatRate": 5,
           "new": 14,
           "returning": 6
         },
@@ -4772,8 +4795,9 @@
       ]
     },
     "notes": [
-      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
-      "data is an array of weeks, not an object with range.",
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Read live (distinct customers do not add up across days); not rolled up.",
+      "data is an array of weeks, not an object with range or asOf. Weeks end at yesterday; a range of only today returns [].",
       "Someone who first wrote just before a partial first week counts as returning.",
       "repeatRate is null for a week with no customers."
     ],
@@ -4792,16 +4816,16 @@
         "code": "export const rangeQuerySchema = withRangeChecks(z.strictObject(rangeFields));"
       }
     ],
-    "handler": "router.get(\n  '/customer-trend',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getCustomerTrend({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
-    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Resolve a visible brand and the paired date range. Split the range into business weeks (Saturday to Friday), clipped at the range edges so the first and last weeks can be partial, and count DM customers per week with the same repeat / new / returning rules as /customers, scoped to each week.",
-    "implementation": "server/src/modules/overview/api.ts; overview/customers.ts:getCustomerTrend"
+    "handler": "router.get(\n  '/customer-trend',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getCustomerTrendStats({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.",
+    "businessLogic": "Resolve a visible brand and the paired date range, cut to finished days. Split it into business weeks (Saturday to Friday), clipped at the range edges so the first and last weeks can be partial, and count DM customers per week with the same repeat / new / returning rules as /customers, scoped to each week.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getCustomerTrendStats; overview/customers.ts:getCustomerTrend"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/peak-hours",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:203",
+    "source": "server/src/modules/overview/api.ts:201",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -4816,6 +4840,7 @@
           "from": "2026-10-01",
           "to": "2026-10-27"
         },
+        "asOf": "2026-10-27",
         "days": [
           "Sat",
           "Sun",
@@ -5018,10 +5043,11 @@
       }
     },
     "notes": [
-      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
-      "cells[day][hour] follows days order (Saturday first) and hours 00\u201323 in business time.",
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
+      "cells[day][hour] follows days order (Saturday first) and hours 00–23 in business time.",
       "busiest is null when nothing came in.",
-      "Messages use the partial {brandId, sentAt} index (direction: incoming only); comments hint {brandId, platform, commentedAt}."
+      "Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it."
     ],
     "errors": [],
     "validation": [
@@ -5039,15 +5065,15 @@
       }
     ],
     "handler": "router.get(\n  '/peak-hours',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getPeakHours({ brandId: brand.id, platform: query.platform, ...range });\n    successResponse(res, { data });\n  }\n);",
-    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.",
-    "businessLogic": "Resolve a visible brand and the paired date range. Count every inbound DM message (system notices excluded) and every customer comment, root or reply, grouped in MongoDB by Asia/Dhaka weekday and hour. Brand and agent replies are excluded. The response is always 7 \u00d7 24 numbers regardless of volume.",
-    "implementation": "server/src/modules/overview/api.ts; overview/peak-hours.ts:getPeakHours; overview/indexes.ts"
+    "prerequisites": "Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Count every inbound DM message (system notices excluded) and every customer comment, root or reply, on the range's finished days. Each day stores 24 hourly counts in Asia/Dhaka (overviewdays.peakHours); the read files each day under its weekday and returns 7 × 24 numbers regardless of volume. Brand and agent replies are excluded.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getPeakHours; overview/peak-hours.ts:peakHourFigures; overview/rollup/figures.ts:peakHoursFromRows"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/handlers",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:298",
+    "source": "server/src/modules/overview/api.ts:296",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -5062,6 +5088,7 @@
           "from": "2026-10-01",
           "to": "2026-10-30"
         },
+        "asOf": "2026-10-30",
         "rows": [
           {
             "queryManagerId": "670000000000000000000031",
@@ -5143,7 +5170,7 @@
               "resolution": {
                 "resolved": 8,
                 "unresolved": 2,
-                "percent": 80.0
+                "percent": 80
               }
             }
           }
@@ -5275,7 +5302,9 @@
       }
     },
     "notes": [
-      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
+      "Stored handlerdays rows of the range are summed in MongoDB per (query manager, team, source), a handful of rows whatever the range; days without a marker are computed live from the three covered QueryHandling reads.",
       "handled counts records whose handledAt (first reply, else the decision) falls in range (H2).",
       "firstResponse.meanMs is the business-hours mean of the final stint's first response (H13), counted by the reply's time; no percentiles and no wall clock in this read.",
       "resolution.percent = resolved / (resolved + unresolved), one decimal, over decisions in range (H11, H12); null when none was decided. Undecided and routed-away records are not in the rate.",
@@ -5299,15 +5328,15 @@
       }
     ],
     "handler": "router.get(\n  '/handlers',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getHandlerStats({\n      brandId: brand.id,\n      platform: query.platform,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
-    "prerequisites": "Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill).",
-    "businessLogic": "Resolve a visible brand and the paired date range. Read stored QueryHandling records with three hinted, covered range reads: handled by handledAt, first response by firstResponseAt, decisions by decidedAt. Each is grouped in MongoDB by (query manager, team, source); rows, team and department subtotals and the total are folded from those groups. Rules H1-H14 decide what a record holds; the read only counts.",
-    "implementation": "server/src/modules/overview/api.ts; overview/handlers.ts:getHandlerStats; handling/schema.ts; overview/indexes.ts"
+    "prerequisites": "Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill). Rollups need the worker (nightly run) or a backfill; without them every day is computed live.",
+    "businessLogic": "Resolve a visible brand and the paired date range. Per query manager, team and source, sum the handlerdays rollups of the range's finished days: handled (by handledAt), first responses (by firstResponseAt: count and business-time sum) and decisions (by decidedAt: resolved, unresolved). Rows, team and department subtotals and the total are folded from those groups. Rules H1-H14 decide what a QueryHandling record holds; the rollup only counts.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getHandlerStats; overview/rollup/read.ts:readHandlerTotals; overview/handlers.ts:handlerStatsFromCells; handling/schema.ts"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/team",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:324",
+    "source": "server/src/modules/overview/api.ts:322",
     "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.",
     "status": 200,
     "contentType": "application/json",
@@ -5322,6 +5351,7 @@
           "from": "2026-10-01",
           "to": "2026-10-30"
         },
+        "asOf": "2026-10-30",
         "closed": {
           "sessions": 118,
           "threads": 37,
@@ -5352,17 +5382,18 @@
         "unansweredTurns": {
           "turns": 640,
           "unanswered": 19,
-          "percent": 3.0
+          "percent": 3
         }
       }
     },
     "notes": [
-      "Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.",
+      "Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.",
       "closed.byPlatform lists every channel platform in CHANNEL_PLATFORMS order, zeros included.",
       "onHold ignores the date range (it is a now figure) but honours platform.",
       "unansweredTurns.percent = unanswered / turns started in range, one decimal; null when there were no turns. A query has at most one open turn, so unanswered is also the number of queries waiting.",
       "An open turn on a resolved query is dropped by the sync, so it never counts as unanswered.",
-      "Reads hint the session status index, the partial resolved-customer-roots comment index and the {brandId, startedAt, platform, answeredAt} turn index."
+      "closed comes from the rollups (closed per platform and source). onHold and unansweredTurns are read live, hinting the session/comment status indexes and the {brandId, startedAt, platform, answeredAt} turn index; unanswered turns are the slowest part (about 570 ms for a year at 1M turns, per the source bench)."
     ],
     "errors": [],
     "validation": [
@@ -5380,15 +5411,15 @@
       }
     ],
     "handler": "router.get(\n  '/team',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(rangeQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await getTeamStats({ brandId: brand.id, platform: query.platform, ...range });\n    successResponse(res, { data });\n  }\n);",
-    "prerequisites": "Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill).",
-    "businessLogic": "Resolve a visible brand and the paired date range. Count DM sessions and customer comment roots resolved in range (current resolvedAt), split by platform with zeros included; count items on hold now; and count QueryTurn records started in range with how many are still unanswered (T7).",
-    "implementation": "server/src/modules/overview/api.ts; overview/team.ts:getTeamStats; handling/schema.ts:QueryTurnModel; overview/indexes.ts"
+    "prerequisites": "Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill). Rollups need the worker (nightly run) or a backfill; without them every day is computed live.",
+    "businessLogic": "Resolve a visible brand and the paired date range. closed = DM sessions and customer comment roots resolved on the range's finished days (current resolvedAt), split by platform with zeros included, from the rollups; onHold = items on hold now (live); unansweredTurns = QueryTurn records started on the range's finished days and how many are still unanswered (T7), read live.",
+    "implementation": "server/src/modules/overview/api.ts; overview/reads.ts:getTeamStats; overview/team.ts:getTeamLive, closedFigures; handling/schema.ts:QueryTurnModel"
   },
   {
     "method": "GET",
     "path": "/api/v1/brands/:brandId/overview/holds",
     "group": "overview",
-    "source": "server/src/modules/overview/api.ts:346",
+    "source": "server/src/modules/overview/api.ts:344",
     "auth": "Access-token cookie or Bearer token; active company required for tenant roles. Only super_admin, company_owner and company_admin; brand visibility still applies. Query managers receive 403.",
     "status": 200,
     "contentType": "application/json",
@@ -5426,7 +5457,8 @@
     },
     "notes": [
       "Omit source to include sessions and comments. source accepts sessions or comments, not singular names.",
-      "Both from/to or neither; defaults to last 30 days. Inclusive Asia/Dhaka dates, at most one year. platform/page/limit are not accepted.",
+      "Not rolled up: a log computed on read.",
+      "Both from/to or neither; the default is the 30 days ending yesterday (shared defaultRange). Inclusive Asia/Dhaka dates, at most one year. Not clamped: a to of today is read as sent. platform/page/limit are not accepted.",
       "Returns at most 1,000 overlapping holds, newest first, without pagination or a truncation flag. Durations cover the entire hold, not just its overlap with the requested range.",
       "Active holds have endedAt and endedBy null; durations run to read time. Business hours are those at the query clock start.",
       "No separate hold collection: deleting a thread removes its stored holds; session merge is no longer supported.",
@@ -5452,10 +5484,194 @@
         "code": "export const holdsQuerySchema = withRangeChecks(\n  z.strictObject({\n    from: rangeFields.from,\n    to: rangeFields.to,\n    source: z.enum(HOLD_SOURCES).optional(),\n  })\n);"
       }
     ],
-    "handler": "router.get(\n    '/holds',\n    authenticate,\n    authorize(...overviewRoles),\n    validateParams(brandParamSchema),\n    validateQuery(holdsQuerySchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n      const query = req.query as { from?: string; to?: string; source?: HoldSource };\n      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n      const data = await listHolds({\n        brandId: brand.id,\n        companyId: brand.companyId,\n        source: query.source,\n        ...range,\n      });\n      successResponse(res, { data });\n    }\n  )",
+    "handler": "router.get(\n  '/holds',\n  authenticate,\n  authorize(...overviewRoles),\n  validateParams(brandParamSchema),\n  validateQuery(holdsQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));\n    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);\n    const query = req.query as { from?: string; to?: string; source?: HoldSource };\n    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();\n    const data = await listHolds({\n      brandId: brand.id,\n      companyId: brand.companyId,\n      source: query.source,\n      ...range,\n    });\n    successResponse(res, { data });\n  }\n);",
     "prerequisites": "Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.",
     "businessLogic": "Resolve a visible brand; validate the paired date range; read session/root histories and historical business hours; pair hold entries with the next transition; keep overlapping holds, sort newest first and cap at 1,000. Return complete hold durations, with open holds measured to now.",
     "implementation": "server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/overview-rollups/rebuild",
+    "group": "overview",
+    "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.",
+    "contentType": "application/json",
+    "requestType": "application/json",
+    "prerequisites": "Super admin. The rollup unique indexes must exist (the worker runs no rollups without them) and the worker must run to process queued days.",
+    "implementation": "server/src/modules/overview/rollup/api.ts; overview/rollup/jobs.ts; overview/rollup/schema.ts",
+    "source": "server/src/modules/overview/rollup/api.ts:69",
+    "status": 202,
+    "request": "curl -i -X POST \"${BASE_URL}/api/v1/admin/overview-rollups/rebuild\" \\\n  -b cookies.txt -c cookies.txt \\\n  -H \"Content-Type: application/json\" \\\n  --data '{\"brandId\":\"670000000000000000000004\",\"from\":\"2026-10-01\",\"to\":\"2026-10-31\"}'",
+    "body": {
+      "brandId": "670000000000000000000004",
+      "from": "2026-10-01",
+      "to": "2026-10-31"
+    },
+    "response": {
+      "success": true,
+      "message": "Rebuild queued",
+      "data": {
+        "runId": "670000000000000000000091"
+      }
+    },
+    "notes": [
+      "Omit brandId to rebuild every active brand (at most 90 days); one brand allows any status and at most 366 days.",
+      "to must be yesterday (Asia/Dhaka) or earlier: today is never stored.",
+      "Answers once the run is recorded; its brand-days are queued in the background (chunks of 1,000). Follow progress with GET /runs.",
+      "One running manual run per scope (that brand, or every brand), enforced by the partial unique index one_running_manual_run_per_scope. Runs still running after 12 hours are closed as partial first, so a stuck run does not block its scope.",
+      "Each day is recomputed and replaced in one transaction, so a rebuild is safe to repeat."
+    ],
+    "errors": [
+      {
+        "status": 400,
+        "message": "Only finished days can be rebuilt: to must be 2026-10-31 or earlier"
+      },
+      {
+        "status": 400,
+        "message": "A rebuild covers at most 90 days for every brand"
+      },
+      {
+        "status": 404,
+        "message": "Brand not found"
+      },
+      {
+        "status": 409,
+        "message": "Rollups can't run until these indexes exist: …"
+      },
+      {
+        "status": 409,
+        "message": "A rebuild of this scope is still running; wait for it to finish"
+      }
+    ],
+    "validation": [
+      {
+        "kind": "Body",
+        "name": "rebuildSchema",
+        "file": "server/src/modules/overview/rollup/api.ts",
+        "code": "export const rebuildSchema = z\n  .strictObject({ brandId: idSchema.optional(), from: day, to: day })\n  .refine(body => body.from <= body.to, { message: 'from must not be after to', path: ['from'] });"
+      }
+    ],
+    "handler": "router.post(\n  '/rebuild',\n  authenticate,\n  authorize(ROLES.SUPER_ADMIN),\n  validateBody(rebuildSchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const { brandId, from, to } = req.body as z.infer<typeof rebuildSchema>;\n    const yesterday = addDays(businessToday(), -1);\n    if (to > yesterday) {\n      throw new BadRequestError(\n        `Only finished days can be rebuilt: to must be ${yesterday} or earlier`,\n        comingFrom\n      );\n    }\n    const limit = brandId ? MAX_BRAND_DAYS : MAX_ALL_BRANDS_DAYS;\n    if (dayCount(from, to) > limit) {\n      throw new BadRequestError(\n        `A rebuild covers at most ${limit} days ${brandId ? 'for one brand' : 'for every brand'}`,\n        comingFrom\n      );\n    }\n    if (brandId && !(await BrandModel.exists({ _id: brandId }))) {\n      throw new NotFoundError('Brand not found', comingFrom);\n    }\n    // Without them the worker runs no rollups, and the run would wait forever.\n    const missingIndexes = await missingRollupIndexes();\n    if (missingIndexes.length) {\n      throw new ConflictError(\n        `Rollups can't run until these indexes exist: ${missingIndexes.join('; ')}`,\n        comingFrom\n      );\n    }\n    // A run that never reported back must not block its scope.\n    await closeStaleRuns();\n    try {\n      // Answers once the run is recorded; its days are queued after.\n      const runId = await startRollupRunInBackground({\n        source: 'manual',\n        from,\n        to,\n        brandId,\n        triggeredBy: req.user?.id,\n      });\n      successResponse(res, { statusCode: 202, message: 'Rebuild queued', data: { runId } });\n    } catch (error) {\n      // One manual run per scope (a unique key): a second would only redo the same days.\n      if ((error as { code?: number }).code === DUPLICATE_KEY) {\n        throw new ConflictError(\n          'A rebuild of this scope is still running; wait for it to finish',\n          comingFrom\n        );\n      }\n      throw error;\n    }\n  }\n);",
+    "businessLogic": "Check that to is a finished day and the span is within the scope's limit, that the brand exists, and that the rollup unique indexes exist. Close stale runs, then record a manual rollupruns document (triggeredBy = caller, total = brand-days) and answer 202 with its id. The days are queued afterwards on the overview-rollups queue as one overview-rollup-day job each; a queueing failure marks the run failed and its unqueued days dirty."
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/overview-rollups/runs",
+    "group": "overview",
+    "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.",
+    "contentType": "application/json",
+    "requestType": "application/json",
+    "prerequisites": "Super admin. The rollup unique indexes must exist (the worker runs no rollups without them) and the worker must run to process queued days.",
+    "implementation": "server/src/modules/overview/rollup/api.ts; overview/rollup/jobs.ts; overview/rollup/schema.ts",
+    "source": "server/src/modules/overview/rollup/api.ts:131",
+    "status": 200,
+    "request": "curl -i -X GET \"${BASE_URL}/api/v1/admin/overview-rollups/runs?source=manual&limit=20\" \\\n  -b cookies.txt -c cookies.txt",
+    "body": null,
+    "response": {
+      "success": true,
+      "message": "success",
+      "data": [
+        {
+          "_id": "670000000000000000000091",
+          "source": "manual",
+          "triggeredBy": "670000000000000000000001",
+          "brandId": "670000000000000000000004",
+          "from": "2026-10-01",
+          "to": "2026-10-31",
+          "total": 31,
+          "completed": 31,
+          "failed": 0,
+          "failedDays": [],
+          "status": "done",
+          "startedAt": "2026-11-01T05:00:00.000Z",
+          "finishedAt": "2026-11-01T05:01:12.000Z",
+          "brandName": "Example Brand"
+        }
+      ]
+    },
+    "notes": [
+      "Newest first; limit defaults to 20, at most 100. A capped list, not paginated.",
+      "status is running, done, partial (some days failed after 3 attempts) or failed (the days could not be queued). failedDays keeps the first 100 failures.",
+      "brandName is resolved at read time; null for every-brand runs and deleted brands."
+    ],
+    "errors": [
+      {
+        "status": 403,
+        "message": "You do not have permission to access this resource"
+      }
+    ],
+    "validation": [
+      {
+        "kind": "Query",
+        "name": "runsQuerySchema",
+        "file": "server/src/modules/overview/rollup/api.ts",
+        "code": "export const runsQuerySchema = z.strictObject({\n  source: z.enum(ROLLUP_RUN_SOURCES).optional(),\n  limit: z.coerce.number().int().min(1).max(100).optional(),\n});"
+      }
+    ],
+    "handler": "router.get(\n  '/runs',\n  authenticate,\n  authorize(ROLES.SUPER_ADMIN),\n  validateQuery(runsQuerySchema),\n  logRequest({}),\n  async (req: Request, res: Response) => {\n    const { source, limit } = req.query as z.infer<typeof runsQuerySchema>;\n    const runs = await RollupRunModel.find(source ? { source } : {})\n      .sort({ startedAt: -1 })\n      .limit(limit ?? 20)\n      .lean<RollupRun[]>();\n    successResponse(res, { data: await withBrandNames(runs) });\n  }\n);",
+    "businessLogic": "Read rollupruns sorted by startedAt descending (optionally one source), and attach each run's brand name."
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/overview-rollups/status",
+    "group": "overview",
+    "auth": "Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.",
+    "contentType": "application/json",
+    "requestType": "application/json",
+    "prerequisites": "Super admin. The rollup unique indexes must exist (the worker runs no rollups without them) and the worker must run to process queued days.",
+    "implementation": "server/src/modules/overview/rollup/api.ts; overview/rollup/jobs.ts; overview/rollup/schema.ts",
+    "source": "server/src/modules/overview/rollup/api.ts:153",
+    "status": 200,
+    "request": "curl -i -X GET \"${BASE_URL}/api/v1/admin/overview-rollups/status\" \\\n  -b cookies.txt -c cookies.txt",
+    "body": null,
+    "response": {
+      "success": true,
+      "message": "success",
+      "data": {
+        "latestNightly": {
+          "_id": "670000000000000000000092",
+          "source": "nightly",
+          "from": "2026-10-25",
+          "to": "2026-10-31",
+          "total": 28,
+          "completed": 28,
+          "failed": 0,
+          "failedDays": [],
+          "status": "done",
+          "startedAt": "2026-10-31T18:30:00.000Z",
+          "finishedAt": "2026-10-31T18:31:05.000Z"
+        },
+        "lastFinishedNightly": {
+          "_id": "670000000000000000000092",
+          "source": "nightly",
+          "from": "2026-10-25",
+          "to": "2026-10-31",
+          "total": 28,
+          "completed": 28,
+          "failed": 0,
+          "failedDays": [],
+          "status": "done",
+          "startedAt": "2026-10-31T18:30:00.000Z",
+          "finishedAt": "2026-10-31T18:31:05.000Z"
+        },
+        "stale": false,
+        "dirtyDays": 0,
+        "missingIndexes": []
+      }
+    },
+    "notes": [
+      "stale is true when no nightly run has finished, or the last finished one started more than 26 hours ago.",
+      "dirtyDays is an estimate (estimatedDocumentCount of rollupdirtydays).",
+      "A non-empty missingIndexes means no rollup runs at all: the worker waits and rebuilds answer 409."
+    ],
+    "errors": [
+      {
+        "status": 403,
+        "message": "You do not have permission to access this resource"
+      }
+    ],
+    "validation": [],
+    "handler": "router.get(\n  '/status',\n  authenticate,\n  authorize(ROLES.SUPER_ADMIN),\n  logRequest({}),\n  async (_req: Request, res: Response) => {\n    const [[latest], [lastFinished], dirtyDays, missingIndexes] = await Promise.all([\n      RollupRunModel.find({ source: 'nightly' }).sort({ startedAt: -1 }).limit(1).lean(),\n      // `partial` finished too: its failed days are on the run and marked for the next one.\n      RollupRunModel.find({ source: 'nightly', status: { $in: ['done', 'partial'] } })\n        .sort({ startedAt: -1 })\n        .limit(1)\n        .lean(),\n      RollupDirtyDayModel.estimatedDocumentCount(),\n      missingRollupIndexes(),\n    ]);\n    const stale =\n      !lastFinished || Date.now() - lastFinished.startedAt.getTime() > NIGHTLY_STALE_MS;\n    successResponse(res, {\n      data: {\n        latestNightly: latest ?? null,\n        lastFinishedNightly: lastFinished ?? null,\n        stale,\n        dirtyDays,\n        missingIndexes,\n      },\n    });\n  }\n);",
+    "businessLogic": "In parallel: the latest nightly run, the latest nightly run that finished (done or partial), the estimated count of dirty days waiting for the next run, and the rollup unique indexes the database lacks."
   },
   {
     "method": "GET",
@@ -5558,7 +5774,7 @@
         "code": "export const createQueryManagerSchema = z.strictObject({\n  name: z.string().min(1, 'Name is required'),\n  email: z.email('Invalid email format').min(1, 'Email is required'),\n  password: z.string().min(8, 'Password must be at least 8 characters'),\n  // The team the query manager belongs to (active, within the company). Their department is the\n  // team's, so it isn't accepted here.\n  teamId: idSchema,\n  // Only honoured for super_admin; company_owner/company_admin are forced to their own company.\n  companyId: idSchema.optional(),\n});"
       }
     ],
-    "handler": "router.post(\n    '/',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    // multer must run before validateBody so any multipart text fields populate req.body.\n    // The avatar file is optional; sending JSON (no file) is also supported.\n    upload({ fieldName: 'avatar' }),\n    validateBody(createQueryManagerSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, email, password, teamId } = req.body;\n\n      // super_admin targets any company via the body; company roles are forced to their own.\n      const companyId =\n        req.user?.role === ROLES.SUPER_ADMIN ? req.body.companyId : req.user?.companyId;\n      if (!companyId) {\n        throw new BadRequestError('companyId is required', `module/query-manager/api.ts - /`);\n      }\n\n      const membership = await resolveMembership(\n        teamId,\n        companyId,\n        `module/query-manager/api.ts - /`\n      );\n\n      // Avatar is optional \u2014 only persist a key when a file was uploaded.\n      const avatar = await saveAvatar(req.file);\n\n      try {\n        const item = await create({ name, email, password, companyId, ...membership, avatar });\n        successResponse(res, { data: item, message: 'Query manager created successfully' });\n      } catch (error) {\n        // Avoid an orphaned file if the insert fails (e.g. duplicate email).\n        if (avatar) await deleteLocal(avatar);\n        throw error;\n      }\n    }\n  )",
+    "handler": "router.post(\n    '/',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    // multer must run before validateBody so any multipart text fields populate req.body.\n    // The avatar file is optional; sending JSON (no file) is also supported.\n    upload({ fieldName: 'avatar' }),\n    validateBody(createQueryManagerSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, email, password, teamId } = req.body;\n\n      // super_admin targets any company via the body; company roles are forced to their own.\n      const companyId =\n        req.user?.role === ROLES.SUPER_ADMIN ? req.body.companyId : req.user?.companyId;\n      if (!companyId) {\n        throw new BadRequestError('companyId is required', `module/query-manager/api.ts - /`);\n      }\n\n      const membership = await resolveMembership(\n        teamId,\n        companyId,\n        `module/query-manager/api.ts - /`\n      );\n\n      // Avatar is optional — only persist a key when a file was uploaded.\n      const avatar = await saveAvatar(req.file);\n\n      try {\n        const item = await create({ name, email, password, companyId, ...membership, avatar });\n        successResponse(res, { data: item, message: 'Query manager created successfully' });\n      } catch (error) {\n        // Avoid an orphaned file if the insert fails (e.g. duplicate email).\n        if (avatar) await deleteLocal(avatar);\n        throw error;\n      }\n    }\n  )",
     "prerequisites": "Company, active department, active team and manager role. Create the department and team before the query manager.",
     "businessLogic": "Query managers are Users with role query_manager. Create requires teamId; resolveMembership validates an active team in an active department of the same company and writes teamId plus derived departmentId together. Re-sending an unchanged team skips revalidation, so existing members of inactive teams remain editable. List accepts teamId and departmentId filters.",
     "implementation": "server/src/modules/user/service.ts; modules/department/service.ts; modules/query-manager/service.ts; auth/tenant.ts"
@@ -5643,7 +5859,7 @@
         "code": "export const updateQueryManagerSchema = z.strictObject({\n  name: z.string().min(1, 'Name is required').optional(),\n  email: z.email('Invalid email format').optional(),\n  password: z.string().min(8, 'Password must be at least 8 characters').optional(),\n  teamId: idSchema.optional(),\n});"
       }
     ],
-    "handler": "router.patch(\n    '/:id',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    upload({ fieldName: 'avatar' }),\n    validateBody(updateQueryManagerSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, email, password, teamId } = req.body;\n      if (!hasUpdatePayload(req.body, req.file)) {\n        throw new BadRequestError('Invalid request body', `module/query-manager/api.ts - /:id`);\n      }\n\n      const scope = getTenantScope(req.user);\n      const existing = await getById(String(req.params.id ?? ''), scope);\n      if (!existing) {\n        throw new NotFoundError(`${model} not found`, `module/query-manager/api.ts - /:id`);\n      }\n\n      // A new team must be joinable, within the manager's own company. Re-sending the current team\n      // (the edit form always sends it) is a no-op, so someone whose team was deactivated since can\n      // still have their name or password changed.\n      const membership: Membership | undefined =\n        teamId && teamId !== existing.teamId?.toString()\n          ? await resolveMembership(\n              teamId,\n              existing.companyId,\n              `module/query-manager/api.ts - /:id`\n            )\n          : undefined;\n\n      const newAvatar = await saveAvatar(req.file);\n      const update = { name, email, password, ...membership, avatar: newAvatar };\n\n      try {\n        const item = await updateById(String(req.params.id ?? ''), update, scope);\n        if (!item) {\n          throw new NotFoundError(`${model} not found`, `module/query-manager/api.ts - /:id`);\n        }\n        // Remove the old avatar only after the update succeeded.\n        if (newAvatar && existing.avatar) {\n          await deleteLocal(existing.avatar);\n        }\n        successResponse(res, { data: item, message: 'Query manager updated successfully' });\n      } catch (error) {\n        // The update failed after writing the new file \u2014 clean it up.\n        if (newAvatar) await deleteLocal(newAvatar);\n        throw error;\n      }\n    }\n  )",
+    "handler": "router.patch(\n    '/:id',\n    authenticate,\n    authorize(ROLES.SUPER_ADMIN, ROLES.COMPANY_OWNER, ROLES.COMPANY_ADMIN),\n    upload({ fieldName: 'avatar' }),\n    validateBody(updateQueryManagerSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const { name, email, password, teamId } = req.body;\n      if (!hasUpdatePayload(req.body, req.file)) {\n        throw new BadRequestError('Invalid request body', `module/query-manager/api.ts - /:id`);\n      }\n\n      const scope = getTenantScope(req.user);\n      const existing = await getById(String(req.params.id ?? ''), scope);\n      if (!existing) {\n        throw new NotFoundError(`${model} not found`, `module/query-manager/api.ts - /:id`);\n      }\n\n      // A new team must be joinable, within the manager's own company. Re-sending the current team\n      // (the edit form always sends it) is a no-op, so someone whose team was deactivated since can\n      // still have their name or password changed.\n      const membership: Membership | undefined =\n        teamId && teamId !== existing.teamId?.toString()\n          ? await resolveMembership(\n              teamId,\n              existing.companyId,\n              `module/query-manager/api.ts - /:id`\n            )\n          : undefined;\n\n      const newAvatar = await saveAvatar(req.file);\n      const update = { name, email, password, ...membership, avatar: newAvatar };\n\n      try {\n        const item = await updateById(String(req.params.id ?? ''), update, scope);\n        if (!item) {\n          throw new NotFoundError(`${model} not found`, `module/query-manager/api.ts - /:id`);\n        }\n        // Remove the old avatar only after the update succeeded.\n        if (newAvatar && existing.avatar) {\n          await deleteLocal(existing.avatar);\n        }\n        successResponse(res, { data: item, message: 'Query manager updated successfully' });\n      } catch (error) {\n        // The update failed after writing the new file — clean it up.\n        if (newAvatar) await deleteLocal(newAvatar);\n        throw error;\n      }\n    }\n  )",
     "prerequisites": "Company, active department, active team and manager role. Create the department and team before the query manager.",
     "businessLogic": "Query managers are Users with role query_manager. Create requires teamId; resolveMembership validates an active team in an active department of the same company and writes teamId plus derived departmentId together. Re-sending an unchanged team skips revalidation, so existing members of inactive teams remain editable. List accepts teamId and departmentId filters.",
     "implementation": "server/src/modules/user/service.ts; modules/department/service.ts; modules/query-manager/service.ts; auth/tenant.ts"
@@ -5738,7 +5954,7 @@
         "code": "export const listSessionsSchema = cursorListQuerySchema.extend({\n  conversationId: idSchema,\n});"
       }
     ],
-    "handler": "router.get(\n    '/',\n    authenticate,\n    authorize(...READ_ROLES),\n    validateQuery(listSessionsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const conversationId = String(req.query.conversationId ?? '');\n      // The parent thread carries the access decision \u2014 its brand must be visible to the caller.\n      await loadVisibleConversation(conversationId, req.user, `${comingFrom} - GET /`);\n      const data = await listSessions(conversationId, req.query);\n      paginatedSuccessResponse(res, { data });\n    }\n  )",
+    "handler": "router.get(\n    '/',\n    authenticate,\n    authorize(...READ_ROLES),\n    validateQuery(listSessionsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const conversationId = String(req.query.conversationId ?? '');\n      // The parent thread carries the access decision — its brand must be visible to the caller.\n      await loadVisibleConversation(conversationId, req.user, `${comingFrom} - GET /`);\n      const data = await listSessions(conversationId, req.query);\n      paginatedSuccessResponse(res, { data });\n    }\n  )",
     "prerequisites": "Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.",
     "businessLogic": "Wrap-up records the outcome; notes stay internal. hold/unresolved/resolved stop resolution, and pending resumes it. A customer message reopens unresolved work; a qualifying agent reply ends hold. A same-status save does not append history. Status changes mirror the latest session onto Conversation. Session merging is removed; status changes require status and optional reason.",
     "implementation": "server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts"
@@ -6290,7 +6506,7 @@
         "code": "export const assignSessionSchema = z\n  .strictObject({\n    assigneeType: z.enum(ASSIGNEE_TYPES).nullable(),\n    assigneeId: idSchema.optional(),\n  })\n  .refine(v => v.assigneeType === null || v.assigneeId !== undefined, {\n    message: 'assigneeId is required unless clearing the assignment (assigneeType: null)',\n  });"
       }
     ],
-    "handler": "router.patch(\n    '/:id/assignment',\n    authenticate,\n    authorize(...MANAGER_ROLES),\n    validateParams(sessionIdSchema),\n    validateBody(assignSessionSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const id = String(req.params.id ?? '');\n      // ensureVisibleSession already resolved (and access-checked) the brand \u2014 reuse it to validate\n      // the assignee below rather than fetching the brand a second time.\n      const { session, brand } = await ensureVisibleSession(id, req.user);\n      const choice = req.body as AssigneeChoice;\n      const updated = await routeSession(\n        session,\n        brand,\n        choice,\n        req.user as Express.User,\n        `${comingFrom} - PATCH /:id/assignment`\n      );\n      successResponse(res, {\n        data: updated,\n        message: choice.assigneeType === null ? 'Session unassigned' : 'Session assigned',\n      });\n    }\n  )",
+    "handler": "router.patch(\n    '/:id/assignment',\n    authenticate,\n    authorize(...MANAGER_ROLES),\n    validateParams(sessionIdSchema),\n    validateBody(assignSessionSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const id = String(req.params.id ?? '');\n      // ensureVisibleSession already resolved (and access-checked) the brand — reuse it to validate\n      // the assignee below rather than fetching the brand a second time.\n      const { session, brand } = await ensureVisibleSession(id, req.user);\n      const choice = req.body as AssigneeChoice;\n      const updated = await routeSession(\n        session,\n        brand,\n        choice,\n        req.user as Express.User,\n        `${comingFrom} - PATCH /:id/assignment`\n      );\n      successResponse(res, {\n        data: updated,\n        message: choice.assigneeType === null ? 'Session unassigned' : 'Session assigned',\n      });\n    }\n  )",
     "prerequisites": "Conversation and session. Tags need the brand vocabulary; assignees need eligible staff/departments. Status reporting requires manager access; SLA depends on settings.",
     "businessLogic": "Owners/admins route a non-resolved session or comment root after brand visibility and target validation. Conversation routes resolve the latest session; comment reply IDs resolve the thread root. A conditional open-only write prevents routing a query resolved concurrently. Update the conversation mirror where relevant and emit assignment:changed.",
     "implementation": "server/src/modules/session/api.ts; session/service.ts; session/status-log.ts; session/status-history.ts; session/sla.ts"
@@ -7187,7 +7403,7 @@
     ],
     "errors": [],
     "validation": [],
-    "handler": "expressApp.get('/health/queue', async (_req: Request, res: Response) => {\n    try {\n      const stats = await queueStats();\n      // A queue can be both; stalled wins because it is the more actionable of the two.\n      const stalled =\n        stats.oldestWaitingAgeSec !== null && stats.oldestWaitingAgeSec > QUEUE_STALL_AGE_SEC;\n      const flooded = stats.waiting > QUEUE_BACKLOG_LIMIT;\n\n      let status = 'ok';\n      if (stalled) status = 'stalled';\n      else if (flooded) status = 'flooded';\n\n      res.status(status === 'ok' ? 200 : 503).json({\n        status,\n        ...stats,\n        thresholds: { stallAgeSec: QUEUE_STALL_AGE_SEC, backlogLimit: QUEUE_BACKLOG_LIMIT },\n      });\n    } catch (error) {\n      // Its own state, never an empty queue \u2014 \"nothing waiting\" and \"cannot see it\" must differ.\n      logger.error('/health/queue: could not read queue stats', { error });\n      res.status(503).json({ status: 'unavailable' });\n    }\n  })",
+    "handler": "expressApp.get('/health/queue', async (_req: Request, res: Response) => {\n    try {\n      const stats = await queueStats();\n      // A queue can be both; stalled wins because it is the more actionable of the two.\n      const stalled =\n        stats.oldestWaitingAgeSec !== null && stats.oldestWaitingAgeSec > QUEUE_STALL_AGE_SEC;\n      const flooded = stats.waiting > QUEUE_BACKLOG_LIMIT;\n\n      let status = 'ok';\n      if (stalled) status = 'stalled';\n      else if (flooded) status = 'flooded';\n\n      res.status(status === 'ok' ? 200 : 503).json({\n        status,\n        ...stats,\n        thresholds: { stallAgeSec: QUEUE_STALL_AGE_SEC, backlogLimit: QUEUE_BACKLOG_LIMIT },\n      });\n    } catch (error) {\n      // Its own state, never an empty queue — \"nothing waiting\" and \"cannot see it\" must differ.\n      logger.error('/health/queue: could not read queue stats', { error });\n      res.status(503).json({ status: 'unavailable' });\n    }\n  })",
     "prerequisites": "No business record prerequisite. Learn MongoDB identities, references, indexes, response envelopes and API/worker health first.",
     "businessLogic": "A healthy request process is not evidence that queued work is being consumed. /health checks process dependencies; /health/queue reports stalled or flooded work.",
     "implementation": "server/src/routes.ts; server/src/libraries/db/index.ts; server/src/libraries/utils/sendResponse.ts"
@@ -7376,7 +7592,7 @@
       }
     ],
     "prerequisites": "Tenant-visible Team.",
-    "businessLogic": "Load a tenant-scoped team, then getTeamBrands queries same-company brands granted directly to the team or its department. Sort case-insensitively A\u2013Z and return each once with the applicable grants. Individual member grants are excluded.",
+    "businessLogic": "Load a tenant-scoped team, then getTeamBrands queries same-company brands granted directly to the team or its department. Sort case-insensitively A–Z and return each once with the applicable grants. Individual member grants are excluded.",
     "implementation": "server/src/modules/team/stats.ts:getTeamBrands",
     "source": "server/src/modules/team/api.ts:103",
     "handler": "router.get(\n    '/:id/brands',\n    authenticate,\n    authorize(...MANAGE_ROLES),\n    validateParams(teamIdParamsSchema),\n    logRequest({}),\n    async (req: Request, res: Response) => {\n      const team = await getById(String(req.params.id), getTenantScope(req.user));\n      if (!team) {\n        throw new NotFoundError(`${model} not found`, `${comingFrom} - GET /:id/brands`);\n      }\n      successResponse(res, { data: await getTeamBrands(team) });\n    }\n  )"

@@ -4,12 +4,12 @@ description: "Database first, then business requirements, prerequisites and code
 ---
 
 <Callout title="Current source snapshot">
-Based on Listenyzen revision `4f35c48`, inspected on 30 October 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 136 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
+Based on Listenyzen revision `4f35c48` plus the **uncommitted** overview-rollups work in its working tree, inspected on 1 November 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 139 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
 </Callout>
 
 ## 1. Understand the database before the endpoints
 
-Start with all 17 base collections: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File, Setting, and the derived QueryHandling and QueryTurn. SLA and business-hour settings share the Setting collection through discriminators. Status, assignment and wrap-up history are embedded in Session and Comment, not a separate collection.
+Start with all 17 base collections: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File, Setting, and the derived QueryHandling and QueryTurn. Six more collections hold the precalculated Overview figures and their run bookkeeping: OverviewDay, HandlerDay, RollupDay, RollupRun, RollupRunDay and RollupDirtyDay. SLA and business-hour settings share the Setting collection through discriminators. Status, assignment and wrap-up history are embedded in Session and Comment, not a separate collection.
 
 <Cards>
 <Card title="Entities, schemas & relationships" href="/docs/listenyzen/data-model">Read field types, defaults, references, indexes, embedded history and consistency boundaries.</Card>
@@ -45,6 +45,7 @@ Once company identity and brand access exist, settings, tags and reusable replie
 <Card title="Hold, reopen & history code" href="/docs/listenyzen/code-status">Status-write concurrency, reasons, automatic replies and manager reporting.</Card>
 <Card title="Settings & SLA code" href="/docs/listenyzen/code-sla">Historical policies, full pending-time accounting and guarded derived writes.</Card>
 <Card title="Handler performance" href="/docs/listenyzen/code-handling">Per-query-manager handled, first response and resolution rate, from stints to stored records, sync, retry and reads.</Card>
+<Card title="Overview rollups" href="/docs/listenyzen/code-rollups">Daily precalculated Overview figures: the nightly job, dirty days, the read path with live fallback and the super-admin controls.</Card>
 </Cards>
 
 ## 4. Use the endpoint contracts
@@ -52,7 +53,7 @@ Once company identity and brand access exist, settings, tags and reusable replie
 Every operation has an example request and response, access requirements, prerequisites, business context, validation declarations and handler code. Read the learning path first when a route depends on unfamiliar entities or workflows.
 
 <Cards>
-<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 138 operations, including session/comment history, the brand hold log, the Overview analytics reads and Team Performance.</Card>
+<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 141 operations, including session/comment history, the brand hold log, the Overview analytics reads, Team Performance and the super-admin rollup controls.</Card>
 <Card title="Development & repair" href="/docs/listenyzen/development">Configure the processes, understand backfills and check production index requirements.</Card>
 </Cards>
 
@@ -69,7 +70,16 @@ The manager-only History tabs and Admin hold log expose who changed status, when
 
 [Download the complete Markdown guide](/downloads/LISTENYZEN_BACKEND_ONBOARDING.md) · [Download the API reference](/downloads/LISTENYZEN_API_REFERENCE.md)
 
-## Updated in this snapshot (30 October)
+## Updated in this snapshot (1 November)
+
+- **Overview figures are precalculated.** Every Overview range figure is stored per brand × Asia/Dhaka day (`overviewdays`, `handlerdays`) and read from there. A finished day not yet stored is computed live, never shown as zero. Read [the walkthrough](/docs/listenyzen/code-rollups).
+- **Range figures run through yesterday.** Responses carry `asOf`, the last day included. The default range is the 30 days ending yesterday. The client drops "Today", caps the calendar at yesterday and shows "Data through `{day}`".
+- **A nightly job** on a new `overview-rollups` queue (00:30 Asia/Dhaka) recomputes the last 7 finished days of every active brand, plus **dirty days**: older days whose events moved or vanished (a reopened query, a deleted comment, an SLA or handling rewrite).
+- **Three super-admin routes** under `/api/v1/admin/overview-rollups` (`rebuild`, `runs`, `status`) and a client page at `/dashboard/system/rollups`.
+- New script `pnpm backfill:overview-rollups --apply`. Production needs the rollup indexes and a replica set (transactions). `/handlers` for a year dropped from 1.6 s to 46 ms in the source benchmark.
+- These changes are **uncommitted** in the Listenyzen repository at the time of inspection.
+
+## Updated in the 30 October snapshot
 
 - **Handler performance is live.** Two derived collections, `QueryHandling` (one record per query and query manager) and `QueryTurn` (one per customer turn), are rewritten by `syncQueryHandling` after every assignment, message, failed send and status change. Rules are H1–H14 and T1–T7. Read [the walkthrough](/docs/listenyzen/code-handling).
 - Two new manager-only reads: `/overview/handlers` (per query manager, team and department: handled, first-response mean, resolution rate) and `/overview/team` (queries closed by channel, on hold now, unanswered turns).

@@ -41,7 +41,7 @@ These are cumulative checks. A route-role check alone is never a replacement for
 
 | Role            | Intended/current capabilities                                                                                                                                                                    |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `super_admin`   | Cross-company administration; company CRUD; broad brand/staff/inbox access. Some `/me` company operations inherently require a company-bound identity.                                           |
+| `super_admin`   | Cross-company administration; company CRUD; broad brand/staff/inbox access; the only role for the Overview rollup controls (`/admin/overview-rollups`). Some `/me` company operations inherently require a company-bound identity.                                           |
 | `company_owner` | Manage own company staff/brands/departments; create/manage subordinate company admins and agents; settings/overview access.                                                                      |
 | `company_admin` | Manage brands/departments/agents within their company; cannot mutate owners or peer admins through the guarded user-management paths.                                                            |
 | `query_manager` | Work on visible brand inboxes/comments, use fixed replies and add/select tags; cannot curate tag renames/archives or administer SLA settings. Personal assignment is required for query mutations; own pools must be claimed first. |

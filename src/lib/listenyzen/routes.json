@@ -384,6 +384,18 @@
     "path": "/api/v1/brands/:brandId/overview/holds"
   },
   {
+    "method": "POST",
+    "path": "/api/v1/admin/overview-rollups/rebuild"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/overview-rollups/runs"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/overview-rollups/status"
+  },
+  {
     "method": "GET",
     "path": "/api/v1/query-managers"
   },

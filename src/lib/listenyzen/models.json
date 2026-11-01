@@ -1049,5 +1049,272 @@
       "Session",
       "Comment"
     ]
+  },
+  {
+    "name": "OverviewDay",
+    "source": "server/src/modules/overview/rollup/schema.ts",
+    "fields": [
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "day",
+        "type": "string"
+      },
+      {
+        "name": "platform",
+        "type": "ChannelPlatform"
+      },
+      {
+        "name": "source",
+        "type": "HandlingSource"
+      },
+      {
+        "name": "inbound",
+        "type": "number"
+      },
+      {
+        "name": "responded",
+        "type": "number"
+      },
+      {
+        "name": "firstResponse",
+        "type": "StoredDurations"
+      },
+      {
+        "name": "closed",
+        "type": "number"
+      },
+      {
+        "name": "resolution",
+        "type": "StoredDurations"
+      },
+      {
+        "name": "slaResolved",
+        "type": "SlaResolvedCounts"
+      },
+      {
+        "name": "slaCompliance",
+        "type": "SlaComplianceCounts"
+      },
+      {
+        "name": "peakHours",
+        "type": "number[]"
+      },
+      {
+        "name": "tags",
+        "type": "{ tagId: Types.ObjectId; count: number }[]"
+      },
+      {
+        "name": "sentiment",
+        "type": "{ value: string | null; count: number }[]"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "BrandTag",
+      "Session",
+      "Comment",
+      "Message",
+      "RollupDay"
+    ]
+  },
+  {
+    "name": "HandlerDay",
+    "source": "server/src/modules/overview/rollup/schema.ts",
+    "fields": [
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "day",
+        "type": "string"
+      },
+      {
+        "name": "platform",
+        "type": "ChannelPlatform"
+      },
+      {
+        "name": "source",
+        "type": "HandlingSource"
+      },
+      {
+        "name": "queryManagerId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "teamId",
+        "type": "Types.ObjectId | null"
+      },
+      {
+        "name": "handled",
+        "type": "number"
+      },
+      {
+        "name": "resolved",
+        "type": "number"
+      },
+      {
+        "name": "unresolved",
+        "type": "number"
+      },
+      {
+        "name": "firstResponseAnswered",
+        "type": "number"
+      },
+      {
+        "name": "firstResponseTotalMs",
+        "type": "number"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "User",
+      "Team",
+      "QueryHandling",
+      "RollupDay"
+    ]
+  },
+  {
+    "name": "RollupDay",
+    "source": "server/src/modules/overview/rollup/schema.ts",
+    "fields": [
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "day",
+        "type": "string"
+      },
+      {
+        "name": "computedAt",
+        "type": "Date"
+      },
+      {
+        "name": "runId?",
+        "type": "Types.ObjectId"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "RollupRun",
+      "OverviewDay",
+      "HandlerDay"
+    ]
+  },
+  {
+    "name": "RollupRun",
+    "source": "server/src/modules/overview/rollup/schema.ts",
+    "fields": [
+      {
+        "name": "source",
+        "type": "RollupRunSource"
+      },
+      {
+        "name": "triggeredBy?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "brandId?",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "from",
+        "type": "string"
+      },
+      {
+        "name": "to",
+        "type": "string"
+      },
+      {
+        "name": "total",
+        "type": "number"
+      },
+      {
+        "name": "completed",
+        "type": "number"
+      },
+      {
+        "name": "failed",
+        "type": "number"
+      },
+      {
+        "name": "failedDays",
+        "type": "{ brandId: Types.ObjectId; day: string; error: string }[]"
+      },
+      {
+        "name": "status",
+        "type": "RollupRunStatus"
+      },
+      {
+        "name": "error?",
+        "type": "string"
+      },
+      {
+        "name": "startedAt",
+        "type": "Date"
+      },
+      {
+        "name": "finishedAt?",
+        "type": "Date"
+      }
+    ],
+    "relations": [
+      "User",
+      "Brand",
+      "RollupRunDay",
+      "RollupDay"
+    ]
+  },
+  {
+    "name": "RollupRunDay",
+    "source": "server/src/modules/overview/rollup/schema.ts",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "day",
+        "type": "string"
+      },
+      {
+        "name": "outcome",
+        "type": "completed | failed"
+      }
+    ],
+    "relations": [
+      "RollupRun",
+      "Brand"
+    ]
+  },
+  {
+    "name": "RollupDirtyDay",
+    "source": "server/src/modules/overview/rollup/schema.ts",
+    "fields": [
+      {
+        "name": "brandId",
+        "type": "Types.ObjectId"
+      },
+      {
+        "name": "day",
+        "type": "string"
+      },
+      {
+        "name": "markedAt",
+        "type": "Date"
+      }
+    ],
+    "relations": [
+      "Brand",
+      "RollupDay"
+    ]
   }
 ]

@@ -9,7 +9,7 @@ Read [teams, routing and forwarding](/docs/listenyzen/code-assignment), [assignm
 
 Owners and admins need figures per query manager on Overview → Team Performance: queries handled, first response time and resolution rate. Sessions and customer-written comment threads are scored the same way. The escalation rate was dropped. The rules are H1–H14 and T1–T7 in the Listenyzen `docs/handler-performance-rules.md`, and each one has a named test in `server/test/handling-derive.test.ts`. That document replaces R11 ("no per-agent speed metric") in the resolution-time rules.
 
-Source snapshot: `4f35c48`, 30 October 2026. Examples are illustrative, not live responses.
+Source snapshot: `4f35c48`, 30 October 2026; the reads were revised for the uncommitted overview rollups inspected on 1 November 2026. Examples are illustrative, not live responses.
 
 ## Vocabulary
 
@@ -69,16 +69,16 @@ A sync costs about 9 serial round trips per event. The source notes this is acce
 
 ## Manager-only reads
 
-Both routes use `rangeQuerySchema`: paired `from`/`to` Asia/Dhaka dates (default 30 days, at most a year) and optional `platform`. Query managers receive 403.
+Both routes use `rangeQuerySchema`: paired `from`/`to` Asia/Dhaka dates (default: the 30 days ending yesterday, at most a year) and optional `platform`. Range figures run through yesterday, and both responses carry `asOf`. Query managers receive 403.
 
 | Endpoint | Returns |
 | --- | --- |
 | GET `/brands/:brandId/overview/handlers` | `{ range, rows, teams, departments, total }`. Each has `all`, `dm` and `comments`, each holding `{ handled, firstResponse: {answered, meanMs}, resolution: {resolved, unresolved, percent} }`. |
 | GET `/brands/:brandId/overview/team` | Queries closed in range (sessions, threads, by platform), on hold now, and unanswered turns ÷ turns started in range. |
 
-`getHandlerStats` (`overview/handlers.ts`) runs three hinted, covered reads grouped by (query manager, team, source), then folds them into rows and subtotals. A row shows the query manager's **current** team. Team subtotals use each record's own team, so someone who moved teams feeds both. Departments come through the team, because a team never changes department. Team-less records group under null and sort last.
+The three hinted, covered `QueryHandling` reads (by `handledAt`, `firstResponseAt`, `decidedAt`) now run in `overview/rollup/compute.ts`, grouped by day, and are stored as `handlerdays` rows by the nightly job. `getHandlerStats` (`overview/reads.ts`) sums the stored days in MongoDB per (query manager, team, source), computes any unstored day live, and `handlerStatsFromCells` (`overview/handlers.ts`) folds the groups into rows and subtotals ([rollups](/docs/listenyzen/code-rollups)). A row shows the query manager's **current** team. Team subtotals use each record's own team, so someone who moved teams feeds both. Departments come through the team, because a team never changes department. Team-less records group under null and sort last.
 
-The read returns counts and a sum for the mean only, with no percentiles or turn response times. Dropping them took a year on 1M records from 6.1 s to 1.1 s. Turn records still store their response times for a later per-handler view, which will need its own index.
+The read returns counts and a sum for the mean only, with no percentiles or turn response times. Dropping them took a year on 1M records from 6.1 s to 1.1 s; reading stored rollups took it to 46 ms (source benchmark). On `/team`, queries closed come from the rollups while on hold and unanswered turns stay live; unanswered turns are now the slowest part, at about 570 ms for a year. Turn records still store their response times for a later per-handler view, which will need its own index.
 
 ```json title="Illustrative /handlers row"
 {
@@ -99,7 +99,8 @@ The full `/handlers` and `/team` examples, validation and handler code are in [t
 ## Repair and operations
 
 - `pnpm backfill:query-handling` (dry run) / `--apply`, run from the Listenyzen `server/` directory. It runs the same sync on every session and comment root, then removes records whose query no longer exists. It recomputes everything under the current rules, so run it after changing what the derivation computes. A run that stops partway starts over. Log entries from before membership stamping fall back to the current team (development data only).
-- `pnpm bench:team-performance` times these reads on a seeded, throwaway `mongod` (1M records).
+- `pnpm bench:team-performance` times these reads, live and with stored rollups, on a seeded throwaway replica set (1M records).
+- After `backfill:query-handling`, run `pnpm backfill:overview-rollups --apply`: the handling backfill writes without dirty marks, so stored `handlerdays` would otherwise keep the old figures.
 - Production (`autoIndex` off): build the unique `queryhandlings {source, queryId, queryManagerId}` index first, since the sync's write guard depends on it. Then build its three covering range indexes and `queryturns` unique `{source, queryId, startedAt}` plus `{brandId, startedAt, …}`. The reads are hinted, so a missing index makes them fail with 500. See [development](/docs/listenyzen/development).
 
 ## Follow the response into the interface

@@ -114,3 +114,7 @@ YouTube teaching docs site (presentation alternative). Next.js 16 + Fumadocs 16,
 - v1 (2026-09-30): single fundamentals lesson, bookstore domain.
 - v2 (2026-09-30): owner rewrote prose (মাসুদ example, online bookshop DBMS walkthrough).
 - v3 (2026-10-03): split into 5 foundation lessons per owner outline; domain → online shop. Owner's v2 draft backed up in session scratchpad only.
+
+### Listenyzen docs (`content/docs/listenyzen/`, `src/lib/listenyzen/*.json`, downloads via `scripts/sync-listenyzen-downloads.mjs`)
+- v1–v6 (2026-10-15 → 2026-10-30): see git log (`Update Listenyzen docs to revision …`); last at `4f35c48`.
+- v7 (2026-11-01): **Overview rollups**, a full re-inspection against `4f35c48` plus the Listenyzen **uncommitted** working tree. New `code-rollups.mdx`. The 13 overview contracts were rewritten (`asOf`, clamp to yesterday, per-endpoint business logic, re-extracted handlers and lines). Added the 3 `/admin/overview-rollups` routes (139 ops + 2 health), 6 rollup models, and edits to 13 pages. Mechanical check (handlers, validation, code tours, model sources vs source): 0 drift. Only false positives remain: loop-generated comment log routes and `expressApp` health routes. Re-stamp the revision once Listenyzen commits the rollup work (update `index.mdx`, `api-reference.mdx`, the sync script header strings, then run the sync).

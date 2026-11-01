@@ -588,9 +588,9 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 **Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
 
-**Business rule and implementation:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.
+**Business rule and implementation:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Range figures are precalculated per Asia/Dhaka day by a nightly worker job and run through yesterday (`asOf` in each response); a day not yet stored is computed live. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows. A super admin can rebuild stored days and watch the nightly run.
 
-**Read the code:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`.
+**Read the code:** `server/src/modules/overview/api.ts; overview/reads.ts; overview/rollup/; overview/service.ts; overview/holds.ts; modules/settings/service.ts`. Walkthrough: [Overview rollups](/docs/listenyzen/code-rollups).
 
 ### Example input and output
 
@@ -648,6 +648,9 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=
 | GET | `/api/v1/brands/:brandId/overview/team` |
 | GET | `/api/v1/brands/:brandId/overview/sla-compliance` |
 | GET | `/api/v1/brands/:brandId/overview/holds` |
+| POST | `/api/v1/admin/overview-rollups/rebuild` |
+| GET | `/api/v1/admin/overview-rollups/runs` |
+| GET | `/api/v1/admin/overview-rollups/status` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 

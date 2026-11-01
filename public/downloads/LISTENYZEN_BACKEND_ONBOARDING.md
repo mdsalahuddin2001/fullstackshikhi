@@ -1,6 +1,6 @@
 # Listenyzen backend — database-first learning guide
 
-Inspected 30 October 2026 at source revision `4f35c48`. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
+Inspected 1 November 2026 at source revision `4f35c48` plus the uncommitted overview-rollups working tree. Source-derived examples; no live API or database verification. Source paths refer to the Listenyzen repository.
 
 # Data models & relationships
 *Interactive illustration available in the website chapter.*
@@ -8,7 +8,7 @@ Inspected 30 October 2026 at source revision `4f35c48`. Source-derived examples;
 
 ## Persistence fundamentals
 
-Mongoose models live beside features. There are **16 base domain models**: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File, and the derived QueryHandling and QueryTurn, plus **Setting** with two discriminator models. In total this is **17 base collections**, with SLA/business-hours discriminators sharing the Setting collection.
+Mongoose models live beside features. There are **16 base domain models**: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File, and the derived QueryHandling and QueryTurn, plus **Setting** with two discriminator models. In total this is **17 base collections**, with SLA/business-hours discriminators sharing the Setting collection. Six further **rollup collections** hold precalculated Overview figures and their run bookkeeping (`overview/rollup/schema.ts`); they are derived and can always be rebuilt.
 
 ObjectId references are application links, not relational foreign-key constraints. Mongoose `ref` enables population; it does not enforce existence, company membership, cascading deletion, or relationship cardinality. Several references are deliberately polymorphic or use external string IDs.
 
@@ -284,6 +284,18 @@ The embedded entries have no `_id`. The chronological log records real transitio
 
 Both Session and Comment add `(brandId, statusChangedAt)` indexes for hold-log reads. Schema declarations do not establish that those indexes have been created in production. The hold-log service derives rows from these documents, so deleting a thread removes its history from that view.
 
+### Overview rollups (derived)
+
+Source: `server/src/modules/overview/rollup/schema.ts`. Every row is written by `storeDays`, a whole brand-day at a time in one transaction, so MongoDB must be a replica set. `day` is a `YYYY-MM-DD` string in Asia/Dhaka. Rebuild with `pnpm backfill:overview-rollups --apply` or a super-admin rebuild. See [the rollup walkthrough](/docs/listenyzen/code-rollups).
+
+- `OverviewDay` (`overviewdays`): one row per `{brandId, day, platform, source}` (unique), `source` = `session | comment`. Counts `inbound`, `responded`, `closed`; duration buckets `firstResponse` and `resolution` (`{ business, wall }`, each `{ bucket, count, sum, min }[]`); `slaCompliance` (met/breached per metric); `slaResolved` (`frResolved`, `frBreachedResolved`, `resResolved`, `resBreachedResolved`); `peakHours` (24 numbers); `tags` (`{ tagId, count }[]`); `sentiment` (`{ value, count }[]`, `null` = not set). A row exists only when some figure is non-zero.
+- `HandlerDay` (`handlerdays`): one row per `{brandId, day, platform, source, queryManagerId, teamId}` (unique; `teamId` null when the record had none). `handled`, `resolved`, `unresolved`, `firstResponseAnswered`, `firstResponseTotalMs`.
+- `RollupDay` (`rollupdays`): unique `{brandId, day}`, `computedAt`, `runId?`. The marker that a day is stored: a quiet day has a marker and no rows. Reads compute any day without one live.
+- `RollupRun` (`rollupruns`): `source` (`nightly | manual`), `triggeredBy?`, `brandId?`, `from`, `to`, `total`, `completed`, `failed`, `failedDays[]` (first 100), `status` (`running | done | partial | failed`), `error?`, `startedAt`, `finishedAt?`.
+- `RollupRunDay` (`rolluprundays`): unique `{runId, brandId, day}` with `outcome` (`completed | failed`), so a job that runs twice counts once.
+- `RollupDirtyDay` (`rollupdirtydays`): unique `{brandId, day}`, `markedAt`. Older days whose events moved or vanished, recomputed by the next nightly run.
+- All six set `versionKey: false` and have no `createdAt` / `updatedAt`.
+
 Message adds optional `isAutomatic: boolean`, with no default. It marks an actual automatic outgoing reply and is distinct from `system`, which marks an internal informational notice. First-response calculation and hold-ending rules ignore automatic replies.
 
 ## Index strategy
@@ -298,14 +310,15 @@ Message adds optional `isAutomatic: boolean`, with no default. It marks an actua
 | Conversation     | Unique page+participant; brand+lastMessageAt+\_id cursor order; compound platform/status/sentiment/tag variants; partial assignee index.                        |
 | QueryHandling    | Unique source+query+query manager (the sync's write guard); three covering, partially filtered range indexes by handledAt, decidedAt and firstResponseAt (hinted). |
 | QueryTurn        | Unique source+query+startedAt; covering brand+startedAt+platform+answeredAt (hinted). |
+| Overview rollups | Unique overviewdays brand+day+platform+source; unique handlerdays brand+day+platform+source+query manager+team; unique rollupdays, rollupdirtydays brand+day (+ dirty `{day: 1}`); unique rolluprundays run+brand+day; rollupruns startedAt, source+startedAt and the partial unique `one_running_manual_run_per_scope`. The worker runs no rollups while a unique one is missing. |
 | Message          | Sparse unique provider mid; conversation+sentAt, session+sentAt, individual reference indexes; partial brand+sentAt on `direction: 'incoming'` (peak hours).    |
 | Session          | Conversation+startedAt+\_id; conversation/brand+lastActivityAt+\_id; brand+status+resolvedAt; brand+firstCustomerMessageAt; partial assignee index; brand+tags; brand+status+resolvedAt+platform (hinted, replaces brand+status+resolvedAt); conversation+firstCustomerMessageAt (new vs returning); partial brand+SLA-decision field ×4. |
-| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes; brand+platform+commentedAt (replaces brand+commentedAt); partial brand+resolvedAt+platform on resolved customer roots (Team Performance); partial brand+SLA-decision field ×4. |
+| Comment          | Sparse unique provider commentId; brand+post+parent+commentedAt+\_id traversal; brand+lastActivityAt+\_id; status/resolvedAt and assignment-oriented indexes; brand+platform+commentedAt (replaces brand+commentedAt); partial brand+resolvedAt+platform on resolved customer roots (no longer read since the rollups; to be dropped at pre-production index pruning); partial brand+SLA-decision field ×4. |
 | SessionNote      | Session+createdAt and reference indexes.                                                                                                                        |
 | Setting          | Unique scope+scopeId+type+version for history/concurrent-save protection.                                                                                       |
 | File             | Unique key; uploadedBy and createdAt indexes.                                                                                                                   |
 
-Overview range reads `.hint()` the indexes named in `server/src/modules/overview/indexes.ts`; `server/test/overview-indexes.test.ts` fails if a hint stops matching a schema index. A hinted index missing in production makes that read fail, not just run slowly.
+The rollup computation (`overview/rollup/compute.ts`) and the live "now" reads `.hint()` the indexes named in `server/src/modules/overview/indexes.ts`; `server/test/overview-indexes.test.ts` fails if a hint stops matching a schema index. A hinted index missing in production makes that read fail, not just run slowly.
 
 The schema files remain the exact index definitions. The cursor-index maintenance script creates a **selected** set of indexes, not every schema index. MongoDB production startup will not automatically create the rest.
 
@@ -914,9 +927,9 @@ Use the endpoint explorer’s **Business logic** tab for prerequisites and imple
 
 **Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
 
-**Business rule and implementation:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.
+**Business rule and implementation:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Range figures are precalculated per Asia/Dhaka day by a nightly worker job and run through yesterday (`asOf` in each response); a day not yet stored is computed live. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows. A super admin can rebuild stored days and watch the nightly run.
 
-**Read the code:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`.
+**Read the code:** `server/src/modules/overview/api.ts; overview/reads.ts; overview/rollup/; overview/service.ts; overview/holds.ts; modules/settings/service.ts`. Walkthrough: [Overview rollups](/docs/listenyzen/code-rollups).
 
 ### Example input and output
 
@@ -974,6 +987,9 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=
 | GET | `/api/v1/brands/:brandId/overview/team` |
 | GET | `/api/v1/brands/:brandId/overview/sla-compliance` |
 | GET | `/api/v1/brands/:brandId/overview/holds` |
+| POST | `/api/v1/admin/overview-rollups/rebuild` |
+| GET | `/api/v1/admin/overview-rollups/runs` |
+| GET | `/api/v1/admin/overview-rollups/status` |
 
 Use the endpoint explorer’s **Business logic** tab for prerequisites and implementation entry points, then **Validation** and **Handler code** to follow the individual operation.
 
@@ -1005,7 +1021,7 @@ Read the code in dependency order, then trace a few complete workflows. Start wi
 
 This is a study order, not the order in which code executes. For example, schemas are easiest to understand first, but an HTTP request starts in middleware. Provider ingestion creates inbox records at runtime; studying the storage services first makes the provider adapters easier to follow.
 
-Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `4f35c48` snapshot. Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
+Paths below are relative to the **Listenyzen repository**, not this documentation site. The map follows the documented `4f35c48` snapshot plus the uncommitted overview-rollups work (1 November). Use [the database chapter](/docs/listenyzen/data-model) alongside the source and [the business learning path](/docs/listenyzen/learning-path) for endpoint examples.
 
 ## How to read each module
 
@@ -1163,11 +1179,12 @@ Read in this order:
 2. `server/src/modules/settings/service.ts` — revisit historical policy selection.
 3. `server/src/modules/session/sla.ts` — start timestamp, qualifying response, status intervals and guarded writes.
 4. `server/src/modules/comment/sla.ts` — adapt the same rules to a comment root and its descendants.
-5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts`, `customers.ts`, `peak-hours.ts`, `handlers.ts`, `team.ts`, `durations.ts`, `indexes.ts`, then `server/src/modules/handling/` (`derive.ts`, `sync.ts`, `schema.ts`) — consume stored state and histories to build reports; `indexes.ts` names the index each range read hints.
+5. `server/src/modules/overview/validation.ts`, `api.ts`, `service.ts`, `holds.ts`, `customers.ts`, `peak-hours.ts`, `handlers.ts`, `team.ts`, `durations.ts`, `indexes.ts`, then `server/src/modules/handling/` (`derive.ts`, `sync.ts`, `schema.ts`) — consume stored state and histories to build reports; `indexes.ts` names the index each source read hints.
+6. `server/src/modules/overview/reads.ts`, then `rollup/` in this order: `schema.ts`, `compute.ts` (the only source read for range figures), `figures.ts`, `store.ts`, `read.ts`, `dirty.ts`, `jobs.ts`, `api.ts`. Then `server/src/libraries/queue/index.ts` (named queues, `scheduleRepeating`) and `server/src/worker.ts` (`startRollups`).
 
-Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts`, `overview-sla-compliance.test.ts`, `overview-first-response.test.ts`, `overview-resolution-time.test.ts`, `overview-customers.test.ts`, `overview-peak-hours.test.ts`, `overview-handlers.test.ts`, `overview-team.test.ts`, `handling-derive.test.ts` (named by rule IDs H1–H14 and T1–T7), `handling-sync.test.ts`, `backfill-query-handling.test.ts` and `overview-indexes.test.ts`.
+Read `server/test/business-time.test.ts`, `session-sla.test.ts`, `comment-sla.test.ts`, `overview-holds.test.ts`, `overview-sla-compliance.test.ts`, `overview-first-response.test.ts`, `overview-resolution-time.test.ts`, `overview-customers.test.ts`, `overview-peak-hours.test.ts`, `overview-handlers.test.ts`, `overview-team.test.ts`, `handling-derive.test.ts` (named by rule IDs H1–H14 and T1–T7), `handling-sync.test.ts`, `backfill-query-handling.test.ts`, `overview-indexes.test.ts`, then `overview-rollup.test.ts` (live = stored = mixed), `overview-rollup-jobs.test.ts`, `overview-rollup-admin.test.ts` and `test/support/overview-indexes.ts`.
 
-**Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection. See [the SLA walkthrough](/docs/listenyzen/code-sla).
+**Checkpoint:** work out a small timeline by hand, then explain usedMs, waitingSince, dueAt and statusChangesSeen. Distinguish a stopped resolution clock from a running first-response clock. Explain why the hold log is a derived view rather than a separate collection, and why a resolved query reopened 10 days later needs a dirty day while one reopened tomorrow does not. See [Overview rollups](/docs/listenyzen/code-rollups). See [the SLA walkthrough](/docs/listenyzen/code-sla).
 
 ## 10. Connect providers to the domain you already know
 
@@ -1204,6 +1221,8 @@ For each screen, read **page → feature API hook → backend route → response
 | Assignment | `client/src/features/inbox/assignment-card.tsx`, `claim-button.tsx`, `reply-access.ts` | Claim/routing endpoints and the server's action guard. |
 | Comments | `client/src/pages/comments/components/comment-thread.tsx` | `client/src/features/comments/api.ts` and Comment routes. |
 | History and reporting | `client/src/features/status-history/api.ts`, `client/src/pages/admin/hold-log.tsx` | Status-log and overview/holds endpoints. |
+| Overview range filter | `client/src/features/overview/filters.ts`, `client/src/pages/overview/components/overview-filter.tsx`, `blocks.tsx` | Presets ending yesterday, "Data through", and the `from`/`to` every range read takes. |
+| Overview figures (super admin) | `client/src/pages/system/rollups.tsx` | `client/src/features/rollups/api.ts` and `/admin/overview-rollups`. |
 
 Finally connect realtime: `server/src/libraries/socket/index.ts` and `emit.ts` → `client/src/lib/socket.ts` → `client/src/features/inbox/use-inbox-realtime.ts` and `client/src/features/comments/use-comments-realtime.ts`. Follow which event changes cached data and which triggers a refetch.
 
@@ -1213,7 +1232,7 @@ Finally connect realtime: `server/src/libraries/socket/index.ts` and `emit.ts` �
 
 Read `DEPLOY.md`, `RELEASE.md`, root `docker-compose.yml`, `docker-compose.prod.yml` and `docker-bake.hcl`. Return to startup/shutdown, logging, Redis, queue and health libraries with those deployment boundaries in mind.
 
-Read `server/scripts/dev/backfill-default-teams.ts`, `backfill-session-sla.ts` and `backfill-comment-sla.ts` as code, then their relevant tests. Understand the migration before considering execution; a study session does not require writing to a database. The [development chapter](/docs/listenyzen/development) explains the operational context.
+Read `server/scripts/dev/backfill-default-teams.ts`, `backfill-session-sla.ts`, `backfill-comment-sla.ts`, `backfill-query-handling.ts` and `backfill-overview-rollups.ts` as code, then their relevant tests. Understand the migration before considering execution; a study session does not require writing to a database. The [development chapter](/docs/listenyzen/development) explains the operational context.
 
 For complete coverage, now revisit each feature directory's remaining files and the remaining tests. On the client, use router.tsx to enumerate screens, then follow each screen's imports into feature hooks, components and utilities. Read reusable visual components after you understand the screens that use them. Separate fixtures/mock data from live API wiring.
 
@@ -1316,9 +1335,9 @@ flowchart LR
 ```
 
 - **API:** `src/app.ts` connects MongoDB, builds Express, and delegates HTTP/realtime startup to `src/server.ts`.
-- **Worker:** `src/worker.ts` independently connects MongoDB, configures a Redis socket emitter, registers webhook handlers and the `handling-sync` retry handler, and starts BullMQ. It has no HTTP listener.
-- **Redis:** durable webhook work plus cross-process realtime transport. It is not an HTTP session store; application authentication uses JWTs.
-- **MongoDB:** persistent domain records. API and worker share the database.
+- **Worker:** `src/worker.ts` independently connects MongoDB, configures a Redis socket emitter, registers webhook handlers and the `handling-sync` retry handler, and starts BullMQ on the `webhooks` queue. It also starts a second consumer on the `overview-rollups` queue (concurrency 2) and upserts the nightly rollup schedule, once the rollup indexes exist; until then it retries every 5 minutes without affecting webhooks. It has no HTTP listener.
+- **Redis:** durable webhook work, Overview rollup jobs and their nightly schedule, plus cross-process realtime transport. It is not an HTTP session store; application authentication uses JWTs.
+- **MongoDB:** persistent domain records and the precalculated Overview rollups. API and worker share the database. Rollup writes use transactions, so MongoDB must run as a replica set.
 - **Meta:** Facebook Page/Messenger, Instagram through two login paths, and WhatsApp Cloud API. `FACEBOOK_GRAPH_VERSION` defaults to `v25.0` in this checkout; that is a code default, not a statement about the provider's current preferred version.
 - **S3-compatible storage:** AWS S3 or an endpoint such as R2; credentials are application-level. Public media URLs are optional; private reads use presigned URLs.
 - **Local uploads:** brand/company logos and user avatars. Public `/uploads` URLs are built with `BASE_URL`.
@@ -1401,7 +1420,7 @@ No active cron directory/scheduler was found under `server/src`, despite referen
 | `comment`       | Public thread reconstruction, replies, moderation, tags, assignment, wrap-up and SLA.                                                    |
 | `fixed-reply`   | Brand-specific reusable reply title/body records.                                                                                        |
 | `settings`      | Versioned SLA/business-hours values, defaults, validation and history.                                                                   |
-| `overview`      | Aggregated current workload, engagement, trends and SLA statistics.                                                                      |
+| `overview`      | Current workload plus engagement, trend, SLA and team figures read from daily rollups (`overview/rollup/`), with the nightly rollup jobs. |
 | `webhook`       | Signed ingress and queued Facebook/Instagram/WhatsApp event processing.                                                                  |
 | `file`          | Generic S3 upload/metadata endpoints; has important access-control exceptions described below.                                           |
 
@@ -1469,7 +1488,8 @@ All paths below have `/api/v1` prepended, except health and uploads. The complet
 | `/brands`                         | CRUD, department/team/agent grants, tags, channel connection, template administration.                                          |
 | `/brands/:brandId/fixed-replies`  | Reusable reply CRUD.                                                                                                           |
 | `/brands/:brandId/settings`       | Get/save `sla` and `business-hours`; per-type history.                                                                         |
-| `/brands/:brandId/overview`       | `stats`, `sla`, `engagement`, `inbound-trend`, `sla-compliance`.                                                               |
+| `/brands/:brandId/overview`       | `stats`, `sla`, `engagement`, `inbound-trend`, `sla-compliance`, `first-response`, `resolution-time`, `customers`, `customer-trend`, `peak-hours`, `handlers`, `team`, `holds`. |
+| `/admin/overview-rollups`         | Super-admin `rebuild`, `runs` and `status` for the precalculated Overview figures.                                              |
 | `/conversations`                  | Cursor inbox list, thread messages/session groups/stats, customer details, send/upload/react, media retrieval, template sends. |
 | `/sessions`                       | Session listing/detail, status/sentiment/wrap-up, assignees, assignment, tags and notes.                                       |
 | `/comments`                       | Root-thread list, post grouping, detail, replies, assignment, tags, wrap-up, hide/like/delete.                                 |
@@ -1519,7 +1539,7 @@ These are cumulative checks. A route-role check alone is never a replacement for
 
 | Role            | Intended/current capabilities                                                                                                                                                                    |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `super_admin`   | Cross-company administration; company CRUD; broad brand/staff/inbox access. Some `/me` company operations inherently require a company-bound identity.                                           |
+| `super_admin`   | Cross-company administration; company CRUD; broad brand/staff/inbox access; the only role for the Overview rollup controls (`/admin/overview-rollups`). Some `/me` company operations inherently require a company-bound identity.                                           |
 | `company_owner` | Manage own company staff/brands/departments; create/manage subordinate company admins and agents; settings/overview access.                                                                      |
 | `company_admin` | Manage brands/departments/agents within their company; cannot mutate owners or peer admins through the guarded user-management paths.                                                            |
 | `query_manager` | Work on visible brand inboxes/comments, use fixed replies and add/select tags; cannot curate tag renames/archives or administer SLA settings. Personal assignment is required for query mutations; own pools must be claimed first. |
@@ -1610,7 +1630,7 @@ Health endpoints:
 | Endpoint            | Meaning                                                                                                                                            |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /health`       | Reports Mongo, Redis and realtime state. HTTP 200 depends on Mongo being connected; Redis/realtime failure can return 200 with `status: degraded`. |
-| `GET /health/queue` | Queue waiting/active/delayed/failed counts and oldest waiting age. 503 for waiting age >300 seconds, backlog >5,000, or unavailable stats.         |
+| `GET /health/queue` | `webhooks` queue waiting/active/delayed/failed counts and oldest waiting age. 503 for waiting age >300 seconds, backlog >5,000, or unavailable stats. The `overview-rollups` queue is not included. |
 
 A failed-job count alone does not flip queue status. Healthy API status does not prove a worker exists. The worker has no HTTP health route; inspect its heartbeat/logs and actual queue progress.
 
@@ -2207,7 +2227,7 @@ sequenceDiagram
     API-->>Agent: Brand room event
 ```
 
-- Queue name: `webhooks`; topics: `fb-entry`, `wa-entry`.
+- Queue name: `webhooks`; topics: `fb-entry`, `wa-entry` (and `handling-sync` retries). Overview rollups use a separate `overview-rollups` queue with its own worker, so a long rebuild never delays an incoming message.
 - API acknowledges only after enqueue succeeds. Enqueue failure returns 500; invalid signature returns 403. Unsupported top-level webhook object types are acknowledged without processing.
 - Producer timeout is two seconds. Failures reset its connection so delayed buffered writes do not silently outlive the expected request path.
 - Worker default concurrency is 5 (`QUEUE_CONCURRENCY`). Each entry can contain several events; processing attempts events, records failures, then throws if any failed so the entry can be retried.
@@ -2299,6 +2319,8 @@ Actual status transitions append an embedded log entry; same-status saves keep t
 
 The UI mixes live API-backed metrics with illustrative data; not every visible chart has a complete backend implementation.
 
+Range figures are **precalculated per Asia/Dhaka day** and run **through yesterday**: each range response carries `asOf`, and the default range is the 30 days ending yesterday. "Now" figures (open, unassigned, at risk now, backlog, on hold) stay live and ignore the range. Distinct-customer counts and unanswered turns are read live over the finished days. See [Overview rollups](/docs/listenyzen/code-rollups).
+
 - `/stats`: pending sessions now; unassigned means no assignee (a department assignment counts as assigned).
 - `/sla`: at-risk/breached current targets; open set includes pending, unresolved and hold. Sessions and comments can be requested separately.
 - `/engagement`: inbound counts use first customer message for sessions and customer-authored comment roots in the selected range; response rates use firstResponseAt. Current unresolved backlog includes pending+unresolved, excluding hold.
@@ -2315,7 +2337,7 @@ The UI mixes live API-backed metrics with illustrative data; not every visible c
 
 Percentiles come from database buckets (minutes below a day, hours past it): means are exact, and a percentile is its bucket's smallest value. Items without stored SLA milliseconds count in the wall clock only until the SLA backfills run.
 
-Use `server/src/modules/overview/service.ts` and its date-boundary helpers when modifying reporting. Similar-looking metrics intentionally use different open/closed sets.
+When modifying a range figure, change `server/src/modules/overview/rollup/compute.ts` (the only source read) and the endpoint's finisher, then rebuild the stored days (`pnpm backfill:overview-rollups --apply` in development). Similar-looking metrics intentionally use different open/closed sets. Figures filed under the opening day (response rate, first response, tags, sentiment) freeze once that day leaves the 7-day nightly window.
 
 ## Media and WhatsApp templates
 
@@ -2336,7 +2358,7 @@ Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `
 
 The API emits through Socket.IO; worker operations emit through Redis. `emitToRoom` selects the available transport and skips with a debug log if neither exists. Persistence can therefore succeed without a live event. Client consumers live in `features/inbox/use-inbox-realtime.ts`, `features/comments/use-comments-realtime.ts` and associated cache helpers.
 
-Active background work is the BullMQ consumer (webhook jobs, plus `handling-sync` retries of failed handler-performance syncs) and process heartbeat intervals. No active general-purpose cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
+Active background work is the BullMQ consumers (webhook jobs, `handling-sync` retries of failed handler-performance syncs, and Overview rollup jobs), one BullMQ job scheduler (`overview-rollup-nightly`, 00:30 Asia/Dhaka) and process heartbeat intervals. No other cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
 
 ---
 
@@ -2832,7 +2854,7 @@ See [development](/docs/listenyzen/development) for the dry-run default-team mig
 
 A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
 
-Source snapshot: `4f35c48`, 30 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+Source snapshot: `4f35c48`, 30 October 2026; the hold-log default range was rechecked against the uncommitted overview-rollups work on 1 November 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
 
 ## One writer for both kinds of query
 
@@ -2929,7 +2951,7 @@ No log returns an empty array. An unknown actor is null; a deleted account is an
 
 Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17&source=sessions`. This uses the same manager roles and resolves a visible brand before calling `overview/holds.ts:listHolds`.
 
-1. Convert inclusive Asia/Dhaka dates to a start-inclusive/end-exclusive time range. Both dates or neither are required; default is the last 30 days, maximum range one year.
+1. Convert inclusive Asia/Dhaka dates to a start-inclusive/end-exclusive time range. Both dates or neither are required; default is the 30 days ending yesterday, maximum range one year. Unlike the other Overview reads, the hold log is not rolled up and not clamped: a range ending today is read as sent.
 2. Read candidate sessions and comment roots, selecting status history. Optional source is sessions or comments; omission combines both. There is no platform filter here.
 3. Pair each hold entry with its next transition (or now if still held). Keep holds that overlap the range, including ones that started before it.
 4. Sort newest hold first and keep at most 1,000 rows. There is no continuation cursor or truncation flag.
@@ -3379,7 +3401,7 @@ Read [teams, routing and forwarding](/docs/listenyzen/code-assignment), [assignm
 
 Owners and admins need figures per query manager on Overview → Team Performance: queries handled, first response time and resolution rate. Sessions and customer-written comment threads are scored the same way. The escalation rate was dropped. The rules are H1–H14 and T1–T7 in the Listenyzen `docs/handler-performance-rules.md`, and each one has a named test in `server/test/handling-derive.test.ts`. That document replaces R11 ("no per-agent speed metric") in the resolution-time rules.
 
-Source snapshot: `4f35c48`, 30 October 2026. Examples are illustrative, not live responses.
+Source snapshot: `4f35c48`, 30 October 2026; the reads were revised for the uncommitted overview rollups inspected on 1 November 2026. Examples are illustrative, not live responses.
 
 ## Vocabulary
 
@@ -3439,16 +3461,16 @@ A sync costs about 9 serial round trips per event. The source notes this is acce
 
 ## Manager-only reads
 
-Both routes use `rangeQuerySchema`: paired `from`/`to` Asia/Dhaka dates (default 30 days, at most a year) and optional `platform`. Query managers receive 403.
+Both routes use `rangeQuerySchema`: paired `from`/`to` Asia/Dhaka dates (default: the 30 days ending yesterday, at most a year) and optional `platform`. Range figures run through yesterday, and both responses carry `asOf`. Query managers receive 403.
 
 | Endpoint | Returns |
 | --- | --- |
 | GET `/brands/:brandId/overview/handlers` | `{ range, rows, teams, departments, total }`. Each has `all`, `dm` and `comments`, each holding `{ handled, firstResponse: {answered, meanMs}, resolution: {resolved, unresolved, percent} }`. |
 | GET `/brands/:brandId/overview/team` | Queries closed in range (sessions, threads, by platform), on hold now, and unanswered turns ÷ turns started in range. |
 
-`getHandlerStats` (`overview/handlers.ts`) runs three hinted, covered reads grouped by (query manager, team, source), then folds them into rows and subtotals. A row shows the query manager's **current** team. Team subtotals use each record's own team, so someone who moved teams feeds both. Departments come through the team, because a team never changes department. Team-less records group under null and sort last.
+The three hinted, covered `QueryHandling` reads (by `handledAt`, `firstResponseAt`, `decidedAt`) now run in `overview/rollup/compute.ts`, grouped by day, and are stored as `handlerdays` rows by the nightly job. `getHandlerStats` (`overview/reads.ts`) sums the stored days in MongoDB per (query manager, team, source), computes any unstored day live, and `handlerStatsFromCells` (`overview/handlers.ts`) folds the groups into rows and subtotals ([rollups](/docs/listenyzen/code-rollups)). A row shows the query manager's **current** team. Team subtotals use each record's own team, so someone who moved teams feeds both. Departments come through the team, because a team never changes department. Team-less records group under null and sort last.
 
-The read returns counts and a sum for the mean only, with no percentiles or turn response times. Dropping them took a year on 1M records from 6.1 s to 1.1 s. Turn records still store their response times for a later per-handler view, which will need its own index.
+The read returns counts and a sum for the mean only, with no percentiles or turn response times. Dropping them took a year on 1M records from 6.1 s to 1.1 s; reading stored rollups took it to 46 ms (source benchmark). On `/team`, queries closed come from the rollups while on hold and unanswered turns stay live; unanswered turns are now the slowest part, at about 570 ms for a year. Turn records still store their response times for a later per-handler view, which will need its own index.
 
 ```json title="Illustrative /handlers row"
 {
@@ -3469,7 +3491,8 @@ The full `/handlers` and `/team` examples, validation and handler code are in [t
 ## Repair and operations
 
 - `pnpm backfill:query-handling` (dry run) / `--apply`, run from the Listenyzen `server/` directory. It runs the same sync on every session and comment root, then removes records whose query no longer exists. It recomputes everything under the current rules, so run it after changing what the derivation computes. A run that stops partway starts over. Log entries from before membership stamping fall back to the current team (development data only).
-- `pnpm bench:team-performance` times these reads on a seeded, throwaway `mongod` (1M records).
+- `pnpm bench:team-performance` times these reads, live and with stored rollups, on a seeded throwaway replica set (1M records).
+- After `backfill:query-handling`, run `pnpm backfill:overview-rollups --apply`: the handling backfill writes without dirty marks, so stored `handlerdays` would otherwise keep the old figures.
 - Production (`autoIndex` off): build the unique `queryhandlings {source, queryId, queryManagerId}` index first, since the sync's write guard depends on it. Then build its three covering range indexes and `queryturns` unique `{source, queryId, startedAt}` plus `{brandId, startedAt, …}`. The reads are hinted, so a missing index makes them fail with 500. See [development](/docs/listenyzen/development).
 
 ## Follow the response into the interface
@@ -3477,6 +3500,186 @@ The full `/handlers` and `/team` examples, validation and handler code are in [t
 The client's `team-performance.tsx` reads `/team` through `useTeamStats` (`components/team-stat-tiles.tsx`) and `/handlers` through `useHandlerStats` (`components/handler-tiles.tsx`), filtered by the Overview header. The Escalation column and sparkline are gone. The separate Team view still shows sample data.
 
 To study one complete trace, take H6-a: Sadia replies at 10:05 and forwards at 10:20. Follow it through forward → assignment-log entry with membership → `syncQueryHandling('session', …)` → `deriveHandling` (unresolved at 10:20) → `QueryHandling` upsert → `/handlers` decision read for a range containing 10:20.
+
+---
+
+# Code walkthrough: Overview rollups
+## Dependencies and business requirement
+
+Read [SLA](/docs/listenyzen/code-sla) and [handler performance](/docs/listenyzen/code-handling) first. Rollups store their figures; they do not define new ones.
+
+Before this change, every Overview range request scanned raw sessions, comments, messages and handling records, so cost grew with volume. Rollups precalculate every range figure per **brand × Asia/Dhaka business day**. A range read now costs **days, not records**: a year is about 1,100 small rows per brand. The source spec is `docs/overview-rollups.md` in the Listenyzen repository (decisions D1–D8).
+
+Source snapshot: `4f35c48` plus the **uncommitted** overview-rollups working tree, inspected 1 November 2026. The source says that the client was not checked in a browser and the dev backfill was not applied. Examples are illustrative, not live responses.
+
+**The visible change**
+
+## Decisions
+
+| # | Decision |
+| --- | --- |
+| D1 | Daily rollups per brand × Asia/Dhaka day. Figures run through yesterday. |
+| D2 | A nightly job at **00:30 Asia/Dhaka** recomputes the last **7** finished days. |
+| D3 | No wider weekly pass. Dirty-day marking covers events that move or vanish. |
+| D4 | A super admin can rebuild one brand or all brands over a date range and see run status. |
+| D5 | Presets end yesterday: "Last 30 days" is the 30 days ending yesterday. |
+| D6 | "Now" figures, unanswered turns and distinct-customer figures stay live. |
+| D7 | Scope: every Overview tab. Inbox, Comments, Teams and Admin stay live. |
+| D8 | Rollup jobs run on their own `overview-rollups` queue, never `webhooks`. |
+
+## Storage comes first
+
+All in `server/src/modules/overview/rollup/schema.ts`. `day` is a `YYYY-MM-DD` string in Asia/Dhaka, so days sort and compare as strings. `source` is the `HandlingSource` value (`session` or `comment`).
+
+| Collection | One row per (unique) | Holds |
+| --- | --- | --- |
+| `overviewdays` | `{brandId, day, platform, source}` | `inbound`, `responded`, `closed`, `firstResponse` and `resolution` duration buckets (business and wall), `slaCompliance` (met/breached per metric), `slaResolved` (the `/sla` resolved half), `peakHours[24]`, `tags[]`, `sentiment[]` |
+| `handlerdays` | `{brandId, day, platform, source, queryManagerId, teamId}` | `handled`, `resolved`, `unresolved`, `firstResponseAnswered`, `firstResponseTotalMs` |
+| `rollupdays` | `{brandId, day}` | `computedAt`, `runId?`: the marker that the day was computed. A quiet day has a marker and no rows; a failed day has no marker. |
+| `rollupruns` | one run | `source` (`nightly`/`manual`), `triggeredBy?`, `brandId?`, `from`, `to`, `total`, `completed`, `failed`, `failedDays[]` (first 100), `status` (`running`/`done`/`partial`/`failed`), `startedAt`, `finishedAt?` |
+| `rolluprundays` | `{runId, brandId, day}` | `outcome`: a ledger so a job that runs twice counts once |
+| `rollupdirtydays` | `{brandId, day}` | `markedAt`: an older day to recompute on the next nightly run |
+
+Every stored figure is a count, a sum or a duration bucket. Those add up across days, so means, rates and percentiles are computed **after** the merge and match the old live figures exactly. Duration buckets are the existing `durations.ts` buckets: minutes below a day, hours past it.
+
+Indexes beyond the unique keys: `rollupruns {startedAt: -1}`, `{source: 1, startedAt: -1}` and the partial unique `one_running_manual_run_per_scope` (`{brandId}` where `source: manual, status: running`). `rollupdirtydays` also has `{day: 1}`.
+
+## What is rolled up and what stays live
+
+Each figure is filed under one day, its **anchor**. Event-anchored figures always land inside the nightly window when the event happens. Opened-anchored figures can change after their day freezes.
+
+| Endpoint | Rolled up (anchor) | Live |
+| --- | --- | --- |
+| `/engagement` | `inbound`, `responded` (opened) | backlog (now) |
+| `/inbound-trend` | inbound (opened), closed (resolved) | none |
+| `/first-response` | duration buckets (opened) | none |
+| `/resolution-time` | duration buckets (resolved) | none |
+| `/sla-compliance` | met/breached (the day each target was decided) | none |
+| `/sla` | resolved half (resolved) | open half: at risk and breached now |
+| `/peak-hours` | 24 hourly counts (message or comment time) | none |
+| `/customers` | top tags, sentiment (opened) | customer counts: distinct customers don't add across days |
+| `/customer-trend` | none | weekly customers over finished days |
+| `/team` | queries closed (resolved) | on hold now; unanswered turns over finished days |
+| `/handlers` | per query manager (`handledAt`, `decidedAt`, `firstResponseAt`) | none |
+| `/stats`, `/holds` | none | entirely live; `/holds` is a log and is not clamped |
+
+## Follow the computation
+
+`computeDays(brandId, from, to, options)` in `rollup/compute.ts` is now the **only** code that reads source records for range figures. It uses the same filters, fields and hinted indexes as the old live reads, grouped by Dhaka day (`$dateToString` with `timezone`) and platform. Duration buckets come back as grouped rows rather than one `$facet` document, so a long range never reaches the 16 MB document limit. Lists inside a row are sorted, so recomputing a day stores identical rows.
+
+**One finisher per figure.** Each old endpoint was split into "read counts" and "finish" (`inboundFigures`, `firstResponseFigures`, `slaFigures`, `handlerStatsFromCells` and others). `rollup/figures.ts` turns stored rows into those same counts and calls the same finisher, so rolled-up and live figures cannot drift. `test/overview-rollup.test.ts` checks live = stored = mixed for 3 ranges × 4 platform filters.
+
+## Follow the write
+
+`storeDays({ brandId, from, to, runId? })` in `rollup/store.ts`, per day:
+
+1. Refuse any day that is not before today. A stored day is trusted by reads, so it must never be partial.
+2. Note `computedAt` (start time) and the day's current dirty mark.
+3. Compute the day **outside** the transaction. Computing inside it made parallel reads conflict about 26 times a day, according to the source notes.
+4. In **one transaction**: if the marker shows a computation that started later, skip. Otherwise delete the brand-day's `overviewdays` and `handlerdays` rows, insert the new ones, upsert the `rollupdays` marker, and clear the dirty mark only if it is unchanged since step 2.
+
+The result is idempotent: running a day twice changes nothing, and a query manager who dropped out of a day loses their row. Two writers of one day both write its marker, so their transactions conflict and one retries. Transactions need a **replica set**: Atlas always is one, and tests use `MongoMemoryReplSet`.
+
+## Jobs and scheduling
+
+Code: `rollup/jobs.ts` and the queue port `libraries/queue` (still the only `bullmq` import).
+
+```mermaid
+sequenceDiagram
+    participant Cron as BullMQ scheduler (00:30 Dhaka)
+    participant Worker as overview-rollups worker
+    participant Mongo
+    Cron->>Worker: overview-rollup-nightly (attempts 1)
+    Worker->>Mongo: close runs stuck > 12 h
+    Worker->>Mongo: insert rollupruns (nightly, total = brand-days)
+    Worker->>Worker: last 7 finished days × active brands + dirty days
+    Worker->>Worker: enqueue overview-rollup-day jobs (chunks of 1,000)
+    loop each brand-day (concurrency 2, 3 attempts, backoff from 1 min)
+        Worker->>Mongo: storeDays (one transaction)
+        Worker->>Mongo: rolluprundays ledger + run counters
+    end
+    Worker->>Mongo: last day closes the run: done or partial
+```
+
+- **Queues.** The port now keeps named queues: `webhooks` (default; 5 attempts, 2 s timeout to enqueue) and `overview-rollups` (3 attempts, exponential backoff from 60 s, failures kept 24 h, 30 s enqueue timeout). Handlers receive `{ attempt, isFinal }`. `scheduleRepeating` wraps `upsertJobScheduler`, so every worker start keeps exactly one schedule in Redis.
+- **Startup.** `startRollups()` in `worker.ts` checks that all the rollup unique indexes exist (`missingRollupIndexes`). While any is missing, or Mongo or Redis fails, it logs and retries every 5 minutes. It never throws, so webhook processing is unaffected. `stopRollups()` on shutdown cancels a pending start.
+- **Nightly fan-out.** Yesterday − 6 … yesterday for every **active** brand, plus every dirty day before that window. Job ids are `rollup-{runId}-{brandId}-{day}` (BullMQ forbids `:`). Days that could not be queued are marked dirty. The fan-out itself is never retried, because a retry would start a second run.
+- **Day job.** `runRollupDay` calls `storeDays` for one day. On the final failed attempt it marks the day dirty, records it in `failedDays` and completes the job.
+- **Missed night.** BullMQ does not catch up, but the next night's 7-day window covers it.
+
+## Dirty days: when an older day changes
+
+Old figures go stale only when an event they were filed under **moves or vanishes**. `markChangedDays(brandId, [before, after][])` in `rollup/dirty.ts` records those days in `rollupdirtydays`. It marks only days older than today − 6, so everyday traffic writes nothing, and it never throws. The hooks:
+
+| Write path | Marks |
+| --- | --- |
+| `session/status-log.ts` `applyStatusChange` | resolve date moved or cleared (a resolved query reopened) |
+| `session/sla.ts` `syncSessionSla`, `comment/sla.ts` `syncThreadSla` | opening, first reply and both due times when they moved (`slaEventPairs`); also the resolve day when any of them changed, since its breach counts read them |
+| `handling/sync.ts` `rewriteQueryHandling` | handled, decided and first-response days of every query manager whose record changed, also when the query is gone or the rewrite fails part-way |
+| `comment/service.ts` `cascadeDelete` | every date of every deleted comment |
+
+Reads also mark finished days that have no marker (`$setOnInsert`), so the next nightly run stores them. Writes that bypass these paths are **not covered**: the SLA and query-handling backfill scripts write without marks. Re-run the rollup backfill after them.
+
+**Accepted gap (D3):** opened-anchored figures (response rate, first response time, top tags, sentiment) freeze 7 days after the opening day. Example: a customer writes on 1 October and gets the first reply on 10 October. October's response rate keeps counting that query as unanswered until someone rebuilds 1 October. Its resolve on 12 October is filed under 12 October, so closed counts and resolution time stay correct.
+
+## Follow the read
+
+`overview/reads.ts` builds every range endpoint; `api.ts` routes call it. `rollup/read.ts` serves the days:
+
+1. `clampRange` cuts `to` to yesterday (Dhaka). `asOf` = the last day included, or `null` when none is left. `range` in the response still echoes the request.
+2. Read the `rollupdays` markers, then the stored rows projected to only the fields the figure needs, then the markers **again**. A day whose marker changed was rewritten mid-read: it is recomputed live and the stored rows are re-read without it.
+3. Days without a complete marker form **one live span** (first to last missing day). `computeDays` runs only the figure groups the endpoint needs (`parts`) and live rows of days that are stored are dropped. A missing day is slower, never a false zero.
+4. `handlerdays` are summed **in MongoDB** per (query manager, team, source), a handful of rows whatever the range.
+5. `rollup/figures.ts` folds the rows, and the endpoint's own finisher shapes the response.
+
+```json title="Illustrative /first-response with a clamped range (requested on 1 November)"
+{
+  "range": { "from": "2026-10-03", "to": "2026-11-01" },
+  "asOf": "2026-10-31",
+  "all": { "answered": 180, "businessHours": { "mean": 1260000, "p50": 900000, "p90": 3000000 } }
+}
+```
+
+`/inbound-trend` and `/customer-trend` stay arrays (no `asOf`) and end at the last finished day.
+
+## Measured cost
+
+Source: the Listenyzen progress notes (`docs/overview-rollups-progress-context.md`), `pnpm bench:team-performance` on a seeded throwaway replica set with 1M records a year. This documentation update did not re-run it.
+
+| Read | Live | Stored rollups |
+| --- | --- | --- |
+| `/handlers`, 365 days | 1.6 s | 46 ms |
+| `/team`, 365 days | 1.3 s | 570 ms (all of it the live unanswered-turns read, about 1M index keys) |
+| `/handlers` / `/team`, 30 days | not stated | 4 ms / 49 ms |
+| Storing one brand-day | 21 ms | n/a |
+
+The next candidate the source lists: roll up total turns per day and read only unanswered turns live.
+
+## Super-admin controls
+
+Mounted at `/api/v1/admin/overview-rollups` (`rollup/api.ts`, `super_admin` only). Contracts, validation and handler code are in [the API reference](/docs/listenyzen/api-reference).
+
+| Route | Behavior |
+| --- | --- |
+| `POST /rebuild` `{ brandId?, from, to }` | `to` ≤ yesterday; at most 366 days for one brand (any status) or 90 for every active brand; unknown brand 404; 409 while rollup indexes are missing or the same scope is still running. Answers **202** `{ runId }` once the run is recorded; the days are queued afterwards. |
+| `GET /runs` `?source=&limit=` | Newest first, default 20, max 100, with progress, first failed days and the brand name. |
+| `GET /status` | Latest nightly run, latest finished one, `stale` (none finished, or it started over 26 h ago), estimated `dirtyDays`, `missingIndexes`. |
+
+## Follow the response into the interface
+
+- `client/src/features/overview/filters.ts`: presets end at `lastFinishedDay()` (Yesterday, Last 7/30/90 days, This month, Last month, Last 12 months). "Today" is gone, and an old `?range=today` link falls back to the default. On the 1st, "This month" shows the month just ended, labelled "Last month". `rangeProblem` refuses a custom range ending after yesterday.
+- `overview-filter.tsx`: the calendar stops at yesterday and marks Dhaka's today.
+- `blocks.tsx` (`FilterChips`): "Data through `{day}`". It is computed in the browser from the range rather than read from `asOf`. The source lists this as a known difference: it can disagree if the browser clock is off or a tab stays open past midnight.
+- Super admin: `pages/system/rollups.tsx` at `/dashboard/system/rollups` (nav "Overview figures" under Platform, plus a card on the welcome page; others are redirected to `/dashboard`). It shows health (Up to date / Behind / Not running), the last finished and latest run, days waiting, a rebuild form with brand search (first 100 matches) and the run list, polled every 5 s while a run is running. Hooks: `features/rollups/api.ts`.
+
+## Repair and operations
+
+- `pnpm backfill:overview-rollups` (dry run) / `--apply`, optionally `--from= --to= --brand=`, run from the Listenyzen `server/` directory. The default is the 365 days through yesterday for every brand. It stores directly (no queue) and builds the indexes first. Run it after changing what `computeDays` computes, and after the SLA or query-handling backfills.
+- Production (`autoIndex` off): build the rollup indexes listed above, or no rollup runs. The worker waits, `/status` lists the missing indexes, and rebuilds answer 409. Production starts empty, so it needs no rollup backfill: the nightly run fills days from launch on. See [development](/docs/listenyzen/development).
+- The comments partial index `{brandId, resolvedAt, platform}` (`COMMENT_ROOTS_BY_RESOLVED`) is no longer read. The source plans to drop it at the pre-production index pruning.
+- `GET /health/queue` still reports only the `webhooks` queue. Watch rollups through `/admin/overview-rollups/status`.
+
+To study one complete trace, take a resolved query reopened 10 days later. Follow it through `applyStatusChange` (resolve date cleared) → `markChangedDays` → a `rollupdirtydays` row → the next `runNightlyRollup` adding that day → `storeDays` → `/resolution-time` and `/team` no longer counting the old resolve.
 
 ---
 
@@ -3661,6 +3864,8 @@ Run maintenance scripts from `server/` with the intended environment selected. T
 | `pnpm backfill:session-sequence` | Add episode sequences to older sessions.                     |
 | `pnpm backfill:session-sla`      | Populate missing session SLA state.                          |
 | `pnpm backfill:comment-sla`      | Populate customer-root comment SLA state.                    |
+| `pnpm backfill:query-handling`   | Rebuild `QueryHandling` / `QueryTurn` for every query.       |
+| `pnpm backfill:overview-rollups` | Store Overview rollups (default: 365 days through yesterday, every brand; `--from= --to= --brand=`). |
 | `pnpm indexes:cursor-pagination` | Preview selected compound indexes needed by cursor lists.    |
 
 Examples of explicit write modes:
@@ -3721,6 +3926,8 @@ Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domai
 | Duplicate event/counter anomalies                | Non-atomic read-before-write dedupe and session creation; whole-entry retries; concurrent jobs and provider echoes.                                 |
 | Incorrect preview after late events              | Conversation upsert sets last-message values from the arriving event without a general monotonic timestamp guard.                                   |
 | Slow lists/search                                | Missing production compound indexes; regex searches; filter selectivity; tenant scopes and cursor sort mismatch.                                    |
+| Overview figures stop at yesterday               | By design: range figures run through yesterday and responses carry `asOf`. Today is never stored. |
+| Overview figures stale or slow                   | Worker or nightly run not running, or rollup indexes missing: check `GET /api/v1/admin/overview-rollups/status`. Days without a stored rollup are computed live (slower, still correct). Re-run `backfill:overview-rollups` after the SLA or query-handling backfills, which write without dirty marks. |
 | Increasing ingestion latency on long sessions    | SLA rereads and sorts the full session message history on updates; public-thread traversal also grows with thread size.                             |
 | Status stays sent in WhatsApp                    | Delivered/read receipts currently ignored; only failed statuses mutate stored delivery state.                                                       |
 | Old links/users remain after deletion            | Generic CRUD hard deletion lacks full relationship cascades.                                                                                        |
@@ -3775,7 +3982,7 @@ Before deploying the Overview reads to production (`autoIndex` is off there), pe
 Revision `4f35c48` adds handler performance ([walkthrough](/docs/listenyzen/code-handling)). From the Listenyzen `server/` directory:
 
 - `pnpm backfill:query-handling` (dry run) and `pnpm backfill:query-handling --apply`. Every session and comment root gets its `QueryHandling` and `QueryTurn` records, and records of deleted queries are removed. Run it again after any change to what `deriveHandling` / `deriveTurns` compute.
-- `pnpm bench:team-performance` times the Team Performance reads on a seeded, throwaway `mongod`.
+- `pnpm bench:team-performance` times the Team Performance reads on a seeded, throwaway `mongod` (since 1 November: a replica set, timing live and stored-rollup reads).
 - Run the worker. Failed handling syncs are retried there as `handling-sync` jobs. Without it they stay stale until the query's next change.
 
 The production index list in the Listenyzen `CLAUDE.md` changes:
@@ -3783,6 +3990,22 @@ The production index list in the Listenyzen `CLAUDE.md` changes:
 1. Seven hinted Overview indexes instead of six. The session status index becomes `{brandId, status, resolvedAt, platform}`, and comments add `{brandId, resolvedAt, platform}`, partial on resolved customer roots (`parentCommentId: null`).
 2. Handler indexes: `queryhandlings` unique `{source, queryId, queryManagerId}` (the sync's write guard depends on it) plus its three covering range indexes, and `queryturns` unique `{source, queryId, startedAt}` plus the covering `{brandId, startedAt, …}`. These are hinted, so a missing one makes `/handlers` or `/team` return 500.
 3. Then run both SLA backfills and the query-handling backfill.
+
+This documentation update did not run these steps or verify a live database.
+
+## November 1 Overview rollups rollout
+
+Uncommitted work on top of `4f35c48` precalculates every Overview range figure per brand and Asia/Dhaka day ([walkthrough](/docs/listenyzen/code-rollups)). From the Listenyzen `server/` directory:
+
+- `pnpm backfill:overview-rollups` (dry run) and `pnpm backfill:overview-rollups --apply`. It stores days directly, without the queue, and builds the rollup indexes first. Re-running it is safe because each day is replaced. Run it after changing what `computeDays` computes, and after the SLA or query-handling backfills. According to the source notes, `--apply` had not been run against the shared development database.
+- Run the worker. It consumes the `overview-rollups` queue (concurrency 2) and upserts the `overview-rollup-nightly` schedule (00:30 Asia/Dhaka) once the rollup indexes exist. Without it, finished days are computed live on every read. They are still correct, just slower.
+
+The production index list in the Listenyzen `CLAUDE.md` gains a step:
+
+1. Build the rollup indexes (`modules/overview/rollup/schema.ts`), or no rollup runs: the worker waits, `/admin/overview-rollups/status` lists the missing indexes, and rebuilds answer 409. `overviewdays` unique `{brandId, day, platform, source}`; `handlerdays` unique `{brandId, day, platform, source, queryManagerId, teamId}`; `rollupdays` unique `{brandId, day}`; `rollupdirtydays` unique `{brandId, day}` plus `{day: 1}`; `rolluprundays` unique `{runId, brandId, day}`; `rollupruns` `{startedAt: -1}`, `{source: 1, startedAt: -1}` and the partial unique `one_running_manual_run_per_scope`.
+2. MongoDB must be a replica set, because each day is written in a transaction. Atlas always is one.
+3. Production starts empty, so it needs no rollup backfill. The nightly run fills days from launch on.
+4. The comments partial index `{brandId, resolvedAt, platform}` is no longer read. Drop it at the pre-production index pruning.
 
 This documentation update did not run these steps or verify a live database.
 
@@ -4220,4 +4443,4 @@ A portable test summary is saved in `docs/reviews/listenyzen-2026-10-19-test-sum
 
 ## Complete endpoint contracts
 
-See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 136 API operations and two health checks.
+See [LISTENYZEN_API_REFERENCE.md](LISTENYZEN_API_REFERENCE.md) for all 139 API operations and two health checks.

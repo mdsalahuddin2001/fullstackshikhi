@@ -59,7 +59,7 @@ sequenceDiagram
     API-->>Agent: Brand room event
 ```
 
-- Queue name: `webhooks`; topics: `fb-entry`, `wa-entry`.
+- Queue name: `webhooks`; topics: `fb-entry`, `wa-entry` (and `handling-sync` retries). Overview rollups use a separate `overview-rollups` queue with its own worker, so a long rebuild never delays an incoming message.
 - API acknowledges only after enqueue succeeds. Enqueue failure returns 500; invalid signature returns 403. Unsupported top-level webhook object types are acknowledged without processing.
 - Producer timeout is two seconds. Failures reset its connection so delayed buffered writes do not silently outlive the expected request path.
 - Worker default concurrency is 5 (`QUEUE_CONCURRENCY`). Each entry can contain several events; processing attempts events, records failures, then throws if any failed so the entry can be retried.
@@ -151,6 +151,8 @@ Actual status transitions append an embedded log entry; same-status saves keep t
 
 The UI mixes live API-backed metrics with illustrative data; not every visible chart has a complete backend implementation.
 
+Range figures are **precalculated per Asia/Dhaka day** and run **through yesterday**: each range response carries `asOf`, and the default range is the 30 days ending yesterday. "Now" figures (open, unassigned, at risk now, backlog, on hold) stay live and ignore the range. Distinct-customer counts and unanswered turns are read live over the finished days. See [Overview rollups](/docs/listenyzen/code-rollups).
+
 - `/stats`: pending sessions now; unassigned means no assignee (a department assignment counts as assigned).
 - `/sla`: at-risk/breached current targets; open set includes pending, unresolved and hold. Sessions and comments can be requested separately.
 - `/engagement`: inbound counts use first customer message for sessions and customer-authored comment roots in the selected range; response rates use firstResponseAt. Current unresolved backlog includes pending+unresolved, excluding hold.
@@ -167,7 +169,7 @@ The UI mixes live API-backed metrics with illustrative data; not every visible c
 
 Percentiles come from database buckets (minutes below a day, hours past it): means are exact, and a percentile is its bucket's smallest value. Items without stored SLA milliseconds count in the wall clock only until the SLA backfills run.
 
-Use `server/src/modules/overview/service.ts` and its date-boundary helpers when modifying reporting. Similar-looking metrics intentionally use different open/closed sets.
+When modifying a range figure, change `server/src/modules/overview/rollup/compute.ts` (the only source read) and the endpoint's finisher, then rebuild the stored days (`pnpm backfill:overview-rollups --apply` in development). Similar-looking metrics intentionally use different open/closed sets. Figures filed under the opening day (response rate, first response, tags, sentiment) freeze once that day leaves the 7-day nightly window.
 
 ## Media and WhatsApp templates
 
@@ -188,5 +190,5 @@ Rooms are `brand:<brandId>`. Server events: `message:new`, `message:reaction`, `
 
 The API emits through Socket.IO; worker operations emit through Redis. `emitToRoom` selects the available transport and skips with a debug log if neither exists. Persistence can therefore succeed without a live event. Client consumers live in `features/inbox/use-inbox-realtime.ts`, `features/comments/use-comments-realtime.ts` and associated cache helpers.
 
-Active background work is the BullMQ consumer (webhook jobs, plus `handling-sync` retries of failed handler-performance syncs) and process heartbeat intervals. No active general-purpose cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
+Active background work is the BullMQ consumers (webhook jobs, `handling-sync` retries of failed handler-performance syncs, and Overview rollup jobs), one BullMQ job scheduler (`overview-rollup-nightly`, 00:30 Asia/Dhaka) and process heartbeat intervals. No other cron scheduler, automated temporary-file cleanup, ML worker, RabbitMQ consumer or Elasticsearch subsystem was found in the source wiring. Comments, schema fields or installed packages are not evidence of these being implemented.
 

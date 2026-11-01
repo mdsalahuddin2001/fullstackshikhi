@@ -7,7 +7,7 @@ description: "Read the shared status writer, hold reasons, automatic-reply rules
 
 A support query can be parked while staff wait for external work. Supervisors need to know who parked it, why, and for how long. An unresolved wrap-up stops charging but must resume if the customer returns. Read [schemas](/docs/listenyzen/data-model), [access checks](/docs/listenyzen/code-access) and [message persistence](/docs/listenyzen/code-ingestion) first. SLA calculation depends on this status history; it does not own status changes.
 
-Source snapshot: `4f35c48`, 30 October 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
+Source snapshot: `4f35c48`, 30 October 2026; the hold-log default range was rechecked against the uncommitted overview-rollups work on 1 November 2026. Examples below are illustrative, not live responses. All API paths include `/api/v1`.
 
 ## One writer for both kinds of query
 
@@ -104,7 +104,7 @@ No log returns an empty array. An unknown actor is null; a deleted account is an
 
 Input: `GET /api/v1/brands/:brandId/overview/holds?from=2026-10-17&to=2026-10-17&source=sessions`. This uses the same manager roles and resolves a visible brand before calling `overview/holds.ts:listHolds`.
 
-1. Convert inclusive Asia/Dhaka dates to a start-inclusive/end-exclusive time range. Both dates or neither are required; default is the last 30 days, maximum range one year.
+1. Convert inclusive Asia/Dhaka dates to a start-inclusive/end-exclusive time range. Both dates or neither are required; default is the 30 days ending yesterday, maximum range one year. Unlike the other Overview reads, the hold log is not rolled up and not clamped: a range ending today is read as sent.
 2. Read candidate sessions and comment roots, selecting status history. Optional source is sessions or comments; omission combines both. There is no platform filter here.
 3. Pair each hold entry with its next transition (or now if still held). Keep holds that overlap the range, including ones that started before it.
 4. Sort newest hold first and keep at most 1,000 rows. There is no continuation cursor or truncation flag.

@@ -183,6 +183,8 @@ Run maintenance scripts from `server/` with the intended environment selected. T
 | `pnpm backfill:session-sequence` | Add episode sequences to older sessions.                     |
 | `pnpm backfill:session-sla`      | Populate missing session SLA state.                          |
 | `pnpm backfill:comment-sla`      | Populate customer-root comment SLA state.                    |
+| `pnpm backfill:query-handling`   | Rebuild `QueryHandling` / `QueryTurn` for every query.       |
+| `pnpm backfill:overview-rollups` | Store Overview rollups (default: 365 days through yesterday, every brand; `--from= --to= --brand=`). |
 | `pnpm indexes:cursor-pagination` | Preview selected compound indexes needed by cursor lists.    |
 
 Examples of explicit write modes:
@@ -243,6 +245,8 @@ Run those in separate processes. `pnpm create-module` invokes `scripts/dev/domai
 | Duplicate event/counter anomalies                | Non-atomic read-before-write dedupe and session creation; whole-entry retries; concurrent jobs and provider echoes.                                 |
 | Incorrect preview after late events              | Conversation upsert sets last-message values from the arriving event without a general monotonic timestamp guard.                                   |
 | Slow lists/search                                | Missing production compound indexes; regex searches; filter selectivity; tenant scopes and cursor sort mismatch.                                    |
+| Overview figures stop at yesterday               | By design: range figures run through yesterday and responses carry `asOf`. Today is never stored. |
+| Overview figures stale or slow                   | Worker or nightly run not running, or rollup indexes missing: check `GET /api/v1/admin/overview-rollups/status`. Days without a stored rollup are computed live (slower, still correct). Re-run `backfill:overview-rollups` after the SLA or query-handling backfills, which write without dirty marks. |
 | Increasing ingestion latency on long sessions    | SLA rereads and sorts the full session message history on updates; public-thread traversal also grows with thread size.                             |
 | Status stays sent in WhatsApp                    | Delivered/read receipts currently ignored; only failed statuses mutate stored delivery state.                                                       |
 | Old links/users remain after deletion            | Generic CRUD hard deletion lacks full relationship cascades.                                                                                        |
@@ -297,7 +301,7 @@ Before deploying the Overview reads to production (`autoIndex` is off there), pe
 Revision `4f35c48` adds handler performance ([walkthrough](/docs/listenyzen/code-handling)). From the Listenyzen `server/` directory:
 
 - `pnpm backfill:query-handling` (dry run) and `pnpm backfill:query-handling --apply`. Every session and comment root gets its `QueryHandling` and `QueryTurn` records, and records of deleted queries are removed. Run it again after any change to what `deriveHandling` / `deriveTurns` compute.
-- `pnpm bench:team-performance` times the Team Performance reads on a seeded, throwaway `mongod`.
+- `pnpm bench:team-performance` times the Team Performance reads on a seeded, throwaway `mongod` (since 1 November: a replica set, timing live and stored-rollup reads).
 - Run the worker. Failed handling syncs are retried there as `handling-sync` jobs. Without it they stay stale until the query's next change.
 
 The production index list in the Listenyzen `CLAUDE.md` changes:
@@ -308,3 +312,18 @@ The production index list in the Listenyzen `CLAUDE.md` changes:
 
 This documentation update did not run these steps or verify a live database.
 
+## November 1 Overview rollups rollout
+
+Uncommitted work on top of `4f35c48` precalculates every Overview range figure per brand and Asia/Dhaka day ([walkthrough](/docs/listenyzen/code-rollups)). From the Listenyzen `server/` directory:
+
+- `pnpm backfill:overview-rollups` (dry run) and `pnpm backfill:overview-rollups --apply`. It stores days directly, without the queue, and builds the rollup indexes first. Re-running it is safe because each day is replaced. Run it after changing what `computeDays` computes, and after the SLA or query-handling backfills. According to the source notes, `--apply` had not been run against the shared development database.
+- Run the worker. It consumes the `overview-rollups` queue (concurrency 2) and upserts the `overview-rollup-nightly` schedule (00:30 Asia/Dhaka) once the rollup indexes exist. Without it, finished days are computed live on every read. They are still correct, just slower.
+
+The production index list in the Listenyzen `CLAUDE.md` gains a step:
+
+1. Build the rollup indexes (`modules/overview/rollup/schema.ts`), or no rollup runs: the worker waits, `/admin/overview-rollups/status` lists the missing indexes, and rebuilds answer 409. `overviewdays` unique `{brandId, day, platform, source}`; `handlerdays` unique `{brandId, day, platform, source, queryManagerId, teamId}`; `rollupdays` unique `{brandId, day}`; `rollupdirtydays` unique `{brandId, day}` plus `{day: 1}`; `rolluprundays` unique `{runId, brandId, day}`; `rollupruns` `{startedAt: -1}`, `{source: 1, startedAt: -1}` and the partial unique `one_running_manual_run_per_scope`.
+2. MongoDB must be a replica set, because each day is written in a transaction. Atlas always is one.
+3. Production starts empty, so it needs no rollup backfill. The nightly run fills days from launch on.
+4. The comments partial index `{brandId, resolvedAt, platform}` is no longer read. Drop it at the pre-production index pruning.
+
+This documentation update did not run these steps or verify a live database.

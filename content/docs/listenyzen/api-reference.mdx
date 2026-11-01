@@ -1,11 +1,11 @@
 ---
 title: "API route reference"
-description: "All 136 API routes and two health endpoints, with curl requests, example responses, access rules and source-level validation."
+description: "All 139 API routes and two health endpoints, with curl requests, example responses, access rules and source-level validation."
 ---
 
 ## Read the examples
 
-This reference covers **136 mounted API operations and two health endpoints**, inspected at revision `4f35c48` on October 30, 2026. Examples are derived from source; they are not captured live responses. Entity objects show a **compact selection of fields**. Audit fields, optional properties, virtuals and populated references may also appear in actual responses.
+This reference covers **139 mounted API operations and two health endpoints**, inspected at revision `4f35c48` plus the uncommitted overview-rollups work on November 1, 2026. Examples are derived from source; they are not captured live responses. Entity objects show a **compact selection of fields**. Audit fields, optional properties, virtuals and populated references may also appear in actual responses.
 
 [Download the complete API reference as Markdown](/downloads/LISTENYZEN_API_REFERENCE.md)
 
@@ -28,7 +28,7 @@ Start with [the dependency-ordered learning path](/docs/listenyzen/learning-path
 - JSON bodies generally use strict Zod objects: omit unsupported keys. The validation panel shows the actual route declarations.
 - Offset lists use `page` and `limit`. Inbox cursor lists reject `page` and custom `sort`. Send the returned `nextCursor` unchanged for the next page.
 - Settings history uses a numeric version cursor, separate from the opaque inbox cursor format.
-- Overview ranges use inclusive Asia/Dhaka dates: send both `from` and `to`, or neither. The default is the last 30 days, with a one-year maximum.
+- Overview ranges use inclusive Asia/Dhaka dates: send both `from` and `to`, or neither. The default is the 30 days ending yesterday, with a one-year maximum. Range figures run through yesterday: later days are dropped without an error, and responses carry `asOf`, the last day included (`null` when none is left). `/holds` is not clamped.
 - Multipart requests use `logo`, `avatar`, `file` or `files` according to the endpoint. Brand creation requires its logo. Allow curl/browser to generate the multipart boundary.
 - Tenant create routes use the caller's company; a super administrator must supply `companyId` where that schema supports it.
 
@@ -132,7 +132,7 @@ Login failures, webhook responses, health endpoints, rate-limit responses and un
 ## Other entry points
 
 - `GET /health`: Mongo-based HTTP readiness with component details.
-- `GET /health/queue`: queue backlog, oldest waiting age and availability.
+- `GET /health/queue`: `webhooks` queue backlog, oldest waiting age and availability. It does not report the `overview-rollups` queue; use `GET /api/v1/admin/overview-rollups/status`.
 - `/uploads`: public locally stored images.
 - `/socket.io`: authenticated realtime transport; clients join authorized brand rooms.
 

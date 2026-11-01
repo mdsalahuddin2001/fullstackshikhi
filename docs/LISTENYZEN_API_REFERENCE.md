@@ -1,6 +1,6 @@
 # Listenyzen API endpoint reference
 
-Source-derived examples for all 136 mounted API operations and two health endpoints. Inspected on 2026-10-30. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
+Source-derived examples for all 139 mounted API operations and two health endpoints. Inspected on 2026-11-01. These are illustrative examples, not captured live responses. IDs must be replaced with records visible to your account. Provider codes, tokens, URLs, and signatures are placeholders.
 
 Entity objects are compact projections: audit fields, virtuals and optional fields are omitted for readability. Envelopes, status codes and special response types follow the implementation. Optional fields, populated references and lean reads can change the returned entity fields. Read the linked source location for the complete handler.
 
@@ -20,7 +20,7 @@ Use the port configured for your backend; 5000 above is only an example. The doc
 - JSON request schemas generally reject extra fields. Multipart booleans remain strings unless a handler explicitly parses them.
 - Offset lists accept page/limit. Inbox cursor lists reject page and custom sort; reuse nextCursor without decoding it. Settings history uses a numeric version cursor.
 - Brand visibility and tenant scope may produce 404 for a record that exists elsewhere. Company suspension, role restrictions and assignment policy are separate gates.
-- Date ranges use inclusive Asia/Dhaka days. Supply both from and to, or neither; overview defaults to the last 30 days and caps ranges at one year.
+- Date ranges use inclusive Asia/Dhaka days. Supply both from and to, or neither; overview defaults to the 30 days ending yesterday and caps ranges at one year. Overview range figures are precalculated per day and run through yesterday: later days are dropped and responses carry asOf (the hold log is not clamped).
 - Standard errors use `{ "success": false, "status": "error", "message": "Brand not found" }`. Validation can include errors; nonproduction may include comingFrom. Login credential failures can return only `{ "message": "..." }`; auth rate limiting uses `{ "success": false, "message": "Too many attempts, please try again later." }` with 429.
 - Shared failures include 400 invalid input, 401 missing/expired authentication, 403 denied action and 404 missing/invisible record. Provider/network failures can become server errors. Per-route errors below are handler-local examples, not an exhaustive list of service failures.
 - No example is executed by this documentation. Mutating curl commands perform real writes if you run them.
@@ -7866,15 +7866,15 @@ router.delete(
 
 ## GET /api/v1/brands/:brandId/overview/stats
 
-**Source:** `server/src/modules/overview/api.ts:49`
+**Source:** `server/src/modules/overview/api.ts:48`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
 
-**Business logic:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.
+**Business logic:** Resolve a visible brand and count DM sessions that are pending now, and those of them with no assignee (a department assignment counts as assigned). Live counts; no date range and no rollup.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts:getSessionStats`
 
 ### Request example
 
@@ -7896,6 +7896,7 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/stat
 }
 ```
 
+- Optional platform narrows to one channel. from/to are not accepted.
 - Record visibility and tenant checks still apply; a valid role alone does not grant access.
 
 ### Validation declarations
@@ -7924,32 +7925,32 @@ Shared authentication, validation and service errors apply.
 
 ```typescript
 router.get(
-    '/stats',
-    authenticate,
-    authorize(...overviewRoles),
-    validateParams(brandParamSchema),
-    validateQuery(statsQuerySchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
-      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
-      const { platform } = req.query as { platform?: ChannelPlatform };
-      successResponse(res, { data: await getSessionStats(brand.id, platform) });
-    }
-  )
+  '/stats',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(statsQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const { platform } = req.query as { platform?: ChannelPlatform };
+    successResponse(res, { data: await getSessionStats(brand.id, platform) });
+  }
+);
 ```
 
 ## GET /api/v1/brands/:brandId/overview/sla
 
-**Source:** `server/src/modules/overview/api.ts:68`
+**Source:** `server/src/modules/overview/api.ts:67`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
 
-**Business logic:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.
+**Business logic:** Resolve a visible brand and the paired date range. For sessions (default) or comment threads (source=comments), per metric: pending = measured items open now (pending, unresolved or hold), read live; resolved = measured items resolved on the range's finished days, read from the rollups (slaResolved). atRisk = open items past 80% of the target and not yet breached, as a share of pending; breached = open items past the target plus resolved items that missed it, as a share of pending + resolved. A stopped resolution clock is never at risk but keeps an earlier breach.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getSlaStats; overview/service.ts:slaOpenCounts, slaFigures; overview/rollup/figures.ts:slaFromRows`
 
 ### Request example
 
@@ -7969,6 +7970,7 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/sla?
       "from": "2026-10-15",
       "to": "2026-10-15"
     },
+    "asOf": "2026-10-15",
     "firstResponse": {
       "enabled": true,
       "pending": 0,
@@ -7999,7 +8001,10 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/sla?
 }
 ```
 
-- Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- The open half ignores the range (a now figure); only the resolved half is clamped to yesterday. Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
+- Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.
+- enabled reflects the brand's current SLA settings.
 
 ### Validation declarations
 
@@ -8027,45 +8032,45 @@ Shared authentication, validation and service errors apply.
 
 ```typescript
 router.get(
-    '/sla',
-    authenticate,
-    authorize(...overviewRoles),
-    validateParams(brandParamSchema),
-    validateQuery(slaQuerySchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
-      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
-      const query = req.query as {
-        source?: SlaSource;
-        platform?: ChannelPlatform;
-        from?: string;
-        to?: string;
-      };
-      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
-      const data = await getSlaStats({
-        brandId: brand.id,
-        companyId: brand.companyId,
-        source: query.source,
-        platform: query.platform,
-        ...range,
-      });
-      successResponse(res, { data });
-    }
-  )
+  '/sla',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(slaQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as {
+      source?: SlaSource;
+      platform?: ChannelPlatform;
+      from?: string;
+      to?: string;
+    };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getSlaStats({
+      brandId: brand.id,
+      companyId: brand.companyId,
+      source: query.source,
+      platform: query.platform,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
 ```
 
 ## GET /api/v1/brands/:brandId/overview/engagement
 
-**Source:** `server/src/modules/overview/api.ts:224`
+**Source:** `server/src/modules/overview/api.ts:222`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
 
-**Business logic:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.
+**Business logic:** Resolve a visible brand and the paired date range. inbound = DM sessions (by first customer message) and customer-written comment roots (by commentedAt) opened on the range's finished days, by platform; responseRate = those with a brand reply when the day was last computed. Both come from the rollups (inbound, responded). backlog is live: items open now (pending or unresolved; hold excluded) bucketed by wall-clock age, ignoring the range.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getEngagementStats; overview/service.ts:getBacklog, inboundFigures`
 
 ### Request example
 
@@ -8085,6 +8090,7 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/enga
       "from": "2026-10-15",
       "to": "2026-10-15"
     },
+    "asOf": "2026-10-15",
     "inbound": {
       "sessions": 0,
       "threads": 0,
@@ -8146,7 +8152,10 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/enga
 }
 ```
 
-- Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
+- Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.
+- responded is filed under the opening day. Once that day leaves the 7-day nightly window, a later first reply is not counted until the day is rebuilt (accepted gap).
 
 ### Validation declarations
 
@@ -8172,38 +8181,38 @@ Shared authentication, validation and service errors apply.
 
 ```typescript
 router.get(
-    '/engagement',
-    authenticate,
-    authorize(...overviewRoles),
-    validateParams(brandParamSchema),
-    validateQuery(rangeQuerySchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
-      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
-      const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
-      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
-      const data = await getEngagementStats({
-        brandId: brand.id,
-        platform: query.platform,
-        ...range,
-      });
-      successResponse(res, { data });
-    }
-  )
+  '/engagement',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getEngagementStats({
+      brandId: brand.id,
+      platform: query.platform,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
 ```
 
 ## GET /api/v1/brands/:brandId/overview/inbound-trend
 
-**Source:** `server/src/modules/overview/api.ts:249`
+**Source:** `server/src/modules/overview/api.ts:247`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
+**Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.
 
-**Business logic:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.
+**Business logic:** Resolve a visible brand and the paired date range. One entry per finished day of the range, oldest first, zero-filled: inbound (opened that day, as /engagement) and closed (resolved that day, by resolvedAt), read from the rollups.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getInboundTrend; overview/rollup/figures.ts:inboundTrendFromRows`
 
 ### Request example
 
@@ -8228,7 +8237,9 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/inbo
 }
 ```
 
-- Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- data is an array of days, not an object with range or asOf. Days after yesterday are left out, so a range of only today returns [].
+- Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.
 
 ### Validation declarations
 
@@ -8254,34 +8265,34 @@ Shared authentication, validation and service errors apply.
 
 ```typescript
 router.get(
-    '/inbound-trend',
-    authenticate,
-    authorize(...overviewRoles),
-    validateParams(brandParamSchema),
-    validateQuery(rangeQuerySchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
-      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
-      const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
-      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
-      const data = await getInboundTrend({ brandId: brand.id, platform: query.platform, ...range });
-      successResponse(res, { data });
-    }
-  )
+  '/inbound-trend',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getInboundTrend({ brandId: brand.id, platform: query.platform, ...range });
+    successResponse(res, { data });
+  }
+);
 ```
 
 ## GET /api/v1/brands/:brandId/overview/sla-compliance
 
-**Source:** `server/src/modules/overview/api.ts:270`
+**Source:** `server/src/modules/overview/api.ts:268`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
 **Prerequisites:** Visible brand, manager role, stored sessions/comment roots, status history and historical settings. Reports derive from earlier workflows; they do not create support queries.
 
-**Business logic:** Stats count pending sessions now. SLA reporting includes pending/hold/unresolved as open, but stopped resolution clocks are not at risk and retain earlier breaches. Engagement backlog excludes holds. Compliance counts decided targets. Hold rows are computed on read, not stored separately; an overlapping-date filter still returns full-hold durations, capped at 1,000 newest rows.
+**Business logic:** Resolve a visible brand and the paired date range. Count SLA targets decided on the range's finished days, sessions and comment roots together: first response met by the reply or breached at the due time; resolution met by the resolve or breached at the due time. percent = met ÷ (met + breached); null when nothing was decided. Read from the rollups (slaCompliance), each decision filed under the day it happened.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts; overview/holds.ts; modules/settings/service.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getSlaCompliance; overview/service.ts:complianceFigures`
 
 ### Request example
 
@@ -8301,6 +8312,7 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/sla-
       "from": "2026-10-15",
       "to": "2026-10-15"
     },
+    "asOf": "2026-10-15",
     "firstResponse": {
       "enabled": true,
       "met": 0,
@@ -8319,7 +8331,10 @@ curl -i -X GET "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/sla-
 }
 ```
 
-- Record visibility and tenant checks still apply; a valid role alone does not grant access.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
+- Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.
+- enabled reflects the brand's current SLA settings.
 
 ### Validation declarations
 
@@ -8345,39 +8360,39 @@ Shared authentication, validation and service errors apply.
 
 ```typescript
 router.get(
-    '/sla-compliance',
-    authenticate,
-    authorize(...overviewRoles),
-    validateParams(brandParamSchema),
-    validateQuery(rangeQuerySchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
-      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
-      const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
-      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
-      const data = await getSlaCompliance({
-        brandId: brand.id,
-        companyId: brand.companyId,
-        platform: query.platform,
-        ...range,
-      });
-      successResponse(res, { data });
-    }
-  )
+  '/sla-compliance',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(rangeQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await getSlaCompliance({
+      brandId: brand.id,
+      companyId: brand.companyId,
+      platform: query.platform,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
 ```
 
 ## GET /api/v1/brands/:brandId/overview/first-response
 
-**Source:** `server/src/modules/overview/api.ts:101`
+**Source:** `server/src/modules/overview/api.ts:100`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.
 
-**Business logic:** Resolve a visible brand and the paired date range. Time DM sessions opened in the range (firstCustomerMessageAt) and customer-written comment roots (commentedAt) that have a firstResponseAt. Business time is the stored sla.firstResponseMs (hours in force at the clock start), summed in the database into minute buckets below a day and hour buckets past it. Wall clock is clock start → firstResponseAt. Return pooled all plus dm and comments.
+**Business logic:** Resolve a visible brand and the paired date range. Time DM sessions opened on the range's finished days (firstCustomerMessageAt) and customer-written comment roots (commentedAt) that have a firstResponseAt. Business time is the stored sla.firstResponseMs (hours in force at the clock start); wall clock is clock start → firstResponseAt. Both are stored per day as minute buckets below a day and hour buckets past it (overviewdays.firstResponse), which merge exactly across days. Return pooled all plus dm and comments.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts:getFirstResponseTime; overview/indexes.ts; session/sla.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getFirstResponseTime; overview/rollup/compute.ts; overview/service.ts:firstResponseFigures; session/sla.ts`
 
 ### Request example
 
@@ -8397,6 +8412,7 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/first-respo
       "from": "2026-10-01",
       "to": "2026-10-27"
     },
+    "asOf": "2026-10-27",
     "all": {
       "answered": 180,
       "businessHours": {
@@ -8440,11 +8456,13 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/first-respo
 }
 ```
 
-- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
+- Filed under the opening day: a first reply that lands after that day has left the 7-day nightly window is missing until the day is rebuilt.
 - Unanswered items are not timed here; they lower the /engagement response rate instead.
 - Durations are milliseconds; null when nothing was timed. Means are exact. p50/p90 are the smallest value of the nearest-rank bucket: exact to the minute below a day, to the hour past it.
 - Items without a stored sla.firstResponseMs (not yet backfilled) count in wallClock but not businessHours, so the two answered populations can differ until both SLA backfills run.
-- Session reads hint {brandId, firstCustomerMessageAt}; comment reads hint {brandId, platform, commentedAt}. Production must build these indexes first or the read fails.
+- Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.
 
 ### Validation declarations
 
@@ -8483,7 +8501,6 @@ router.get(
     const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
     const data = await getFirstResponseTime({
       brandId: brand.id,
-      companyId: brand.companyId,
       platform: query.platform,
       ...range,
     });
@@ -8494,15 +8511,15 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/resolution-time
 
-**Source:** `server/src/modules/overview/api.ts:128`
+**Source:** `server/src/modules/overview/api.ts:126`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.
 
-**Business logic:** Resolve a visible brand and the paired date range. Time DM sessions and customer-written comment roots whose status is resolved and whose resolvedAt falls in the range. Business time is the stored sla.resolutionMs: what the resolution clock charged, with hold and unresolved stretches excluded, stored whether or not the brand has a resolution target. Wall clock is first customer message (root) → resolvedAt with every stretch included.
+**Business logic:** Resolve a visible brand and the paired date range. Time DM sessions and customer-written comment roots resolved on the range's finished days (by resolvedAt). Business time is the stored sla.resolutionMs: what the resolution clock charged, with hold and unresolved stretches excluded. Wall clock is first customer message (root) → resolvedAt with every stretch included. Stored per resolve day as duration buckets (overviewdays.resolution).
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/service.ts:getResolutionTime; session/sla.ts:resolvedChargedMs`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getResolutionTime; overview/service.ts:resolutionTimeFigures; session/sla.ts:resolvedChargedMs`
 
 ### Request example
 
@@ -8522,6 +8539,7 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/resolution-
       "from": "2026-10-01",
       "to": "2026-10-27"
     },
+    "asOf": "2026-10-27",
     "all": {
       "resolved": 150,
       "businessHours": {
@@ -8565,11 +8583,12 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/resolution-
 }
 ```
 
-- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
 - unresolved wrap-ups are not resolutions and are not timed.
 - Same duration shape and bucket rule as /first-response; the count field is resolved instead of answered.
 - Sessions the SLA sync never stamped (no firstCustomerMessageAt) are skipped.
-- Session reads hint {brandId, status, resolvedAt, platform}; comment reads hint {brandId, status, resolvedAt}.
+- Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.
 
 ### Validation declarations
 
@@ -8618,15 +8637,15 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/customers
 
-**Source:** `server/src/modules/overview/api.ts:153`
+**Source:** `server/src/modules/overview/api.ts:151`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.
 
-**Business logic:** Resolve a visible brand and the paired date range. Customers are DM conversations (one conversation = one customer) with a session opened in the range: repeat = two or more sessions in range; new = first session ever falls in range, returning = wrote before it. Customer ids are read in chunks of 50,000, four at a time. Top tags count tag ids on sessions plus customer comment roots (at most 10, most used first). Sentiment is the handler-recorded value per class.
+**Business logic:** Resolve a visible brand and the paired date range. Customers are DM conversations (one conversation = one customer) with a session opened on the range's finished days: repeat = two or more sessions in range; new = first session ever falls in range, returning = wrote before it. Read live, customer ids in chunks of 50,000, four at a time. Top tags count tag ids on sessions plus customer comment roots (at most 10, most used first) and sentiment is the handler-recorded value per class; both are summed from the rollups.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/customers.ts:getCustomerStats, readInChunks`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getCustomerStats; overview/customers.ts:getCustomerCounts, readInChunks; overview/rollup/figures.ts:tagsAndSentimentFromRows`
 
 ### Request example
 
@@ -8646,6 +8665,7 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/customers?f
       "from": "2026-10-01",
       "to": "2026-10-27"
     },
+    "asOf": "2026-10-27",
     "customers": {
       "total": 240,
       "repeat": 36,
@@ -8700,7 +8720,9 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/customers?f
 }
 ```
 
-- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
+- customers is read live over the finished days (distinct customers do not add up across days); topTags and sentiment come from the rollups, filed under the opening day. A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.
 - repeatRate is repeat ÷ total as a percentage with one decimal; null when there are no customers.
 - Customer counts are DM only; comment threads have no customer identity here.
 - Sentiment cells are null where a class cannot hold the value: sessions default NEUTRAL so never UNSET, comments are never MIXED.
@@ -8753,15 +8775,15 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/customer-trend
 
-**Source:** `server/src/modules/overview/api.ts:178`
+**Source:** `server/src/modules/overview/api.ts:176`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.
 
-**Business logic:** Resolve a visible brand and the paired date range. Split the range into business weeks (Saturday to Friday), clipped at the range edges so the first and last weeks can be partial, and count DM customers per week with the same repeat / new / returning rules as /customers, scoped to each week.
+**Business logic:** Resolve a visible brand and the paired date range, cut to finished days. Split it into business weeks (Saturday to Friday), clipped at the range edges so the first and last weeks can be partial, and count DM customers per week with the same repeat / new / returning rules as /customers, scoped to each week.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/customers.ts:getCustomerTrend`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getCustomerTrendStats; overview/customers.ts:getCustomerTrend`
 
 ### Request example
 
@@ -8799,8 +8821,9 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/customer-tr
 }
 ```
 
-- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
-- data is an array of weeks, not an object with range.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Read live (distinct customers do not add up across days); not rolled up.
+- data is an array of weeks, not an object with range or asOf. Weeks end at yesterday; a range of only today returns [].
 - Someone who first wrote just before a partial first week counts as returning.
 - repeatRate is null for a week with no customers.
 
@@ -8839,7 +8862,7 @@ router.get(
     if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
     const query = req.query as { platform?: ChannelPlatform; from?: string; to?: string };
     const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
-    const data = await getCustomerTrend({
+    const data = await getCustomerTrendStats({
       brandId: brand.id,
       platform: query.platform,
       ...range,
@@ -8851,15 +8874,15 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/peak-hours
 
-**Source:** `server/src/modules/overview/api.ts:203`
+**Source:** `server/src/modules/overview/api.ts:201`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries.
+**Prerequisites:** Visible brand, manager role, and stored sessions / comment roots with SLA fields (run both SLA backfills on older data). Reports derive from earlier workflows; they do not create support queries. Rollups need the worker (nightly run) or a backfill; without them every day is computed live.
 
-**Business logic:** Resolve a visible brand and the paired date range. Count every inbound DM message (system notices excluded) and every customer comment, root or reply, grouped in MongoDB by Asia/Dhaka weekday and hour. Brand and agent replies are excluded. The response is always 7 × 24 numbers regardless of volume.
+**Business logic:** Resolve a visible brand and the paired date range. Count every inbound DM message (system notices excluded) and every customer comment, root or reply, on the range's finished days. Each day stores 24 hourly counts in Asia/Dhaka (overviewdays.peakHours); the read files each day under its weekday and returns 7 × 24 numbers regardless of volume. Brand and agent replies are excluded.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/peak-hours.ts:getPeakHours; overview/indexes.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getPeakHours; overview/peak-hours.ts:peakHourFigures; overview/rollup/figures.ts:peakHoursFromRows`
 
 ### Request example
 
@@ -8879,6 +8902,7 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/peak-hours?
       "from": "2026-10-01",
       "to": "2026-10-27"
     },
+    "asOf": "2026-10-27",
     "days": [
       "Sat",
       "Sun",
@@ -9082,10 +9106,11 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/peak-hours?
 }
 ```
 
-- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
 - cells[day][hour] follows days order (Saturday first) and hours 00–23 in business time.
 - busiest is null when nothing came in.
-- Messages use the partial {brandId, sentAt} index (direction: incoming only); comments hint {brandId, platform, commentedAt}.
+- Range figures come from the daily rollups (overviewdays). A finished day without a rollupdays marker is computed live from the source records (same figures, slower) and marked dirty so the next nightly run stores it.
 
 ### Validation declarations
 
@@ -9130,15 +9155,15 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/handlers
 
-**Source:** `server/src/modules/overview/api.ts:298`
+**Source:** `server/src/modules/overview/api.ts:296`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill).
+**Prerequisites:** Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill). Rollups need the worker (nightly run) or a backfill; without them every day is computed live.
 
-**Business logic:** Resolve a visible brand and the paired date range. Read stored QueryHandling records with three hinted, covered range reads: handled by handledAt, first response by firstResponseAt, decisions by decidedAt. Each is grouped in MongoDB by (query manager, team, source); rows, team and department subtotals and the total are folded from those groups. Rules H1-H14 decide what a record holds; the read only counts.
+**Business logic:** Resolve a visible brand and the paired date range. Per query manager, team and source, sum the handlerdays rollups of the range's finished days: handled (by handledAt), first responses (by firstResponseAt: count and business-time sum) and decisions (by decidedAt: resolved, unresolved). Rows, team and department subtotals and the total are folded from those groups. Rules H1-H14 decide what a QueryHandling record holds; the rollup only counts.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/handlers.ts:getHandlerStats; handling/schema.ts; overview/indexes.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getHandlerStats; overview/rollup/read.ts:readHandlerTotals; overview/handlers.ts:handlerStatsFromCells; handling/schema.ts`
 
 ### Request example
 
@@ -9158,6 +9183,7 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/handlers?fr
       "from": "2026-10-01",
       "to": "2026-10-30"
     },
+    "asOf": "2026-10-30",
     "rows": [
       {
         "queryManagerId": "670000000000000000000031",
@@ -9372,7 +9398,9 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/handlers?fr
 }
 ```
 
-- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
+- Stored handlerdays rows of the range are summed in MongoDB per (query manager, team, source), a handful of rows whatever the range; days without a marker are computed live from the three covered QueryHandling reads.
 - handled counts records whose handledAt (first reply, else the decision) falls in range (H2).
 - firstResponse.meanMs is the business-hours mean of the final stint's first response (H13), counted by the reply's time; no percentiles and no wall clock in this read.
 - resolution.percent = resolved / (resolved + unresolved), one decimal, over decisions in range (H11, H12); null when none was decided. Undecided and routed-away records are not in the rate.
@@ -9427,15 +9455,15 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/team
 
-**Source:** `server/src/modules/overview/api.ts:324`
+**Source:** `server/src/modules/overview/api.ts:322`
 
 **Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin, company_owner, company_admin.
 
-**Prerequisites:** Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill).
+**Prerequisites:** Visible brand, manager role, assignment history on sessions / comment roots, and QueryHandling / QueryTurn records written by the handling sync (or the query-handling backfill). Rollups need the worker (nightly run) or a backfill; without them every day is computed live.
 
-**Business logic:** Resolve a visible brand and the paired date range. Count DM sessions and customer comment roots resolved in range (current resolvedAt), split by platform with zeros included; count items on hold now; and count QueryTurn records started in range with how many are still unanswered (T7).
+**Business logic:** Resolve a visible brand and the paired date range. closed = DM sessions and customer comment roots resolved on the range's finished days (current resolvedAt), split by platform with zeros included, from the rollups; onHold = items on hold now (live); unansweredTurns = QueryTurn records started on the range's finished days and how many are still unanswered (T7), read live.
 
-**Implementation entry points:** `server/src/modules/overview/api.ts; overview/team.ts:getTeamStats; handling/schema.ts:QueryTurnModel; overview/indexes.ts`
+**Implementation entry points:** `server/src/modules/overview/api.ts; overview/reads.ts:getTeamStats; overview/team.ts:getTeamLive, closedFigures; handling/schema.ts:QueryTurnModel`
 
 ### Request example
 
@@ -9455,6 +9483,7 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/team?from=2
       "from": "2026-10-01",
       "to": "2026-10-30"
     },
+    "asOf": "2026-10-30",
     "closed": {
       "sessions": 118,
       "threads": 37,
@@ -9491,12 +9520,13 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/team?from=2
 }
 ```
 
-- Both from/to or neither; defaults to the last 30 days. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Both from/to or neither; the default is the 30 days ending yesterday. Inclusive Asia/Dhaka dates, at most one year. Optional platform narrows to one channel.
+- Range figures run through yesterday: days after it are dropped without an error, and asOf is the last day included (null when none is left, e.g. a range of only today). range echoes the request unchanged.
 - closed.byPlatform lists every channel platform in CHANNEL_PLATFORMS order, zeros included.
 - onHold ignores the date range (it is a now figure) but honours platform.
 - unansweredTurns.percent = unanswered / turns started in range, one decimal; null when there were no turns. A query has at most one open turn, so unanswered is also the number of queries waiting.
 - An open turn on a resolved query is dropped by the sync, so it never counts as unanswered.
-- Reads hint the session status index, the partial resolved-customer-roots comment index and the {brandId, startedAt, platform, answeredAt} turn index.
+- closed comes from the rollups (closed per platform and source). onHold and unansweredTurns are read live, hinting the session/comment status indexes and the {brandId, startedAt, platform, answeredAt} turn index; unanswered turns are the slowest part (about 570 ms for a year at 1M turns, per the source bench).
 
 ### Validation declarations
 
@@ -9541,7 +9571,7 @@ router.get(
 
 ## GET /api/v1/brands/:brandId/overview/holds
 
-**Source:** `server/src/modules/overview/api.ts:346`
+**Source:** `server/src/modules/overview/api.ts:344`
 
 **Access:** Access-token cookie or Bearer token; active company required for tenant roles. Only super_admin, company_owner and company_admin; brand visibility still applies. Query managers receive 403.
 
@@ -9593,7 +9623,8 @@ curl -i "${BASE_URL}/api/v1/brands/670000000000000000000004/overview/holds?from=
 ```
 
 - Omit source to include sessions and comments. source accepts sessions or comments, not singular names.
-- Both from/to or neither; defaults to last 30 days. Inclusive Asia/Dhaka dates, at most one year. platform/page/limit are not accepted.
+- Not rolled up: a log computed on read.
+- Both from/to or neither; the default is the 30 days ending yesterday (shared defaultRange). Inclusive Asia/Dhaka dates, at most one year. Not clamped: a to of today is read as sent. platform/page/limit are not accepted.
 - Returns at most 1,000 overlapping holds, newest first, without pagination or a truncation flag. Durations cover the entire hold, not just its overlap with the requested range.
 - Active holds have endedAt and endedBy null; durations run to read time. Business hours are those at the query clock start.
 - No separate hold collection: deleting a thread removes its stored holds; session merge is no longer supported.
@@ -9629,26 +9660,335 @@ export const holdsQuerySchema = withRangeChecks(
 
 ```typescript
 router.get(
-    '/holds',
-    authenticate,
-    authorize(...overviewRoles),
-    validateParams(brandParamSchema),
-    validateQuery(holdsQuerySchema),
-    logRequest({}),
-    async (req: Request, res: Response) => {
-      const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
-      if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
-      const query = req.query as { from?: string; to?: string; source?: HoldSource };
-      const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
-      const data = await listHolds({
-        brandId: brand.id,
-        companyId: brand.companyId,
-        source: query.source,
-        ...range,
-      });
-      successResponse(res, { data });
+  '/holds',
+  authenticate,
+  authorize(...overviewRoles),
+  validateParams(brandParamSchema),
+  validateQuery(holdsQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const brand = await getBrandById(String(req.params.brandId), getBrandScope(req.user));
+    if (!brand) throw new NotFoundError(BRAND_NOT_FOUND, comingFrom);
+    const query = req.query as { from?: string; to?: string; source?: HoldSource };
+    const range = query.from && query.to ? { from: query.from, to: query.to } : defaultRange();
+    const data = await listHolds({
+      brandId: brand.id,
+      companyId: brand.companyId,
+      source: query.source,
+      ...range,
+    });
+    successResponse(res, { data });
+  }
+);
+```
+
+## POST /api/v1/admin/overview-rollups/rebuild
+
+**Source:** `server/src/modules/overview/rollup/api.ts:69`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.
+
+**Prerequisites:** Super admin. The rollup unique indexes must exist (the worker runs no rollups without them) and the worker must run to process queued days.
+
+**Business logic:** Check that to is a finished day and the span is within the scope's limit, that the brand exists, and that the rollup unique indexes exist. Close stale runs, then record a manual rollupruns document (triggeredBy = caller, total = brand-days) and answer 202 with its id. The days are queued afterwards on the overview-rollups queue as one overview-rollup-day job each; a queueing failure marks the run failed and its unqueued days dirty.
+
+**Implementation entry points:** `server/src/modules/overview/rollup/api.ts; overview/rollup/jobs.ts; overview/rollup/schema.ts`
+
+### Request example
+
+```sh
+curl -i -X POST "${BASE_URL}/api/v1/admin/overview-rollups/rebuild" \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  --data '{"brandId":"670000000000000000000004","from":"2026-10-01","to":"2026-10-31"}'
+```
+
+### Example response — HTTP 202
+
+```json
+{
+  "success": true,
+  "message": "Rebuild queued",
+  "data": {
+    "runId": "670000000000000000000091"
+  }
+}
+```
+
+- Omit brandId to rebuild every active brand (at most 90 days); one brand allows any status and at most 366 days.
+- to must be yesterday (Asia/Dhaka) or earlier: today is never stored.
+- Answers once the run is recorded; its brand-days are queued in the background (chunks of 1,000). Follow progress with GET /runs.
+- One running manual run per scope (that brand, or every brand), enforced by the partial unique index one_running_manual_run_per_scope. Runs still running after 12 hours are closed as partial first, so a stuck run does not block its scope.
+- Each day is recomputed and replaced in one transaction, so a rebuild is safe to repeat.
+
+### Validation declarations
+
+**Body: rebuildSchema** — `server/src/modules/overview/rollup/api.ts`
+
+```typescript
+export const rebuildSchema = z
+  .strictObject({ brandId: idSchema.optional(), from: day, to: day })
+  .refine(body => body.from <= body.to, { message: 'from must not be after to', path: ['from'] });
+```
+
+### Error examples
+
+- HTTP 400: Only finished days can be rebuilt: to must be 2026-10-31 or earlier
+- HTTP 400: A rebuild covers at most 90 days for every brand
+- HTTP 404: Brand not found
+- HTTP 409: Rollups can't run until these indexes exist: …
+- HTTP 409: A rebuild of this scope is still running; wait for it to finish
+
+### Handler code
+
+```typescript
+router.post(
+  '/rebuild',
+  authenticate,
+  authorize(ROLES.SUPER_ADMIN),
+  validateBody(rebuildSchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const { brandId, from, to } = req.body as z.infer<typeof rebuildSchema>;
+    const yesterday = addDays(businessToday(), -1);
+    if (to > yesterday) {
+      throw new BadRequestError(
+        `Only finished days can be rebuilt: to must be ${yesterday} or earlier`,
+        comingFrom
+      );
     }
-  )
+    const limit = brandId ? MAX_BRAND_DAYS : MAX_ALL_BRANDS_DAYS;
+    if (dayCount(from, to) > limit) {
+      throw new BadRequestError(
+        `A rebuild covers at most ${limit} days ${brandId ? 'for one brand' : 'for every brand'}`,
+        comingFrom
+      );
+    }
+    if (brandId && !(await BrandModel.exists({ _id: brandId }))) {
+      throw new NotFoundError('Brand not found', comingFrom);
+    }
+    // Without them the worker runs no rollups, and the run would wait forever.
+    const missingIndexes = await missingRollupIndexes();
+    if (missingIndexes.length) {
+      throw new ConflictError(
+        `Rollups can't run until these indexes exist: ${missingIndexes.join('; ')}`,
+        comingFrom
+      );
+    }
+    // A run that never reported back must not block its scope.
+    await closeStaleRuns();
+    try {
+      // Answers once the run is recorded; its days are queued after.
+      const runId = await startRollupRunInBackground({
+        source: 'manual',
+        from,
+        to,
+        brandId,
+        triggeredBy: req.user?.id,
+      });
+      successResponse(res, { statusCode: 202, message: 'Rebuild queued', data: { runId } });
+    } catch (error) {
+      // One manual run per scope (a unique key): a second would only redo the same days.
+      if ((error as { code?: number }).code === DUPLICATE_KEY) {
+        throw new ConflictError(
+          'A rebuild of this scope is still running; wait for it to finish',
+          comingFrom
+        );
+      }
+      throw error;
+    }
+  }
+);
+```
+
+## GET /api/v1/admin/overview-rollups/runs
+
+**Source:** `server/src/modules/overview/rollup/api.ts:131`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.
+
+**Prerequisites:** Super admin. The rollup unique indexes must exist (the worker runs no rollups without them) and the worker must run to process queued days.
+
+**Business logic:** Read rollupruns sorted by startedAt descending (optionally one source), and attach each run's brand name.
+
+**Implementation entry points:** `server/src/modules/overview/rollup/api.ts; overview/rollup/jobs.ts; overview/rollup/schema.ts`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/admin/overview-rollups/runs?source=manual&limit=20" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": [
+    {
+      "_id": "670000000000000000000091",
+      "source": "manual",
+      "triggeredBy": "670000000000000000000001",
+      "brandId": "670000000000000000000004",
+      "from": "2026-10-01",
+      "to": "2026-10-31",
+      "total": 31,
+      "completed": 31,
+      "failed": 0,
+      "failedDays": [],
+      "status": "done",
+      "startedAt": "2026-11-01T05:00:00.000Z",
+      "finishedAt": "2026-11-01T05:01:12.000Z",
+      "brandName": "Example Brand"
+    }
+  ]
+}
+```
+
+- Newest first; limit defaults to 20, at most 100. A capped list, not paginated.
+- status is running, done, partial (some days failed after 3 attempts) or failed (the days could not be queued). failedDays keeps the first 100 failures.
+- brandName is resolved at read time; null for every-brand runs and deleted brands.
+
+### Validation declarations
+
+**Query: runsQuerySchema** — `server/src/modules/overview/rollup/api.ts`
+
+```typescript
+export const runsQuerySchema = z.strictObject({
+  source: z.enum(ROLLUP_RUN_SOURCES).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+```
+
+### Error examples
+
+- HTTP 403: You do not have permission to access this resource
+
+### Handler code
+
+```typescript
+router.get(
+  '/runs',
+  authenticate,
+  authorize(ROLES.SUPER_ADMIN),
+  validateQuery(runsQuerySchema),
+  logRequest({}),
+  async (req: Request, res: Response) => {
+    const { source, limit } = req.query as z.infer<typeof runsQuerySchema>;
+    const runs = await RollupRunModel.find(source ? { source } : {})
+      .sort({ startedAt: -1 })
+      .limit(limit ?? 20)
+      .lean<RollupRun[]>();
+    successResponse(res, { data: await withBrandNames(runs) });
+  }
+);
+```
+
+## GET /api/v1/admin/overview-rollups/status
+
+**Source:** `server/src/modules/overview/rollup/api.ts:153`
+
+**Access:** Access-token cookie or Bearer token; active company required (super_admin bypasses company suspension). Allowed roles: super_admin.
+
+**Prerequisites:** Super admin. The rollup unique indexes must exist (the worker runs no rollups without them) and the worker must run to process queued days.
+
+**Business logic:** In parallel: the latest nightly run, the latest nightly run that finished (done or partial), the estimated count of dirty days waiting for the next run, and the rollup unique indexes the database lacks.
+
+**Implementation entry points:** `server/src/modules/overview/rollup/api.ts; overview/rollup/jobs.ts; overview/rollup/schema.ts`
+
+### Request example
+
+```sh
+curl -i -X GET "${BASE_URL}/api/v1/admin/overview-rollups/status" \
+  -b cookies.txt -c cookies.txt
+```
+
+### Example response — HTTP 200
+
+```json
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "latestNightly": {
+      "_id": "670000000000000000000092",
+      "source": "nightly",
+      "from": "2026-10-25",
+      "to": "2026-10-31",
+      "total": 28,
+      "completed": 28,
+      "failed": 0,
+      "failedDays": [],
+      "status": "done",
+      "startedAt": "2026-10-31T18:30:00.000Z",
+      "finishedAt": "2026-10-31T18:31:05.000Z"
+    },
+    "lastFinishedNightly": {
+      "_id": "670000000000000000000092",
+      "source": "nightly",
+      "from": "2026-10-25",
+      "to": "2026-10-31",
+      "total": 28,
+      "completed": 28,
+      "failed": 0,
+      "failedDays": [],
+      "status": "done",
+      "startedAt": "2026-10-31T18:30:00.000Z",
+      "finishedAt": "2026-10-31T18:31:05.000Z"
+    },
+    "stale": false,
+    "dirtyDays": 0,
+    "missingIndexes": []
+  }
+}
+```
+
+- stale is true when no nightly run has finished, or the last finished one started more than 26 hours ago.
+- dirtyDays is an estimate (estimatedDocumentCount of rollupdirtydays).
+- A non-empty missingIndexes means no rollup runs at all: the worker waits and rebuilds answer 409.
+
+### Validation declarations
+
+See handler and service validation.
+
+### Error examples
+
+- HTTP 403: You do not have permission to access this resource
+
+### Handler code
+
+```typescript
+router.get(
+  '/status',
+  authenticate,
+  authorize(ROLES.SUPER_ADMIN),
+  logRequest({}),
+  async (_req: Request, res: Response) => {
+    const [[latest], [lastFinished], dirtyDays, missingIndexes] = await Promise.all([
+      RollupRunModel.find({ source: 'nightly' }).sort({ startedAt: -1 }).limit(1).lean(),
+      // `partial` finished too: its failed days are on the run and marked for the next one.
+      RollupRunModel.find({ source: 'nightly', status: { $in: ['done', 'partial'] } })
+        .sort({ startedAt: -1 })
+        .limit(1)
+        .lean(),
+      RollupDirtyDayModel.estimatedDocumentCount(),
+      missingRollupIndexes(),
+    ]);
+    const stale =
+      !lastFinished || Date.now() - lastFinished.startedAt.getTime() > NIGHTLY_STALE_MS;
+    successResponse(res, {
+      data: {
+        latestNightly: latest ?? null,
+        lastFinishedNightly: lastFinished ?? null,
+        stale,
+        dirtyDays,
+        missingIndexes,
+      },
+    });
+  }
+);
 ```
 
 ## GET /api/v1/query-managers
