@@ -1,82 +1,160 @@
 ---
-title: "Errors, logging & conventions"
-description: "Read response contracts, operational signals and coding patterns."
+title: "Conventions: how a model is built"
+description: "baseSchema, the six ways one record relates to another, hidden fields, virtuals, discriminators and the three kinds of index."
 ---
 
+## The code
 
+Every model except the derived ones adds this schema to get `createdAt` and `updatedAt`.
 
+{/* schema: server/src/libraries/db/base-schema.ts */}
+```ts title="server/src/libraries/db/base-schema.ts" lineNumbers
+import { Schema, Document } from 'mongoose';
 
-## Error and response conventions
+// Define an interface for the base schema (if needed)
+interface IBaseSchema extends Document {
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-`server/src/libraries/error-handling/index.ts` carries a statusCode, status, message and comingFrom. Subclasses cover 400, 401, 403, 404, 409, 413 and 500. Express 5 async route errors reach the global handler; callback-style Passport handling explicitly forwards errors.
+// Create the base schema with TypeScript
+const baseSchema = new Schema<IBaseSchema>(
+  {
+    createdAt: {
+      type: Date,
+      default: () => new Date(),
+      index: true,
+    },
+    updatedAt: {
+      type: Date,
+      default: () => new Date(),
+      index: true,
+    },
+  },
+  { timestamps: true }
+);
 
-Global translation in `server.ts`:
+// Export the baseSchema using TypeScript's module syntax
+export { baseSchema };
+```
+{/* /schema */}
 
-| Condition                 | Response                                                   |
-| ------------------------- | ---------------------------------------------------------- |
-| Mongoose ValidationError  | 400 with validation messages.                              |
-| CastError                 | 400 identifying invalid field/value.                       |
-| Mongo duplicate key 11000 | 409 naming the duplicate field.                            |
-| Multer oversized upload   | 413.                                                       |
-| Other Multer error        | 400.                                                       |
-| AppError                  | Its serialized status/message.                             |
-| Unknown error             | Provided statusCode or 500, and error.message or fallback. |
+`schema.add(baseSchema)` copies these two paths into a model, and `{ timestamps: true }` on the base makes Mongoose set them on every save. Both are **indexed**, which costs a write per document change. That is why the high-churn derived collections skip it:
 
-Typical envelopes:
+| How time is kept | Models | Why |
+| --- | --- | --- |
+| `baseSchema` (indexed `createdAt`, `updatedAt`) | Company, User, Department, Team, Brand, BrandTag, FixedReply, Setting, Customer, Conversation, Message, Session, SessionNote, Comment, AlertRule, File | Ordinary records |
+| `{ timestamps: true }`, not indexed | QueryHandling, QueryTurn | Rewritten on every change; nothing reads by time |
+| Own `createdAt` only | NotificationMute, Notification (with a 180-day TTL) | Written once |
+| None (`versionKey: false`) | OverviewDay, CustomerWeek, RollupDay, RollupRun, RollupRunDay, RollupDirtyDay | Rollup rows carry their own `day`, `computedAt` or `startedAt` |
 
-```json
-{ "success": true, "message": "success", "data": {} }
+## The six ways one record relates to another
+
+```mermaid
+flowchart TB
+    subgraph A["1 · Reference (ref)"]
+        a1["Message.conversationId"] -->|ObjectId| a2[(Conversation)]
+    end
+    subgraph B["2 · Array of references"]
+        b1["Brand.teamIds[ ]"] -->|"ObjectId[ ]"| b2[(Team)]
+    end
+    subgraph C["3 · Polymorphic id"]
+        c1["Session.assignee.id<br/>+ assignee.kind"] -.->|query_manager| c2[(User)]
+        c1 -.->|department| c3[(Department)]
+        c1 -.->|team| c4[(Team)]
+    end
+    subgraph D["4 · Embedded object"]
+        d1["Brand.facebook { pageId, accessToken, … }"]
+    end
+    subgraph E["5 · Embedded array"]
+        e1["Session.statusLog [ {status, at, cause, by} ]"]
+    end
+    subgraph F["6 · Copied value (denormalized)"]
+        f1["Conversation.status"] -.copy of.-> f2["latest Session.status"]
+    end
 ```
 
-```json
-{ "success": false, "status": "error", "message": "Brand not found" }
+| Kind | Declared as | Where you meet it | Trade-off |
+| --- | --- | --- | --- |
+| **Reference** | `{ type: Schema.Types.ObjectId, ref: 'Conversation' }` | Most `…Id` fields | Can be `.populate()`d. MongoDB does not enforce it, so a deleted target leaves a dangling id. |
+| **Array of references** | `[{ type: ObjectId, ref: 'Team' }]` | `Brand.departmentIds/teamIds/queryManagerIds`, `tags` on Session, Comment and Conversation, `Notification.ruleIds` | A multikey index makes "which brands include team X" fast |
+| **Polymorphic id** | ObjectId **without** `ref`, plus a field that says the kind | `assignee.id` (+`kind`), `queryId` (+`source`), `Setting.scopeId` (+`scope`), `Notification.target.id` (+`kind`) | Cannot populate, so a `name` is copied next to it |
+| **Embedded object** | `{ type: { … }, _id: false }` | `Brand.facebook/instagram/whatsapp`, `Session.sla`, `assignee`, `Message.template`, `failure` | Read with its parent, in one atomic write |
+| **Embedded array** | `[subSchema]` | `statusLog`, `assignmentLog`, `wrapUpLog`, `attachments`, `reactions`, rollup buckets | Grows the parent, so the logs are `select: false` |
+| **Copied value** | An ordinary field, kept in sync by code | `companyId` everywhere, Conversation's mirror fields, `changedBy.name`, `authorName` | A list or scope filter needs no join. Code must keep it in step. |
+
+## Fields you only get when you ask
+
+`select: false` keeps a field out of every query unless the query names it:
+
+| Field | Why it's hidden | How code reads it |
+| --- | --- | --- |
+| `User.password` | Hash must never leave the server | `.select('+password')` in login and change-password only; a `toJSON` transform deletes it as a second layer |
+| `statusLog`, `assignmentLog`, `wrapUpLog` on Session and Comment | Grow with every change; only supervisors read history | History endpoints select them explicitly |
+
+Other secrets are not hidden but **stripped on serialization**: `Brand.toJSON` deletes `facebook.accessToken`, `userAccessToken`, `instagram.accessToken`, `whatsapp.accessToken` and `whatsapp.registrationPin`.
+
+## Virtuals: computed, never stored
+
+| Model | Virtual | Built from |
+| --- | --- | --- |
+| Company, Brand | `logoUrl` | `BASE_URL/uploads/` + `logo` |
+| User | `avatarUrl` | `BASE_URL/uploads/` + `avatar` |
+| Brand | `facebookConnected`, `instagramConnected`, `whatsappConnected` | the channel's `connected` flag |
+| File | `url` | S3 bucket URL + `key` |
+
+## One collection, several shapes: discriminators
+
+`Setting` is a single collection where the `type` field picks the shape of `value`. Each type is a discriminator model with its own validation:
+
+```mermaid
+classDiagram
+    class Setting {
+      scope: brand | company
+      scopeId: ObjectId
+      companyId: ObjectId
+      type: discriminator key
+      version: number
+      changedBy: id, name
+    }
+    class SlaSetting { value: tier, overrides }
+    class BusinessHoursSetting { value: timezone, days[7], holidays[] }
+    class SlaTiersSetting { value: Standard, Priority }
+    Setting <|-- SlaSetting : type = 'sla'
+    Setting <|-- BusinessHoursSetting : type = 'business-hours'
+    Setting <|-- SlaTiersSetting : type = 'sla-tiers'
 ```
 
-Pagination adds a top-level `pagination` beside `data`; it does not wrap items inside `data.items` on the wire. Cursor pagination includes limit/hasNext/nextCursor; offset pagination also includes page, totalCount/totalPages where available, hasPrev and index bounds.
+Details are in [Settings](/docs/listenyzen/settings).
 
-Exceptions exist: login failure can return only `{ message }`; webhook handlers send plain status responses; unmatched routes return plain `Not Found`; rate-limit and health responses have their own shapes. Do not promise a universal envelope to clients.
+## Three kinds of index you will see everywhere
 
-## Logs and observability
+| Kind | Example | Meaning |
+| --- | --- | --- |
+| **Unique** | `Conversation {pageId, participantId}` | One thread per page and customer: repeated webhooks fold into one document |
+| **Sparse unique** | `Message {mid}` | Unique only among documents that have the field |
+| **Partial** | `Session {brandId, assignee.id, …} where assignee.id exists` | Only matching documents are indexed, so the index stays small. A query must repeat the filter to use it. |
+| **TTL** | `Notification.createdAt expires 180 days` | MongoDB deletes the document itself |
+| **Compound sort** | `{brandId, lastMessageAt: -1, _id: -1}` | Filter + sort straight from the index; `_id` breaks ties for cursor pages |
 
-- Winston defaults to debug outside production and info in production, with `LOG_LEVEL` override.
-- Service name is `SERVICE_NAME` or inferred from the entrypoint (`api-service`/`worker-service`).
-- Production console output is JSON; development output is readable/colorized. File output is JSON with hourly filename patterns, 20 MB rotation, compressed archives and 14-day retention.
-- `LOG_DIR` defaults to `logs`; `LOG_TO_FILE=false` disables file transport.
-- AsyncLocalStorage carries requestId/userId into downstream logs. `x-request-id` is accepted or generated and echoed back.
-- `logRequest` logs selected request metadata at debug and completion/status/duration at info. Body fields are opt-in; do not opt in passwords/tokens/message contents indiscriminately.
-- Global error handling chooses warn for known 4xx and error for 5xx. Because logging precedes some error translations, raw Mongoose/Multer errors without statusCode may be logged as 500 even when translated to a 4xx response.
-- Sensitive-key redaction recurses through metadata, but preserved messages and arbitrary string values are not automatically secret-scanned.
-- Heartbeats default to every 30 seconds and include DB/Redis state, uptime, RSS and heap; API heartbeat can include realtime. Queue health is read on demand rather than polled on every heartbeat.
+`autoIndex` builds indexes automatically only outside production. In production every index is created by hand. The [index reference](/docs/listenyzen/files-and-indexes#every-index) lists all of them.
 
-Health endpoints:
+## Check yourself
 
-| Endpoint            | Meaning                                                                                                                                            |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /health`       | Reports Mongo, Redis and realtime state. HTTP 200 depends on Mongo being connected; Redis/realtime failure can return 200 with `status: degraded`. |
-| `GET /health/queue` | `webhooks` queue waiting/active/delayed/failed counts and oldest waiting age. 503 for waiting age >300 seconds, backlog >5,000, or unavailable stats. The `overview-rollups` queue is not included. |
+<details>
+<summary>Why can't `Session.assignee.id` use `.populate()`?</summary>
 
-A failed-job count alone does not flip queue status. Healthy API status does not prove a worker exists. The worker has no HTTP health route; inspect its heartbeat/logs and actual queue progress.
+It has no `ref`, because it can point at a User, a Department or a Team depending on `assignee.kind`. That is why `assignee.name` is copied next to it.
+</details>
 
-## Coding and typing conventions
+<details>
+<summary>A query reads a session without `statusLog`. Is the log empty?</summary>
 
-- Source uses `@/` imports mapped to `src/`. `tsc-alias` rewrites aliases in build output. Output entrypoints are `dist/src/app.js` and `dist/src/worker.js` because rootDir is the server directory.
-- Strict TypeScript settings include strict, noImplicitAny, noUnusedLocals, noUnusedParameters, alwaysStrict and consistent filename casing. Explicit `any` still exists in infrastructure; strict mode does not make every query/response fully typed.
-- Zod-inferred input types, `as const` enum arrays, explicit role lists, Mongoose interfaces and small named access helpers are common patterns.
-- Root Prettier configuration: single quotes, semicolons, two spaces, width 100, `arrowParens: avoid`, trailing commas `es5`.
-- Backend ESLint combines JS/TypeScript recommended rules with security and SonarJS. Client uses oxlint, not the backend linter.
-- Root Husky/lint-staged applies server ESLint fixes, client oxlint fixes and formatting. Conventional Commits are enforced; `pnpm commit` invokes Commitizen.
-- Shared utilities include filename sanitization, query building, response helpers, token/cookie handling and business-time calculation. Reuse the named module seams instead of reproducing access or SLA logic inside handlers.
+No. It is `select: false`, so the query simply didn't ask for it. Absent from the result does not mean absent from the database.
+</details>
 
-## Practical change checklist
+<details>
+<summary>Which collections can you delete and rebuild from the others?</summary>
 
-For a new feature or field:
-
-1. Identify the authoritative document and any derived copies (especially Session → Conversation).
-2. Define allowed inputs in the feature Zod schema and persistence shape in its Mongoose schema.
-3. Establish role, tenant, brand and mutation-policy checks before unscoped service calls.
-4. Keep credentials out of serialized documents, lean results and logs.
-5. Preserve indexes/order when adding filters or pagination; consider existing production data and backfills.
-6. Decide whether changes require realtime events and client cache updates.
-7. Preserve provider deduplication, partial-failure semantics and SLA recalculation where applicable.
-8. Update the checked-in request collection and relevant Markdown notes when the external contract changes.
-
+QueryHandling and QueryTurn (handling backfill), and the six rollup collections (rollup backfill). Notifications expire on their own and are not rebuilt.
+</details>

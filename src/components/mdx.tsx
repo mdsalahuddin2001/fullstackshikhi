@@ -1,6 +1,6 @@
 import { HandbookProgress } from './handbook-progress';
-import { ApiReference } from './listenyzen/api-reference';
-import { CodeLens } from './listenyzen/code-lens';
+import { SchemaGraph } from './listenyzen/schema-graph';
+import { IndexTable, ModelCards, ModelFields, RelationMatrix } from './listenyzen/schema-tables';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
 import { Step } from 'fumadocs-ui/components/steps';
@@ -11,14 +11,11 @@ import { Mermaid } from './mermaid';
 import { Playground } from './playground';
 import { Reveal, Steps } from './present/reveal';
 import { YouTube } from './youtube';
-import { SystemWalkthrough, RequestFlow, EntityExplorer, AccessSimulator, SessionSimulator, SlaClock, EndpointExplorer } from './listenyzen/explorers';
 
 export function getMDXComponents(components?: MDXComponents) {
   return {
     ...defaultMdxComponents,
     HandbookProgress,
-    CodeLens,
-    ApiReference,
     img: (props) => <ImageZoom {...(props as ComponentProps<typeof ImageZoom>)} />,
     Mermaid,
     Playground,
@@ -28,7 +25,11 @@ export function getMDXComponents(components?: MDXComponents) {
     Tab,
     Tabs,
     YouTube,
-    SystemWalkthrough, RequestFlow, EntityExplorer, AccessSimulator, SessionSimulator, SlaClock, EndpointExplorer,
+    SchemaGraph,
+    ModelFields,
+    RelationMatrix,
+    IndexTable,
+    ModelCards,
     ...components,
   } satisfies MDXComponents;
 }

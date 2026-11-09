@@ -1,109 +1,85 @@
 ---
-title: "Inside Listenyzen"
-description: "Database first, then business requirements, prerequisites and code-level API explanations."
+title: "Listenyzen data model"
+description: "All 26 MongoDB models of the Listenyzen backend, how they relate, and a reading order that makes them click."
 ---
 
-<Callout title="Current source snapshot">
-Based on Listenyzen revision `4f35c48` plus the **uncommitted** overview-rollups work in its working tree, inspected on 1 November 2026. Examples are source-derived illustrations, not captured live responses. The API reference covers 139 mounted operations and two health checks. Source paths refer to the Listenyzen repository.
+<Callout title="Source snapshot">
+Listenyzen revision `ffd5b3d`, 9 November 2026. Every chapter opens with the real `schema.ts` code, copied verbatim by `scripts/sync-listenyzen-schemas.mjs`. Field tables and diagrams are drawn from the same files. Sample documents are illustrative, not live data.
 </Callout>
 
-## 1. Understand the database before the endpoints
+## The whole system in one sentence
 
-Start with all 17 base collections: Company, User, Department, Team, Brand, BrandTag, Customer, Conversation, Message, Session, SessionNote, Comment, FixedReply, File, Setting, and the derived QueryHandling and QueryTurn. Six more collections hold the precalculated Overview figures and their run bookkeeping: OverviewDay, HandlerDay, RollupDay, RollupRun, RollupRunDay and RollupDirtyDay. SLA and business-hour settings share the Setting collection through discriminators. Status, assignment and wrap-up history are embedded in Session and Comment, not a separate collection.
+A **company** runs **brands**. Each brand connects Facebook, Instagram and WhatsApp channels. Customers write to those channels as **DM conversations** or **public comments**. Every piece of incoming work becomes a **query**: a **session** for DMs, a **root comment** for comments. **Staff** in departments and teams work those queries under the brand's **settings** (SLA targets, business hours). Everything else is **derived**: handler performance records, daily Overview figures, and notifications.
 
-<Cards>
-<Card title="Entities, schemas & relationships" href="/docs/listenyzen/data-model">Read field types, defaults, references, indexes, embedded history and consistency boundaries.</Card>
-<Card title="Business requirements & learning order" href="/docs/listenyzen/learning-path">Follow prerequisites from independent features to dependent workflows, with code entry points and input/output examples at every stage.</Card>
-</Cards>
+```mermaid
+flowchart LR
+    subgraph own[Who owns the data]
+        Company --> Brand
+        Company --> Department --> Team
+        Team -.member.-> User
+        Brand -.vocabulary.-> BrandTag
+        Brand -.config.-> Setting
+    end
+    subgraph work[The work]
+        Brand --> Conversation --> Session --> Message
+        Brand --> Comment
+        Conversation -.CRM.-> Customer
+    end
+    subgraph derived[Derived from the work]
+        Session --> QueryHandling
+        Comment --> QueryHandling
+        Session --> QueryTurn
+        Session --> OverviewDay
+        Comment --> OverviewDay
+        Session -.event.-> Notification
+    end
+```
 
-<Cards>
-<Card title="Read the whole codebase in order" href="/docs/listenyzen/code-reading-order">A file-by-file study route, module dependencies, checkpoints, tests and complete backend-to-frontend traces.</Card>
-</Cards>
+The arrows above are the **mental model**: "is part of", "produces". The interactive map below shows the **actual stored ids**: an arrow goes from the model that **holds the id** to the model it points at.
 
-## 2. Learn the shared foundations
+## Interactive map
 
-A company owns brands; staff access those brands through roles and assignments. Authentication, tenant filtering, validation, error envelopes and pagination are reused throughout the business features.
+<SchemaGraph height={680} />
 
-<Cards>
-<Card title="System & runtime" href="/docs/listenyzen/system">Domain vocabulary, API process, worker and dependencies.</Card>
-<Card title="Request lifecycle" href="/docs/listenyzen/architecture">How middleware, handlers and services cooperate.</Card>
-<Card title="Authentication & access" href="/docs/listenyzen/security">Visibility, roles, active companies and action policy.</Card>
-<Card title="Identity code" href="/docs/listenyzen/code-access">Read tenant filters, token handling and password writes.</Card>
-<Card title="Queries & pagination code" href="/docs/listenyzen/code-queries">Read query builders, scoped filters and stable cursors.</Card>
-<Card title="Errors & conventions" href="/docs/listenyzen/conventions">Understand response and logging conventions before using endpoints.</Card>
-</Cards>
+Tenant-scope copies are hidden at first. Nearly every model carries a `companyId`, and drawing all of them buries the real structure. Turn them on to see how tenant scoping works.
 
-## 3. Follow business dependencies
+## All 26 models
 
-Once company identity and brand access exist, settings, tags and reusable replies can be understood independently of conversations. Channel connections enable ingestion. Ingestion creates private inbox records or public comments. Sessions and comment roots own status; historical settings and status history drive SLA; reports depend on those results.
+<ModelCards />
 
-<Cards>
-<Card title="Business workflows" href="/docs/listenyzen/workflows">Provisioning, access assignments, messages, settings, templates and reporting.</Card>
-<Card title="Message & session code" href="/docs/listenyzen/code-ingestion">Provider identity, episode choice, persistence and events.</Card>
-<Card title="Teams, routing & forwarding" href="/docs/listenyzen/code-assignment">Claim eligible pools, enforce personal ownership and forward work with an internal note.</Card>
-<Card title="Assignment & wrap-up history" href="/docs/listenyzen/code-history">Read embedded changes, actor resolution and manager-only history APIs.</Card>
-<Card title="Hold, reopen & history code" href="/docs/listenyzen/code-status">Status-write concurrency, reasons, automatic replies and manager reporting.</Card>
-<Card title="Settings & SLA code" href="/docs/listenyzen/code-sla">Historical policies, full pending-time accounting and guarded derived writes.</Card>
-<Card title="Handler performance" href="/docs/listenyzen/code-handling">Per-query-manager handled, first response and resolution rate, from stints to stored records, sync, retry and reads.</Card>
-<Card title="Overview rollups" href="/docs/listenyzen/code-rollups">Daily precalculated Overview figures: the nightly job, dirty days, the read path with live fallback and the super-admin controls.</Card>
-</Cards>
+## Relationship matrix
 
-## 4. Use the endpoint contracts
+Each row is a model that **holds** an id. Each column is a model being **pointed at**. A cell shows the field name. A hatched cell is a polymorphic id, whose target depends on another field such as `assignee.kind` or `source`. Tenant-scope copies are left out here as well.
 
-Every operation has an example request and response, access requirements, prerequisites, business context, validation declarations and handler code. Read the learning path first when a route depends on unfamiliar entities or workflows.
+<RelationMatrix />
 
-<Cards>
-<Card title="Complete API reference" href="/docs/listenyzen/api-reference">Search 141 operations, including session/comment history, the brand hold log, the Overview analytics reads, Team Performance and the super-admin rollup controls.</Card>
-<Card title="Development & repair" href="/docs/listenyzen/development">Configure the processes, understand backfills and check production index requirements.</Card>
-</Cards>
+## Six ideas that explain most of the schema
 
-## Latest behavior to remember
+1. **Reference, don't embed, when it grows or is shared.** Messages are separate documents pointing at a conversation. Tags are a separate collection, so a rename is one write. History logs are embedded, but hidden with `select: false`. See [conventions](/docs/listenyzen/conventions).
+2. **Denormalize for the list screens.** Conversation copies its latest session's status, sentiment, assignee and tags, so the inbox never joins. Copies are marked **copy** in every field table.
+3. **Tenant scoping is a copied `companyId`** (and often `brandId`) on every record, so each query can filter without a join.
+4. **A query is either a Session or a root Comment.** Both share the same status, assignment, wrap-up and SLA sub-schemas. Derived records say which one they mean with `source` plus `queryId`.
+5. **Settings are append-only versions.** A session remembers which versions were in force when its clock started.
+6. **Derived collections can always be rebuilt** from the source records: QueryHandling and QueryTurn, the rollups, and notifications (which expire anyway).
 
-Teams now sit under departments. Query managers join a team; their department is derived from it. Brand visibility can come from a department, team or individual grant. Managers route work; agents claim unassigned work or their own pools before modifying it. The company-wide permission toggle and `/companies/me/settings` endpoints have been removed.
+## Reading order
 
-[Read the teams, routing and claim walkthrough](/docs/listenyzen/code-assignment).
+<Steps>
+<Step>
+**[Conventions](/docs/listenyzen/conventions)**: `baseSchema`, ObjectId references, embedded subdocuments, `select: false`, discriminators. You need these words for every other chapter.
+</Step>
+<Step>
+**[Tenancy](/docs/listenyzen/tenancy)** → **[Brand](/docs/listenyzen/brand)** → **[Settings](/docs/listenyzen/settings)**: who owns what, and who may see which brand.
+</Step>
+<Step>
+**[Messaging](/docs/listenyzen/messaging)** → **[Comments](/docs/listenyzen/comments)**: the work itself, which makes up most of the data.
+</Step>
+<Step>
+**[Handling](/docs/listenyzen/handling)** → **[Rollups](/docs/listenyzen/rollups)** → **[Alerts](/docs/listenyzen/alerts)**: data computed from the work.
+</Step>
+<Step>
+**[Files and every index](/docs/listenyzen/files-and-indexes)**: the last model and a complete index reference.
+</Step>
+</Steps>
 
-
-Resolution charges business time while pending, including silence after an agent reply. Hold, unresolved and resolved intervals stop that clock. A customer message reopens unresolved work; an agent reply ends hold; automatic replies do neither the work of a first response nor ending a hold. First-response timing is independent of resolution pauses.
-
-The manager-only History tabs and Admin hold log expose who changed status, when and why. Team pools, claims and manager routing are implemented. Hold-row deep links remain deferred.
-
-[Download the complete Markdown guide](/downloads/LISTENYZEN_BACKEND_ONBOARDING.md) · [Download the API reference](/downloads/LISTENYZEN_API_REFERENCE.md)
-
-## Updated in this snapshot (1 November)
-
-- **Overview figures are precalculated.** Every Overview range figure is stored per brand × Asia/Dhaka day (`overviewdays`, `handlerdays`) and read from there. A finished day not yet stored is computed live, never shown as zero. Read [the walkthrough](/docs/listenyzen/code-rollups).
-- **Range figures run through yesterday.** Responses carry `asOf`, the last day included. The default range is the 30 days ending yesterday. The client drops "Today", caps the calendar at yesterday and shows "Data through `{day}`".
-- **A nightly job** on a new `overview-rollups` queue (00:30 Asia/Dhaka) recomputes the last 7 finished days of every active brand, plus **dirty days**: older days whose events moved or vanished (a reopened query, a deleted comment, an SLA or handling rewrite).
-- **Three super-admin routes** under `/api/v1/admin/overview-rollups` (`rebuild`, `runs`, `status`) and a client page at `/dashboard/system/rollups`.
-- New script `pnpm backfill:overview-rollups --apply`. Production needs the rollup indexes and a replica set (transactions). `/handlers` for a year dropped from 1.6 s to 46 ms in the source benchmark.
-- These changes are **uncommitted** in the Listenyzen repository at the time of inspection.
-
-## Updated in the 30 October snapshot
-
-- **Handler performance is live.** Two derived collections, `QueryHandling` (one record per query and query manager) and `QueryTurn` (one per customer turn), are rewritten by `syncQueryHandling` after every assignment, message, failed send and status change. Rules are H1–H14 and T1–T7. Read [the walkthrough](/docs/listenyzen/code-handling).
-- Two new manager-only reads: `/overview/handlers` (per query manager, team and department: handled, first-response mean, resolution rate) and `/overview/team` (queries closed by channel, on hold now, unanswered turns).
-- Assignment-log entries stamp the query manager's `teamId` / `departmentId` at assignment time. Sessions and comment roots gain `handlingRevision`.
-- A failed handling sync is queued as a `handling-sync` BullMQ job that the worker retries: 9 attempts, deduplicated per query. The worker now does more than webhooks.
-- New scripts: `pnpm backfill:query-handling --apply` and `pnpm bench:team-performance`. Production now needs 7 hinted Overview indexes (the session status index adds `platform`, plus a partial index on resolved customer comment roots) and the handling indexes.
-
-## Updated in the 29 October snapshot
-
-- Five new manager-only Overview reads: `/first-response`, `/resolution-time`, `/customers`, `/customer-trend` and `/peak-hours`. All take the same paired `from`/`to` range and optional `platform`.
-- Sessions and comment roots now store `sla.firstResponseMs` and `sla.resolutionMs`, so first-response and resolution times are database sums, not a business-hours walk per item.
-- `sla.rulesVersion` and `CLOCK_RULES_VERSION` are gone. Stored SLA values follow the current rules only; both SLA backfills now recompute every session and thread.
-- Overview range reads `.hint()` named indexes. New indexes: comments `{brandId, platform, commentedAt}` (replaces `{brandId, commentedAt}`), sessions `{conversationId, firstCustomerMessageAt}`, partial inbound messages `{brandId, sentAt}`, and partial `{brandId, field}` SLA-decision indexes on sessions and comments.
-
-## Updated in the 19 October snapshot
-
-- Teams have a dedicated management page, member/brand counts and a brand-access detail endpoint.
-- Personal holders can forward queries with an internal note; managers can inspect separate assignment and wrap-up histories.
-- Session details show live business-time SLA usage and corrected completed-session badge behavior.
-- Reopened conversations refresh their assignment summary; the client refreshes current-user membership and linkifies message/comment URLs.
-- Session merging is removed, including its request field and realtime event.
-
-Continue through [the whole-code reading order](/docs/listenyzen/code-reading-order), [forwarding](/docs/listenyzen/code-assignment), [history](/docs/listenyzen/code-history) and [SLA details](/docs/listenyzen/code-sla).
-
-## Production review
-
-[Read the 19 October backend review](/docs/listenyzen/backend-review) for 14 prioritized findings, exact source references, proposed fixes, performance tradeoffs and test evidence. It is a dated assessment; recommendations have not been applied to the backend.
+Each chapter follows the same order: **the code** → **map** → **ER diagram** → **one section per model** (field table, sample document) → **lifecycles and write paths** → **check yourself**.

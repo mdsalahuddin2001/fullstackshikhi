@@ -49,10 +49,10 @@ export const topics: Topic[] = [
   {
     slug: 'listenyzen',
     title: 'Listenyzen Backend',
-    description: 'Your English field guide to the codebase: architecture, schemas, access rules and the workflows behind the inbox.',
+    description: 'Every MongoDB model, field and relationship, from the real schema code to interactive maps and diagrams.',
     logo: ListenyzenLogo,
     brand: { light: '#186b5b', lightForeground: '#ffffff', dark: '#63c7ae', darkForeground: '#151a22' },
-    tags: ['Architecture', 'MongoDB', 'Interactive'],
+    tags: ['Data model', 'MongoDB', 'Interactive'],
   },
   {
     slug: 'postgresql',
