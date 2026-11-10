@@ -230,8 +230,12 @@ commentSchema.index(
     partialFilterExpression: { status: 'resolved', direction: 'incoming', parentCommentId: null },
   }
 );
-// The hold log: queries whose status changed since a range began (overview/holds.ts).
-commentSchema.index({ brandId: 1, statusChangedAt: 1 });
+// The hold log: threads ever put on hold, by when their status changed (HELD_BY_CHANGE, hinted).
+// Partial, so only held threads are indexed: the read touches held queries, not every query.
+commentSchema.index(
+  { brandId: 1, 'statusLog.at': 1, platform: 1 },
+  { partialFilterExpression: { 'statusLog.status': 'hold' } }
+);
 // Overview closure: unresolved threads by when they became unresolved (UNRESOLVED_BY_CHANGED).
 commentSchema.index(
   { brandId: 1, statusChangedAt: 1, platform: 1 },
@@ -416,6 +420,10 @@ The difference from sessions: **a resolved thread never reopens**, because there
   }
 ]
 ```
+
+### The hold-log index
+
+Since revision `18e6d95`, roots that were ever put on hold are indexed by `{brandId, statusLog.at, platform}`, partial on `statusLog.status: 'hold'`. This is the same multikey index into the embedded log as on sessions ([explained there](/docs/listenyzen/messaging#an-index-inside-the-hidden-log)).
 
 ### Why so many indexes?
 

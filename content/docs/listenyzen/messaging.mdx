@@ -991,8 +991,12 @@ sessionSchema.index({ brandId: 1, lastActivityAt: -1, _id: -1 });
 // Overview counts: a brand's sessions by status, and resolved ones by resolution date (SLA breaches).
 // `platform` last, so per-platform counts are answered from the index alone.
 sessionSchema.index({ brandId: 1, status: 1, resolvedAt: 1, platform: 1 });
-// The hold log: queries whose status changed since a range began (overview/holds.ts).
-sessionSchema.index({ brandId: 1, statusChangedAt: 1 });
+// The hold log: sessions ever put on hold, by when their status changed (HELD_BY_CHANGE, hinted).
+// Partial, so only held sessions are indexed: the read touches held queries, not every query.
+sessionSchema.index(
+  { brandId: 1, 'statusLog.at': 1, platform: 1 },
+  { partialFilterExpression: { 'statusLog.status': 'hold' } }
+);
 // Overview closure: unresolved sessions by when they became unresolved (UNRESOLVED_BY_CHANGED).
 sessionSchema.index(
   { brandId: 1, statusChangedAt: 1, platform: 1 },
@@ -1326,6 +1330,20 @@ flowchart TB
 ```
 
 `assignmentLog[].assignee` stamps the query manager's **team and department at that moment**. Handler performance credits the team they were in then, not the one they are in now.
+
+### An index inside the hidden log
+
+The hold log (who held what, and when) is served by an index **into the embedded array**:
+
+```ts
+{ brandId: 1, 'statusLog.at': 1, platform: 1 }   // partial: { 'statusLog.status': 'hold' }
+```
+
+- `statusLog.at` indexes **every entry's** `at` (a multikey index). One query appears once per log entry.
+- The partial filter keeps only queries that were **ever put on hold**, so the hold-log read never touches the rest.
+- `select: false` hides the log from reads but not from indexes or filters: the database still sees it.
+
+Since revision `18e6d95` it replaces the old `{brandId, statusChangedAt}`, which indexed every query.
 
 ### The SLA clocks, stored
 

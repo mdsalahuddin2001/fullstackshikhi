@@ -2,10 +2,11 @@
 // indexes. Transcribed from the Listenyzen `server/src/**/schema.ts` files (revision in SNAPSHOT);
 // `scripts/sync-listenyzen-schemas.mjs --check` verifies every field name still exists there.
 
-export const SNAPSHOT = { revision: 'ffd5b3d', date: '9 November 2026' } as const;
+export const SNAPSHOT = { revision: '18e6d95', date: '10 November 2026' } as const;
 
 export const DOMAINS = {
   tenancy: { label: 'Tenancy & people', color: '#4f6bed', page: 'tenancy' },
+  roles: { label: 'Roles & permissions', color: '#0e8fb3', page: 'roles' },
   brand: { label: 'Brand & vocabulary', color: '#d9772b', page: 'brand' },
   settings: { label: 'Settings', color: '#8a5cd6', page: 'settings' },
   messaging: { label: 'Messaging (DMs)', color: '#1f9d8a', page: 'messaging' },
@@ -89,6 +90,7 @@ export const MODELS: Model[] = [
       { n: 'companyId', t: objectId, ref: 'Company', note: 'absent for super_admin' },
       { n: 'teamId', t: objectId, ref: 'Team', note: 'query managers: required by the service' },
       { n: 'departmentId', t: objectId, ref: 'Department', denorm: true, note: "always the team's department" },
+      { n: 'roleId', t: objectId, ref: 'Role', note: "query managers: the role whose permissions apply; absent = the company's seeded Query manager role" },
       { n: 'avatar', t: 'string', note: 'storage key; virtual avatarUrl' },
     ],
     indexes: ['email !', 'companyId', 'createdAt', 'updatedAt'],
@@ -121,6 +123,52 @@ export const MODELS: Model[] = [
       { n: 'companyId', t: objectId, req: true, ref: 'Company', denorm: true },
     ],
     indexes: ['companyId', '{departmentId, name} ! (case-insensitive collation)', 'createdAt', 'updatedAt'],
+  },
+
+  // ── Roles ──────────────────────────────────────────────────────────────
+  {
+    name: 'Role',
+    collection: 'roles',
+    domain: 'roles',
+    file: `${S}/role/schema.ts`,
+    time: 'baseSchema',
+    summary: "A company's operational role: a named set of permission keys that query managers hold.",
+    fields: [
+      { n: 'companyId', t: objectId, req: true, ref: 'Company' },
+      { n: 'name', t: 'string', req: true, note: 'unique per company, any case' },
+      { n: 'description', t: 'string', def: "''" },
+      { n: 'permissions', t: 'PermissionKey[]', def: '[]', note: "keys from auth/permissions.ts, e.g. 'conversation.reply'" },
+      { n: 'origin', t: "'seeded' | 'company'", req: true, note: 'seeded: shipped, editable, never deleted' },
+      { n: 'seedKey', t: "'query_manager'", note: 'seeded roles only; makes seeding idempotent' },
+      { n: 'isDefault', t: 'boolean', def: 'false', note: 'exactly one per company: given to new query managers' },
+      { n: 'revision', t: 'number', def: '1', note: 'optimistic concurrency (409 when stale)' },
+    ],
+    indexes: [
+      '{companyId, name} ! (case-insensitive collation)',
+      '{companyId, isDefault} ! partial: isDefault true',
+      '{companyId, seedKey} ! partial: seedKey exists',
+      'createdAt',
+      'updatedAt',
+    ],
+  },
+  {
+    name: 'RoleChange',
+    collection: 'rolechanges',
+    domain: 'roles',
+    file: `${S}/role/schema.ts`,
+    time: 'baseSchema',
+    summary: 'One change to a role (created, updated, deleted, made default), with before / after snapshots.',
+    fields: [
+      { n: 'companyId', t: objectId, req: true, ref: 'Company' },
+      { n: 'roleId', t: objectId, req: true, ref: 'Role', note: 'kept after the role is deleted' },
+      { n: 'roleName', t: 'string', req: true, denorm: true, note: 'snapshot: survives rename and delete' },
+      { n: 'action', t: "'created' | 'updated' | 'deleted' | 'made-default'", req: true },
+      { n: 'before', t: '{ name, description, permissions } | null', def: 'null' },
+      { n: 'after', t: '{ name, description, permissions } | null', def: 'null' },
+      { n: 'changedBy.id', t: objectId, req: true, ref: 'User' },
+      { n: 'changedBy.name', t: 'string', req: true, denorm: true },
+    ],
+    indexes: ['{companyId, _id: -1}', '{roleId, _id: -1}', 'createdAt', 'updatedAt'],
   },
 
   // ── Brand ──────────────────────────────────────────────────────────────
@@ -367,7 +415,7 @@ export const MODELS: Model[] = [
       '{conversationId, lastActivityAt: -1, _id: -1}',
       '{brandId, lastActivityAt: -1, _id: -1}',
       '{brandId, status, resolvedAt, platform}',
-      '{brandId, statusChangedAt}',
+      '{brandId, statusLog.at, platform} partial: ever held',
       '{brandId, statusChangedAt, platform} partial: unresolved',
       '{brandId, firstCustomerMessageAt}',
       '{conversationId, firstCustomerMessageAt}',
@@ -458,7 +506,7 @@ export const MODELS: Model[] = [
       '{brandId, platform, commentedAt}',
       '{brandId, status, resolvedAt}',
       '{brandId, resolvedAt, platform} partial: resolved incoming roots',
-      '{brandId, statusChangedAt}',
+      '{brandId, statusLog.at, platform} partial: ever held',
       '{brandId, statusChangedAt, platform} partial: unresolved',
       '{brandId, firstResponseAt} partial: has sla',
       '{brandId, resolvedAt} partial: has sla',

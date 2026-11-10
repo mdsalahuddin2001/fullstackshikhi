@@ -51,7 +51,8 @@ export default CompanyModel;
 {/* schema: server/src/modules/user/schema.ts */}
 ```ts title="server/src/modules/user/schema.ts" lineNumbers
 import bcrypt from 'bcrypt';
-import mongoose, { Schema, Document, Model, Types } from 'mongoose';
+import mongoose, { Schema, Document, Model, Query, Types } from 'mongoose';
+import { ROLE_PATHS, raiseUserRoleWrite, touchesRole, type RoleWriteTargets } from './role-writes';
 import { baseSchema } from '@/libraries/db/base-schema';
 import { ROLE_VALUES, Role } from '@/auth/roles';
 import configs from '@/configs';
@@ -74,6 +75,9 @@ export interface User extends Document {
   // `teamId` and never on its own. Kept on the user because brand scope, the JWT and the claim
   // queries all read it.
   departmentId?: Types.ObjectId;
+  // Query managers only: the operational role whose permissions apply (modules/role). Absent = the
+  // Company's seeded Query manager role.
+  roleId?: Types.ObjectId;
   // Storage key of an optional avatar relative to the uploads dir, e.g. 'avatars/jane-...png'.
   avatar?: string;
   // Deactivated users keep their record (names on history, grants) but can't sign in.
@@ -98,6 +102,7 @@ const userSchema = new Schema<IUser>(
     companyId: { type: Schema.Types.ObjectId, ref: 'Company', index: true },
     teamId: { type: Schema.Types.ObjectId, ref: 'Team' },
     departmentId: { type: Schema.Types.ObjectId, ref: 'Department' },
+    roleId: { type: Schema.Types.ObjectId, ref: 'Role' },
     avatar: { type: String },
   },
   {
@@ -135,6 +140,34 @@ userSchema.pre('save', async function (next) {
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
+});
+
+// Writes that may change someone's role drop their cached role holding (modules/user/role-writes.ts),
+// so a permission check never runs on a stale role. Covers saves, updates and deletes.
+const targetsOf = (filter: Record<string, unknown>): RoleWriteTargets => {
+  const id = filter._id;
+  if (typeof id === 'string' || id instanceof Types.ObjectId) return [String(id)];
+  const inList = (id as { $in?: unknown[] } | undefined)?.$in;
+  return Array.isArray(inList) ? inList.map(String) : 'all';
+};
+
+userSchema.pre('save', function (next) {
+  this.$locals.roleWritten = !this.isNew && ROLE_PATHS.some(path => this.isModified(path));
+  next();
+});
+
+userSchema.post('save', function (doc) {
+  if (doc.$locals.roleWritten) raiseUserRoleWrite([String(doc._id)]);
+});
+
+userSchema.post(/^(updateOne|updateMany|findOneAndUpdate|replaceOne)$/, function () {
+  const query = this as unknown as Query<unknown, IUser>;
+  if (touchesRole(query.getUpdate())) raiseUserRoleWrite(targetsOf(query.getFilter()));
+});
+
+userSchema.post(/^(deleteOne|deleteMany|findOneAndDelete)$/, function () {
+  const query = this as unknown as Query<unknown, IUser>;
+  if (typeof query.getFilter === 'function') raiseUserRoleWrite(targetsOf(query.getFilter()));
 });
 
 // Instance methods
@@ -246,6 +279,7 @@ erDiagram
     Department ||--o{ Team : "departmentId (immutable)"
     Team ||--o{ User : "teamId"
     Department ||--o{ User : "departmentId (copy of team's)"
+    Role |o--o{ User : "roleId (query managers)"
     Company {
         ObjectId _id PK
         string name UK
@@ -261,6 +295,7 @@ erDiagram
         ObjectId companyId FK
         ObjectId teamId FK
         ObjectId departmentId FK
+        ObjectId roleId FK
         string status
     }
     Department {
@@ -322,12 +357,12 @@ The company is created together with its owner (`provisionCompany`), so `ownerId
 
 Which fields are set depends on the role:
 
-| Role | `companyId` | `teamId` | `departmentId` |
-| --- | --- | --- | --- |
-| `super_admin` | absent: belongs to no company | no | no |
-| `company_owner` | set | no | no |
-| `company_admin` | set | no | no |
-| `query_manager` | set | **required** (by the service) | always the team's department |
+| Role | `companyId` | `teamId` | `departmentId` | `roleId` |
+| --- | --- | --- | --- | --- |
+| `super_admin` | absent: belongs to no company | no | no | no |
+| `company_owner` | set | no | no | no |
+| `company_admin` | set | no | no | no |
+| `query_manager` | set | **required** (by the service) | always the team's department | optional: absent = the seeded Query manager role ([Roles](/docs/listenyzen/roles)) |
 
 ```json title="Sample query manager (password never leaves the server)"
 {
@@ -342,6 +377,8 @@ Which fields are set depends on the role:
   "avatarUrl": null
 }
 ```
+
+The User schema also has **middleware** since revision `18e6d95`: any write touching `roleId`, `role` or `companyId` drops that user's cached role ([details](/docs/listenyzen/roles#keeping-permission-checks-fresh)).
 
 **Why is `departmentId` stored if the team already knows it?** Brand visibility, the JWT and the claim queries all filter by department. Storing it saves a team lookup on nearly every request. The rule "written alongside `teamId`, never on its own" keeps the copy correct.
 

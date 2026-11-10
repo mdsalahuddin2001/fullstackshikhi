@@ -26,7 +26,9 @@ const POSITION: Record<string, [number, number]> = {
   User: [0, 1.5],
   Department: [0, 3],
   Team: [0, 4],
-  File: [0, 6.5],
+  Role: [0, 5.5],
+  RoleChange: [0, 6.5],
+  File: [0, 7.5],
   Brand: [1, 0],
   BrandTag: [1, 1],
   FixedReply: [1, 2],
@@ -200,7 +202,7 @@ export function SchemaGraph({ domains, height = 640 }: { domains?: Domain[]; hei
             nodeTypes={nodeTypes}
             colorMode={theme as 'light' | 'dark'}
             fitView
-            fitViewOptions={{ padding: 0.08 }}
+            fitViewOptions={{ padding: 0.08, maxZoom: 1 }}
             minZoom={0.2}
             onNodeClick={(_, node) => setSelected(node.id === selected ? null : node.id)}
             onPaneClick={() => setSelected(null)}

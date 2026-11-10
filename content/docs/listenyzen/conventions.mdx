@@ -43,7 +43,7 @@ export { baseSchema };
 
 | How time is kept | Models | Why |
 | --- | --- | --- |
-| `baseSchema` (indexed `createdAt`, `updatedAt`) | Company, User, Department, Team, Brand, BrandTag, FixedReply, Setting, Customer, Conversation, Message, Session, SessionNote, Comment, AlertRule, File | Ordinary records |
+| `baseSchema` (indexed `createdAt`, `updatedAt`) | Company, User, Department, Team, Role, RoleChange, Brand, BrandTag, FixedReply, Setting, Customer, Conversation, Message, Session, SessionNote, Comment, AlertRule, File | Ordinary records |
 | `{ timestamps: true }`, not indexed | QueryHandling, QueryTurn | Rewritten on every change; nothing reads by time |
 | Own `createdAt` only | NotificationMute, Notification (with a 180-day TTL) | Written once |
 | None (`versionKey: false`) | OverviewDay, CustomerWeek, RollupDay, RollupRun, RollupRunDay, RollupDirtyDay | Rollup rows carry their own `day`, `computedAt` or `startedAt` |

@@ -1,6 +1,6 @@
 ---
 title: "File, and every index"
-description: "The generic file-metadata model, then a complete reference of the 139 declared indexes across all 26 collections."
+description: "The generic file-metadata model, then a complete reference of the 148 declared indexes across all 28 collections."
 ---
 
 ## The code
@@ -110,14 +110,14 @@ flowchart LR
 
 ## Every index
 
-The schemas declare **139 indexes** across 26 collections. MongoDB's automatic `_id` index comes on top of these. In production `autoIndex` is off, so every one of them is built by hand.
+The schemas declare **148 indexes** across 28 collections. MongoDB's automatic `_id` index comes on top of these. In production `autoIndex` is off, so every one of them is built by hand.
 
 ```mermaid
 xychart-beta
     title "Declared indexes per collection"
-    x-axis [comments, sessions, conversations, messages, brands, sessionnotes, files, users, departments, teams, brandtags, fixedreplies, customers, queryhandlings, queryturns, notifications, companies, settings, rollupruns, alertrules, rollupdirtydays, notificationmutes, overviewdays, customerweeks, rollupdays, rolluprundays]
+    x-axis [comments, sessions, conversations, messages, brands, sessionnotes, roles, files, users, departments, teams, rolechanges, brandtags, fixedreplies, customers, queryhandlings, queryturns, notifications, companies, settings, rollupruns, alertrules, rollupdirtydays, notificationmutes, overviewdays, customerweeks, rollupdays, rolluprundays]
     y-axis "indexes" 0 --> 24
-    bar [22, 19, 12, 10, 9, 6, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 1, 1, 1, 1]
+    bar [22, 19, 12, 10, 9, 6, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 1, 1, 1, 1]
 ```
 
 The busiest collections have the most indexes because the list screens filter by **one field at a time** and always sort the same way. Each filter gets its own `{brandId, field, sort, _id}` index, so the filter and the sort both come straight from the index.

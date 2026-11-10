@@ -1,15 +1,15 @@
 ---
 title: "Listenyzen data model"
-description: "All 26 MongoDB models of the Listenyzen backend, how they relate, and a reading order that makes them click."
+description: "All 28 MongoDB models of the Listenyzen backend, how they relate, and a reading order that makes them click."
 ---
 
 <Callout title="Source snapshot">
-Listenyzen revision `ffd5b3d`, 9 November 2026. Every chapter opens with the real `schema.ts` code, copied verbatim by `scripts/sync-listenyzen-schemas.mjs`. Field tables and diagrams are drawn from the same files. Sample documents are illustrative, not live data.
+Listenyzen revision `18e6d95`, 10 November 2026. Every chapter opens with the real `schema.ts` code, copied verbatim by `scripts/sync-listenyzen-schemas.mjs`. Field tables and diagrams are drawn from the same files. Sample documents are illustrative, not live data.
 </Callout>
 
 ## The whole system in one sentence
 
-A **company** runs **brands**. Each brand connects Facebook, Instagram and WhatsApp channels. Customers write to those channels as **DM conversations** or **public comments**. Every piece of incoming work becomes a **query**: a **session** for DMs, a **root comment** for comments. **Staff** in departments and teams work those queries under the brand's **settings** (SLA targets, business hours). Everything else is **derived**: handler performance records, daily Overview figures, and notifications.
+A **company** runs **brands**. Each brand connects Facebook, Instagram and WhatsApp channels. Customers write to those channels as **DM conversations** or **public comments**. Every piece of incoming work becomes a **query**: a **session** for DMs, a **root comment** for comments. **Staff** in departments and teams, with permissions from company-defined **roles**, work those queries under the brand's **settings** (SLA targets, business hours). Everything else is **derived**: handler performance records, daily Overview figures, and notifications.
 
 ```mermaid
 flowchart LR
@@ -17,6 +17,7 @@ flowchart LR
         Company --> Brand
         Company --> Department --> Team
         Team -.member.-> User
+        Role -.permissions.-> User
         Brand -.vocabulary.-> BrandTag
         Brand -.config.-> Setting
     end
@@ -43,7 +44,7 @@ The arrows above are the **mental model**: "is part of", "produces". The interac
 
 Tenant-scope copies are hidden at first. Nearly every model carries a `companyId`, and drawing all of them buries the real structure. Turn them on to see how tenant scoping works.
 
-## All 26 models
+## All 28 models
 
 <ModelCards />
 
@@ -69,7 +70,7 @@ Each row is a model that **holds** an id. Each column is a model being **pointed
 **[Conventions](/docs/listenyzen/conventions)**: `baseSchema`, ObjectId references, embedded subdocuments, `select: false`, discriminators. You need these words for every other chapter.
 </Step>
 <Step>
-**[Tenancy](/docs/listenyzen/tenancy)** → **[Brand](/docs/listenyzen/brand)** → **[Settings](/docs/listenyzen/settings)**: who owns what, and who may see which brand.
+**[Tenancy](/docs/listenyzen/tenancy)** → **[Roles](/docs/listenyzen/roles)** → **[Brand](/docs/listenyzen/brand)** → **[Settings](/docs/listenyzen/settings)**: who owns what, what each person may do, and who may see which brand.
 </Step>
 <Step>
 **[Messaging](/docs/listenyzen/messaging)** → **[Comments](/docs/listenyzen/comments)**: the work itself, which makes up most of the data.
