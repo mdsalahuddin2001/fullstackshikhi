@@ -1,0 +1,2971 @@
+{
+  "revision": "18e6d95",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/register-company",
+      "file": "server/src/auth/api.ts:47",
+      "authenticated": false,
+      "limiter": true,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "file": "server/src/auth/api.ts:76",
+      "authenticated": false,
+      "limiter": true,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "file": "server/src/auth/api.ts:116",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "file": "server/src/auth/api.ts:126",
+      "authenticated": false,
+      "limiter": true,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/companies/me",
+      "file": "server/src/modules/company/api.ts:92",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/companies",
+      "file": "server/src/modules/company/api.ts:107",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/companies",
+      "file": "server/src/modules/company/api.ts:123",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/companies/:id",
+      "file": "server/src/modules/company/api.ts:155",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/companies/:id",
+      "file": "server/src/modules/company/api.ts:174",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/companies/:id",
+      "file": "server/src/modules/company/api.ts:211",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users",
+      "file": "server/src/modules/user/api.ts:98",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users",
+      "file": "server/src/modules/user/api.ts:129",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/me",
+      "file": "server/src/modules/user/api.ts:170",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/:id",
+      "file": "server/src/modules/user/api.ts:186",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/me",
+      "file": "server/src/modules/user/api.ts:204",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/me/change-password",
+      "file": "server/src/modules/user/api.ts:232",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/:id",
+      "file": "server/src/modules/user/api.ts:269",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/:id/status",
+      "file": "server/src/modules/user/api.ts:308",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/users/:id",
+      "file": "server/src/modules/user/api.ts:339",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/departments",
+      "file": "server/src/modules/department/api.ts:29",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/departments",
+      "file": "server/src/modules/department/api.ts:44",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/departments/:id",
+      "file": "server/src/modules/department/api.ts:66",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/departments/:id",
+      "file": "server/src/modules/department/api.ts:83",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/departments/:id",
+      "file": "server/src/modules/department/api.ts:109",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/teams",
+      "file": "server/src/modules/team/api.ts:39",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/teams",
+      "file": "server/src/modules/team/api.ts:54",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/teams/:id",
+      "file": "server/src/modules/team/api.ts:84",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/teams/:id/brands",
+      "file": "server/src/modules/team/api.ts:103",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/teams/:id",
+      "file": "server/src/modules/team/api.ts:121",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query-managers",
+      "file": "server/src/modules/query-manager/api.ts:65",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query-managers",
+      "file": "server/src/modules/query-manager/api.ts:80",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query-managers/:id",
+      "file": "server/src/modules/query-manager/api.ts:133",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/query-managers/:id",
+      "file": "server/src/modules/query-manager/api.ts:150",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/query-managers/:id",
+      "file": "server/src/modules/query-manager/api.ts:208",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/company/roles",
+      "file": "server/src/modules/role/api.ts:54",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/company/roles/history",
+      "file": "server/src/modules/role/api.ts:61",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/company/roles",
+      "file": "server/src/modules/role/api.ts:90",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/company/roles/:id",
+      "file": "server/src/modules/role/api.ts:104",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/company/roles/:id",
+      "file": "server/src/modules/role/api.ts:117",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/company/roles/:id/default",
+      "file": "server/src/modules/role/api.ts:137",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/company/roles/:id",
+      "file": "server/src/modules/role/api.ts:151",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/company/permissions",
+      "file": "server/src/modules/role/api.ts:173",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands",
+      "file": "server/src/modules/brand/api.ts:60",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands",
+      "file": "server/src/modules/brand/api.ts:75",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:id",
+      "file": "server/src/modules/brand/api.ts:116",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:id/departments",
+      "file": "server/src/modules/brand/api.ts:133",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/brands/:id/departments",
+      "file": "server/src/modules/brand/api.ts:155",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:id/teams",
+      "file": "server/src/modules/brand/api.ts:191",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/brands/:id/teams",
+      "file": "server/src/modules/brand/api.ts:213",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:id/query-managers",
+      "file": "server/src/modules/brand/api.ts:249",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/brands/:id/query-managers",
+      "file": "server/src/modules/brand/api.ts:271",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/brands/:id",
+      "file": "server/src/modules/brand/api.ts:332",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/brands/:id",
+      "file": "server/src/modules/brand/api.ts:387",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:id/tags",
+      "file": "server/src/modules/brand/tags/api.ts:89",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:id/tags",
+      "file": "server/src/modules/brand/tags/api.ts:114",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "create",
+          "Tag"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/brands/:id/tags/:tagId",
+      "file": "server/src/modules/brand/tags/api.ts:141",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "update",
+          "Tag"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/brands/:id/tags/:tagId/archive",
+      "file": "server/src/modules/brand/tags/api.ts:166",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "update",
+          "Tag"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:id/facebook/connect",
+      "file": "server/src/modules/brand/meta-channels.ts:154",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/brands/:id/facebook",
+      "file": "server/src/modules/brand/meta-channels.ts:240",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:id/instagram/connect",
+      "file": "server/src/modules/brand/meta-channels.ts:262",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/brands/:id/instagram",
+      "file": "server/src/modules/brand/meta-channels.ts:335",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:id/instagram/login-url",
+      "file": "server/src/modules/brand/meta-channels.ts:360",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/instagram/oauth/callback",
+      "file": "server/src/modules/brand/meta-channels.ts:397",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:id/whatsapp/connect",
+      "file": "server/src/modules/brand/whatsapp.ts:136",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:id/whatsapp/connect-manual",
+      "file": "server/src/modules/brand/whatsapp.ts:214",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:id/whatsapp/register",
+      "file": "server/src/modules/brand/whatsapp.ts:294",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/brands/:id/whatsapp",
+      "file": "server/src/modules/brand/whatsapp.ts:362",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:id/whatsapp/templates",
+      "file": "server/src/modules/brand/whatsapp-templates.ts:128",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:id/whatsapp/templates",
+      "file": "server/src/modules/brand/whatsapp-templates.ts:148",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:id/whatsapp/templates/:templateId",
+      "file": "server/src/modules/brand/whatsapp-templates.ts:191",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/brands/:id/whatsapp/templates/:templateId",
+      "file": "server/src/modules/brand/whatsapp-templates.ts:238",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/fixed-replies",
+      "file": "server/src/modules/fixed-reply/api.ts:40",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "reply",
+          "Conversation"
+        ],
+        [
+          "reply",
+          "Comment"
+        ],
+        [
+          "manage",
+          "FixedReply"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/brands/:brandId/fixed-replies",
+      "file": "server/src/modules/fixed-reply/api.ts:56",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "manage",
+          "FixedReply"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/brands/:brandId/fixed-replies/:id",
+      "file": "server/src/modules/fixed-reply/api.ts:74",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "manage",
+          "FixedReply"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/brands/:brandId/fixed-replies/:id",
+      "file": "server/src/modules/fixed-reply/api.ts:95",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "manage",
+          "FixedReply"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/settings/:type",
+      "file": "server/src/modules/settings/api.ts:36",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "SlaSettings"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/brands/:brandId/settings/:type",
+      "file": "server/src/modules/settings/api.ts:58",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "update",
+          "SlaSettings"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/settings/:type/history",
+      "file": "server/src/modules/settings/api.ts:83",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "SlaSettings"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations",
+      "file": "server/src/modules/conversation/api.ts:342",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations/:id",
+      "file": "server/src/modules/conversation/api.ts:375",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations/:id/messages",
+      "file": "server/src/modules/conversation/api.ts:394",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations/:id/sessions",
+      "file": "server/src/modules/conversation/api.ts:417",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations/:id/stats",
+      "file": "server/src/modules/conversation/api.ts:441",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations/:id/customer",
+      "file": "server/src/modules/conversation/api.ts:463",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/conversations/:id/customer",
+      "file": "server/src/modules/conversation/api.ts:486",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "reply",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/claim",
+      "file": "server/src/modules/conversation/api.ts:515",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "claim",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/forward",
+      "file": "server/src/modules/conversation/api.ts:544",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "forward",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/conversations/:id/assignment",
+      "file": "server/src/modules/conversation/api.ts:580",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "assign",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/messages",
+      "file": "server/src/modules/conversation/api.ts:617",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "reply",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/attachments",
+      "file": "server/src/modules/conversation/api.ts:657",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "reply",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/messages/:messageId/reaction",
+      "file": "server/src/modules/conversation/api.ts:733",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "reply",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/conversations/:id/messages/:messageId/reaction",
+      "file": "server/src/modules/conversation/api.ts:747",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "reply",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/messages/:messageId/media",
+      "file": "server/src/modules/conversation/media.ts:123",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations/:id/whatsapp/templates",
+      "file": "server/src/modules/conversation/whatsapp-templates.ts:205",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "send",
+          "WhatsAppTemplate"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/whatsapp/templates",
+      "file": "server/src/modules/conversation/whatsapp-templates.ts:247",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "send",
+          "WhatsAppTemplate"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions",
+      "file": "server/src/modules/session/api.ts:83",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/assignees",
+      "file": "server/src/modules/session/api.ts:104",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/:id",
+      "file": "server/src/modules/session/api.ts:125",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/:id/sla",
+      "file": "server/src/modules/session/api.ts:141",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/sessions/:id/status",
+      "file": "server/src/modules/session/api.ts:156",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": true,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/:id/status-log",
+      "file": "server/src/modules/session/api.ts:180",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/:id/assignment-log",
+      "file": "server/src/modules/session/api.ts:197",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/:id/wrap-up-log",
+      "file": "server/src/modules/session/api.ts:215",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/sessions/:id/sentiment",
+      "file": "server/src/modules/session/api.ts:232",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "wrapUp",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/sessions/:id/wrap-up",
+      "file": "server/src/modules/session/api.ts:257",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "wrapUp",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": true,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/sessions/:id/assignment",
+      "file": "server/src/modules/session/api.ts:298",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "assign",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/sessions/:id/tags",
+      "file": "server/src/modules/session/api.ts:330",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "tag",
+          "Conversation"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/:id/notes",
+      "file": "server/src/modules/session/api.ts:353",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Note"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/:id/notes",
+      "file": "server/src/modules/session/api.ts:369",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "create",
+          "Note"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/comments",
+      "file": "server/src/modules/comment/api.ts:183",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/comments/posts",
+      "file": "server/src/modules/comment/api.ts:223",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/comments/:id",
+      "file": "server/src/modules/comment/api.ts:264",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/comments/:id/replies",
+      "file": "server/src/modules/comment/api.ts:286",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "reply",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/comments/:id/status-log",
+      "file": "server/src/modules/comment/api.ts:349",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/comments/:id/assignment-log",
+      "file": "server/src/modules/comment/api.ts:349",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/comments/:id/wrap-up-log",
+      "file": "server/src/modules/comment/api.ts:349",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/comments/:id",
+      "file": "server/src/modules/comment/api.ts:368",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/comments/:id/tags",
+      "file": "server/src/modules/comment/api.ts:383",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "tag",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/comments/:id/assignment",
+      "file": "server/src/modules/comment/api.ts:410",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "assign",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/comments/:id/claim",
+      "file": "server/src/modules/comment/api.ts:476",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "claim",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/comments/:id/forward",
+      "file": "server/src/modules/comment/api.ts:521",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "forward",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/comments/:id/wrap-up",
+      "file": "server/src/modules/comment/api.ts:547",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "wrapUp",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": true,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/comments/:id/hide",
+      "file": "server/src/modules/comment/api.ts:592",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "hide",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/comments/:id/like",
+      "file": "server/src/modules/comment/api.ts:619",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "like",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/comments/:id",
+      "file": "server/src/modules/comment/api.ts:646",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "delete",
+          "Comment"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": true,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/files",
+      "file": "server/src/modules/file/api.ts:42",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/files/upload-image-single",
+      "file": "server/src/modules/file/api.ts:81",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/files/upload-image-multiple",
+      "file": "server/src/modules/file/api.ts:118",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/team-data",
+      "file": "server/src/modules/overview/api.ts:77",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/team-workload",
+      "file": "server/src/modules/overview/api.ts:91",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/stats",
+      "file": "server/src/modules/overview/api.ts:113",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ],
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/team-now",
+      "file": "server/src/modules/overview/api.ts:132",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/sla",
+      "file": "server/src/modules/overview/api.ts:151",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ],
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/first-response",
+      "file": "server/src/modules/overview/api.ts:184",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ],
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/resolution-time",
+      "file": "server/src/modules/overview/api.ts:210",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ],
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/customers",
+      "file": "server/src/modules/overview/api.ts:235",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/tags-sentiment",
+      "file": "server/src/modules/overview/api.ts:260",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ],
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/customer-trend",
+      "file": "server/src/modules/overview/api.ts:285",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/peak-hours",
+      "file": "server/src/modules/overview/api.ts:310",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ],
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/engagement",
+      "file": "server/src/modules/overview/api.ts:331",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/inbound-trend",
+      "file": "server/src/modules/overview/api.ts:356",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/sla-compliance",
+      "file": "server/src/modules/overview/api.ts:377",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ],
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/sla-channels",
+      "file": "server/src/modules/overview/api.ts:403",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/sla-distributions",
+      "file": "server/src/modules/overview/api.ts:429",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/sla-trend",
+      "file": "server/src/modules/overview/api.ts:455",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "BrandOverview"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/turns",
+      "file": "server/src/modules/overview/api.ts:481",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/closure",
+      "file": "server/src/modules/overview/api.ts:495",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/team-trend",
+      "file": "server/src/modules/overview/api.ts:510",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/handlers",
+      "file": "server/src/modules/overview/api.ts:526",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/handlers/me",
+      "file": "server/src/modules/overview/api.ts:542",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "OwnFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/team",
+      "file": "server/src/modules/overview/api.ts:557",
+      "authenticated": true,
+      "limiter": false,
+      "roles": null,
+      "ability": [
+        [
+          "read",
+          "TeamFigures"
+        ]
+      ],
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/holds",
+      "file": "server/src/modules/overview/holds-api.ts:27",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/holds/by-holder",
+      "file": "server/src/modules/overview/holds-api.ts:62",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/sla-queue/counts",
+      "file": "server/src/modules/overview/sla-queue-api.ts:23",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/brands/:brandId/overview/sla-queue",
+      "file": "server/src/modules/overview/sla-queue-api.ts:42",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin",
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/overview/brands-now",
+      "file": "server/src/modules/overview/landing-api.ts:19",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/overview-rollups/rebuild",
+      "file": "server/src/modules/overview/rollup/api.ts:69",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/overview-rollups/runs",
+      "file": "server/src/modules/overview/rollup/api.ts:131",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/overview-rollups/status",
+      "file": "server/src/modules/overview/rollup/api.ts:153",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "super_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/company/alert-rules",
+      "file": "server/src/modules/alert/api.ts:43",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/company/alert-rules",
+      "file": "server/src/modules/alert/api.ts:59",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/company/alert-rules/:id",
+      "file": "server/src/modules/alert/api.ts:78",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/company/alert-rules/:id",
+      "file": "server/src/modules/alert/api.ts:99",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "file": "server/src/modules/alert/personal-api.ts:46",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/unread-count",
+      "file": "server/src/modules/alert/personal-api.ts:64",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/read-all",
+      "file": "server/src/modules/alert/personal-api.ts:76",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/:id/read",
+      "file": "server/src/modules/alert/personal-api.ts:90",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notification-settings",
+      "file": "server/src/modules/alert/personal-api.ts:112",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/notification-settings/rules/:id",
+      "file": "server/src/modules/alert/personal-api.ts:126",
+      "authenticated": true,
+      "limiter": false,
+      "roles": [
+        "company_owner",
+        "company_admin",
+        "query_manager"
+      ],
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/webhooks/facebook",
+      "file": "server/src/modules/webhook/index.ts:14",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/webhooks/facebook",
+      "file": "server/src/modules/webhook/index.ts:15",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/webhooks/facebook/relay",
+      "file": "server/src/modules/webhook/index.ts:18",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/webhooks/whatsapp",
+      "file": "server/src/modules/webhook/index.ts:22",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/webhooks/whatsapp",
+      "file": "server/src/modules/webhook/index.ts:23",
+      "authenticated": false,
+      "limiter": false,
+      "roles": null,
+      "ability": null,
+      "inlineAbility": null,
+      "statusGuard": false,
+      "act": false,
+      "claim": false
+    }
+  ]
+}

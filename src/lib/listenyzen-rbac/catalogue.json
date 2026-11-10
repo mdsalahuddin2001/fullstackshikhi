@@ -1,0 +1,490 @@
+{
+  "revision": "18e6d95",
+  "roles": [
+    "super_admin",
+    "company_owner",
+    "company_admin",
+    "query_manager"
+  ],
+  "managerRoles": [
+    "super_admin",
+    "company_owner",
+    "company_admin"
+  ],
+  "actions": [
+    "manage",
+    "read",
+    "reply",
+    "claim",
+    "forward",
+    "assign",
+    "hold",
+    "tag",
+    "wrapUp",
+    "reopen",
+    "like",
+    "hide",
+    "delete",
+    "create",
+    "update",
+    "send"
+  ],
+  "subjects": [
+    "all",
+    "Conversation",
+    "Comment",
+    "Note",
+    "Tag",
+    "FixedReply",
+    "WhatsAppTemplate",
+    "BrandOverview",
+    "TeamFigures",
+    "OwnFigures",
+    "SlaSettings"
+  ],
+  "groups": [
+    "Inbox",
+    "Comments",
+    "Overview",
+    "Brand setup"
+  ],
+  "permissions": [
+    {
+      "key": "conversation.read",
+      "label": "Read conversations",
+      "group": "Inbox",
+      "description": "Open the inbox and read DM conversations, their sessions and customer details.",
+      "rules": [
+        {
+          "action": "read",
+          "subject": "Conversation"
+        }
+      ]
+    },
+    {
+      "key": "conversation.reply",
+      "label": "Reply",
+      "group": "Inbox",
+      "description": "Send messages and attachments, react, and edit customer details.",
+      "rules": [
+        {
+          "action": "reply",
+          "subject": "Conversation"
+        }
+      ]
+    },
+    {
+      "key": "conversation.claim",
+      "label": "Assign to me",
+      "group": "Inbox",
+      "description": "Take an unassigned or pooled query (DMs and comment threads).",
+      "rules": [
+        {
+          "action": "claim",
+          "subject": [
+            "Conversation",
+            "Comment"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "conversation.forward",
+      "label": "Forward",
+      "group": "Inbox",
+      "description": "Pass a query you hold to a person, team or department.",
+      "rules": [
+        {
+          "action": "forward",
+          "subject": [
+            "Conversation",
+            "Comment"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "conversation.assign",
+      "label": "Assign and reassign",
+      "group": "Inbox",
+      "description": "Route any query to a person, team or department.",
+      "rules": [
+        {
+          "action": "assign",
+          "subject": [
+            "Conversation",
+            "Comment"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "conversation.hold.manage",
+      "label": "Put on hold",
+      "group": "Inbox",
+      "description": "Put a query on hold, which stops its resolution clock.",
+      "rules": [
+        {
+          "action": "hold",
+          "subject": [
+            "Conversation",
+            "Comment"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "conversation.tag.apply",
+      "label": "Apply tags",
+      "group": "Inbox",
+      "description": "Tag queries, and add new tags from the tag picker.",
+      "rules": [
+        {
+          "action": "tag",
+          "subject": [
+            "Conversation",
+            "Comment"
+          ]
+        },
+        {
+          "action": "create",
+          "subject": "Tag"
+        }
+      ]
+    },
+    {
+      "key": "conversation.template.send",
+      "label": "Send WhatsApp templates",
+      "group": "Inbox",
+      "description": "Send approved WhatsApp message templates.",
+      "rules": [
+        {
+          "action": "send",
+          "subject": "WhatsAppTemplate"
+        }
+      ]
+    },
+    {
+      "key": "session.note.read",
+      "label": "Read internal notes",
+      "group": "Inbox",
+      "description": "See the internal notes on a session.",
+      "rules": [
+        {
+          "action": "read",
+          "subject": "Note"
+        }
+      ]
+    },
+    {
+      "key": "session.note.create",
+      "label": "Add internal notes",
+      "group": "Inbox",
+      "description": "Write internal notes on a session.",
+      "rules": [
+        {
+          "action": "create",
+          "subject": "Note"
+        }
+      ]
+    },
+    {
+      "key": "session.wrap",
+      "label": "Wrap up",
+      "group": "Inbox",
+      "description": "Close a query as resolved or unresolved, with its wrap-up fields.",
+      "rules": [
+        {
+          "action": "wrapUp",
+          "subject": [
+            "Conversation",
+            "Comment"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "session.reopen",
+      "label": "Reopen",
+      "group": "Inbox",
+      "description": "Move a wrapped-up query back to pending.",
+      "rules": [
+        {
+          "action": "reopen",
+          "subject": [
+            "Conversation",
+            "Comment"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "comment.read",
+      "label": "Read comments",
+      "group": "Comments",
+      "description": "Open the comments workspace and read posts and comment threads.",
+      "rules": [
+        {
+          "action": "read",
+          "subject": "Comment"
+        }
+      ]
+    },
+    {
+      "key": "comment.reply",
+      "label": "Reply to comments",
+      "group": "Comments",
+      "description": "Reply to comments as the page.",
+      "rules": [
+        {
+          "action": "reply",
+          "subject": "Comment"
+        }
+      ]
+    },
+    {
+      "key": "comment.like",
+      "label": "Like comments",
+      "group": "Comments",
+      "description": "Like and unlike comments as the page.",
+      "rules": [
+        {
+          "action": "like",
+          "subject": "Comment"
+        }
+      ]
+    },
+    {
+      "key": "comment.hide",
+      "label": "Hide comments",
+      "group": "Comments",
+      "description": "Hide and unhide comments on the page.",
+      "rules": [
+        {
+          "action": "hide",
+          "subject": "Comment"
+        }
+      ]
+    },
+    {
+      "key": "comment.delete",
+      "label": "Delete comments",
+      "group": "Comments",
+      "description": "Delete comments from the page. Cannot be undone.",
+      "rules": [
+        {
+          "action": "delete",
+          "subject": "Comment"
+        }
+      ]
+    },
+    {
+      "key": "analytics.brand_health.read",
+      "label": "Brand figures",
+      "group": "Overview",
+      "description": "Brand Health, Engagement, SLA and Customers pages.",
+      "rules": [
+        {
+          "action": "read",
+          "subject": "BrandOverview"
+        }
+      ]
+    },
+    {
+      "key": "analytics.scorecard.read.self",
+      "label": "Own figures",
+      "group": "Overview",
+      "description": "Handler view: their own queries, turns and response times.",
+      "rules": [
+        {
+          "action": "read",
+          "subject": "OwnFigures"
+        }
+      ]
+    },
+    {
+      "key": "analytics.scorecard.read.all",
+      "label": "Team figures",
+      "group": "Overview",
+      "description": "Team Performance, Team view and Team Data for the whole Brand.",
+      "rules": [
+        {
+          "action": "read",
+          "subject": "TeamFigures"
+        }
+      ]
+    },
+    {
+      "key": "brand.tag.manage",
+      "label": "Manage tags",
+      "group": "Brand setup",
+      "description": "Rename and archive tags in the Brand’s vocabulary.",
+      "rules": [
+        {
+          "action": "update",
+          "subject": "Tag"
+        }
+      ]
+    },
+    {
+      "key": "brand.fixed_reply.manage",
+      "label": "Manage fixed replies",
+      "group": "Brand setup",
+      "description": "Add, edit and delete the Brand’s fixed replies.",
+      "rules": [
+        {
+          "action": "manage",
+          "subject": "FixedReply"
+        }
+      ]
+    },
+    {
+      "key": "brand.sla.read",
+      "label": "See SLA targets",
+      "group": "Brand setup",
+      "description": "See the Brand’s SLA targets and business hours (read only).",
+      "rules": [
+        {
+          "action": "read",
+          "subject": "SlaSettings"
+        }
+      ]
+    }
+  ],
+  "seeded": [
+    "conversation.read",
+    "conversation.reply",
+    "conversation.claim",
+    "conversation.forward",
+    "conversation.hold.manage",
+    "conversation.tag.apply",
+    "conversation.template.send",
+    "session.note.read",
+    "session.note.create",
+    "session.wrap",
+    "session.reopen",
+    "comment.read",
+    "comment.reply",
+    "comment.like",
+    "comment.hide",
+    "comment.delete",
+    "analytics.scorecard.read.self",
+    "brand.fixed_reply.manage"
+  ],
+  "statusMoves": [
+    {
+      "from": "pending",
+      "to": "pending",
+      "needs": [
+        "hold"
+      ]
+    },
+    {
+      "from": "pending",
+      "to": "hold",
+      "needs": [
+        "hold"
+      ]
+    },
+    {
+      "from": "pending",
+      "to": "unresolved",
+      "needs": [
+        "wrapUp"
+      ]
+    },
+    {
+      "from": "pending",
+      "to": "resolved",
+      "needs": [
+        "wrapUp"
+      ]
+    },
+    {
+      "from": "hold",
+      "to": "pending",
+      "needs": [
+        "hold"
+      ]
+    },
+    {
+      "from": "hold",
+      "to": "hold",
+      "needs": [
+        "hold"
+      ]
+    },
+    {
+      "from": "hold",
+      "to": "unresolved",
+      "needs": [
+        "wrapUp"
+      ]
+    },
+    {
+      "from": "hold",
+      "to": "resolved",
+      "needs": [
+        "wrapUp"
+      ]
+    },
+    {
+      "from": "unresolved",
+      "to": "pending",
+      "needs": [
+        "reopen"
+      ]
+    },
+    {
+      "from": "unresolved",
+      "to": "hold",
+      "needs": [
+        "reopen",
+        "hold"
+      ]
+    },
+    {
+      "from": "unresolved",
+      "to": "unresolved",
+      "needs": [
+        "wrapUp"
+      ]
+    },
+    {
+      "from": "unresolved",
+      "to": "resolved",
+      "needs": [
+        "wrapUp"
+      ]
+    },
+    {
+      "from": "resolved",
+      "to": "pending",
+      "needs": [
+        "reopen"
+      ]
+    },
+    {
+      "from": "resolved",
+      "to": "hold",
+      "needs": [
+        "reopen",
+        "hold"
+      ]
+    },
+    {
+      "from": "resolved",
+      "to": "unresolved",
+      "needs": [
+        "wrapUp"
+      ]
+    },
+    {
+      "from": "resolved",
+      "to": "resolved",
+      "needs": [
+        "wrapUp"
+      ]
+    }
+  ]
+}

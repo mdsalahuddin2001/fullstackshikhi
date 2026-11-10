@@ -42,7 +42,7 @@ function MermaidContent({ chart }: { chart: string }) {
   const theme = useSyncExternalStore(subscribeHtmlClass, getHtmlTheme, () => 'light');
   const { default: mermaid } = use(cachePromise('mermaid', () => import('mermaid')));
 
-  const { svg, bindFunctions } = use(
+  const result = use(
     cachePromise(`${chart}-${theme}`, () => {
       mermaid.initialize({
         startOnLoad: false,
@@ -52,10 +52,17 @@ function MermaidContent({ chart }: { chart: string }) {
         theme: 'base',
         darkMode: theme === 'dark',
         themeVariables: themeFromCss(),
+        // Don't append Mermaid's own "Syntax error" graphic to the page; MermaidError shows it instead.
+        suppressErrorRendering: true,
       });
-      return mermaid.render(id.replaceAll(':', ''), chart.replaceAll('\\n', '\n'));
+      // A diagram that fails to parse must not take the page down: resolve to the error instead.
+      return mermaid
+        .render(id.replaceAll(':', ''), chart.replaceAll('\\n', '\n'))
+        .catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }));
     }),
   );
+  if ('error' in result) return <MermaidError chart={chart} message={result.error} />;
+  const { svg, bindFunctions } = result;
 
   return (
     <div
@@ -67,6 +74,19 @@ function MermaidContent({ chart }: { chart: string }) {
       }}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
+  );
+}
+
+function MermaidError({ chart, message }: { chart: string; message: string }) {
+  return (
+    <div role="alert" className="mermaid-error">
+      <strong>This diagram could not be drawn.</strong>
+      <pre>{message}</pre>
+      <details>
+        <summary>Diagram source</summary>
+        <pre>{chart}</pre>
+      </details>
+    </div>
   );
 }
 

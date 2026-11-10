@@ -1,6 +1,7 @@
 import { HandbookProgress } from './handbook-progress';
 import { SchemaGraph } from './listenyzen/schema-graph';
 import { IndexTable, ModelCards, ModelFields, RelationMatrix } from './listenyzen/schema-tables';
+import { BrandScopeSimulator, PermissionPlayground, RequestSimulator, RouteGates, StatusMoveMatrix, TokenAnatomy } from './listenyzen-rbac/simulators';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
 import { Step } from 'fumadocs-ui/components/steps';
@@ -30,6 +31,12 @@ export function getMDXComponents(components?: MDXComponents) {
     RelationMatrix,
     IndexTable,
     ModelCards,
+    PermissionPlayground,
+    RouteGates,
+    RequestSimulator,
+    BrandScopeSimulator,
+    TokenAnatomy,
+    StatusMoveMatrix,
     ...components,
   } satisfies MDXComponents;
 }

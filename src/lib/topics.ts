@@ -55,6 +55,14 @@ export const topics: Topic[] = [
     tags: ['Data model', 'MongoDB', 'Interactive'],
   },
   {
+    slug: 'listenyzen-rbac',
+    title: 'Listenyzen RBAC',
+    description: 'How Listenyzen signs people in and decides what they may do: tokens, gates, roles, CASL permissions and scopes, with live simulators.',
+    logo: ListenyzenLogo,
+    brand: { light: '#7a3fb8', lightForeground: '#ffffff', dark: '#b89be8', darkForeground: '#151a22' },
+    tags: ['Auth', 'RBAC', 'CASL', 'Interactive'],
+  },
+  {
     slug: 'postgresql',
     title: 'PostgreSQL',
     description: 'SQL থেকে indexing, transactions আর performance tuning পর্যন্ত।',

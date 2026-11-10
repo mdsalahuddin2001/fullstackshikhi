@@ -1,0 +1,20 @@
+{
+  "title": "Listenyzen RBAC",
+  "description": "Authentication, authorization and role-based access control",
+  "icon": "ShieldCheck",
+  "root": true,
+  "pages": [
+    "index",
+    "---Who are you---",
+    "sign-in",
+    "request-gates",
+    "---What may you do---",
+    "scoping",
+    "roles-and-permissions",
+    "route-gates",
+    "record-rules",
+    "---Putting it together---",
+    "client-and-realtime",
+    "walkthroughs"
+  ]
+}
